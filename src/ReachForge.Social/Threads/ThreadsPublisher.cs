@@ -6,7 +6,10 @@ using ReachForge.Domain.Enums;
 
 namespace ReachForge.Social.Threads;
 
-/// <summary>Threads への投稿（コンテナ作成 POST /{user-id}/threads → 公開 POST /{user-id}/threads_publish）。</summary>
+/// <summary>
+/// Threads への投稿（コンテナ作成 POST /{user-id}/threads → 公開 POST /{user-id}/threads_publish）。
+/// 2枚以上はカルーセル（各画像を is_carousel_item の IMAGE コンテナにし、media_type=CAROUSEL の親で束ねる）。
+/// </summary>
 public sealed class ThreadsPublisher(IHttpClientFactory http, IOptions<SocialOptions> options) : PublisherBase(SocialPlatform.Threads)
 {
     private string Version => options.Value.Threads.ApiVersion;
@@ -15,8 +18,21 @@ public sealed class ThreadsPublisher(IHttpClientFactory http, IOptions<SocialOpt
         IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
         var client = http.CreateClient(ThreadsConnector.HttpClientName);
+        var endpoint = $"{Version}/{credential.ExternalAccountId}/threads";
         var fields = new List<KeyValuePair<string, string>> { new("text", Text(variant)) };
-        if (media.FirstOrDefault() is { } image)
+        if (media.Count > 1)
+        {
+            var children = new List<string>();
+            foreach (var item in media.Take(Capabilities.MaxImages))
+            {
+                children.Add(SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post, endpoint,
+                    [new("media_type", "IMAGE"), new("image_url", await item.PublicUrlAsync(ct)), new("is_carousel_item", "true")],
+                    credential.AccessToken), "Threads", ct), "id"));
+            }
+            fields.Add(new("media_type", "CAROUSEL"));
+            fields.Add(new("children", string.Join(',', children)));
+        }
+        else if (media.FirstOrDefault() is { } image)
         {
             fields.Add(new("media_type", "IMAGE"));
             fields.Add(new("image_url", await image.PublicUrlAsync(ct)));
@@ -26,7 +42,7 @@ public sealed class ThreadsPublisher(IHttpClientFactory http, IOptions<SocialOpt
             fields.Add(new("media_type", "TEXT"));
         }
         var container = SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
-            $"{Version}/{credential.ExternalAccountId}/threads", fields, credential.AccessToken), "Threads", ct), "id");
+            endpoint, fields, credential.AccessToken), "Threads", ct), "id");
 
         var id = SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
             $"{Version}/{credential.ExternalAccountId}/threads_publish", [new("creation_id", container)], credential.AccessToken),

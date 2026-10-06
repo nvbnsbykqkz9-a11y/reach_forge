@@ -160,7 +160,7 @@
                         <MudText Typo="Typo.caption" Class="mt-2 rf-ai-hint">✦ AI生成@(IsEdited ? "（編集あり）" : "")</MudText>
                     }
                     <MudText Typo="Typo.body2" Class="mt-4 mb-2"><b>画像</b>（Instagram は画像が必要です）</MudText>
-                    <RfMediaPicker @bind-Selected="_mediaIds" Max="4" DefaultPrompt="@(string.IsNullOrWhiteSpace(_headline) ? _theme : _headline)" />
+                    <RfMediaPicker @bind-Selected="_mediaIds" Max="10" DefaultPrompt="@(string.IsNullOrWhiteSpace(_headline) ? _theme : _headline)" />
                     <MudText Typo="Typo.body2" Class="mt-4 mb-2"><b>確認結果</b></MudText>
                     <RfGuardrailPanel Findings="MasterFindings" OnApply="ApplyToMaster" />
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" FullWidth="true"

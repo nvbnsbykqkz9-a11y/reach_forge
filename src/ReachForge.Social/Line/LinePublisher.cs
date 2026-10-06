@@ -19,7 +19,7 @@ public sealed class LinePublisher(IHttpClientFactory http) : PublisherBase(Socia
     {
         var retryKey = RetryKey(variant);
         var messages = new List<object> { new { type = "text", text = Text(variant) } };
-        if (media.FirstOrDefault() is { } image)
+        foreach (var image in media.Take(Capabilities.MaxImages)) // 1回の送信は最大5メッセージ（本文＋画像4枚）
         {
             // 画像メッセージ：本体（JPEG/PNG・10MB 以下）とプレビュー（1MB 以下）の HTTPS URL
             messages.Add(new

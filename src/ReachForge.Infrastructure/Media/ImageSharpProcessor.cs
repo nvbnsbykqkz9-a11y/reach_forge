@@ -1,7 +1,10 @@
 using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
+using Microsoft.Extensions.Options;
+using SixLabors.Fonts;
 using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Drawing.Processing;
 using SixLabors.ImageSharp.Formats;
 using SixLabors.ImageSharp.Formats.Jpeg;
 using SixLabors.ImageSharp.Formats.Png;
@@ -14,9 +17,99 @@ namespace ReachForge.Infrastructure.Media;
 /// ImageSharp による画像処理（RF-DES-001 3.3）。比率変換は「引き伸ばし禁止」：
 /// 比率差 2% 以下は縮小のみ、それ以外は被写体を中心にしたスマートクロップ または 背景色の余白。
 /// </summary>
-public sealed class ImageSharpProcessor : IImageProcessor
+public sealed class ImageSharpProcessor(IOptions<MediaOptions>? options = null) : IImageProcessor
 {
     public const double AspectTolerance = 0.02;
+
+    private readonly Lazy<FontFamily?> _font = new(() => FindFont(options?.Value ?? new MediaOptions()));
+
+    /// <summary>日本語フォントを探す（設定のファイル → OS のフォント）。見つからなければ null。</summary>
+    private static FontFamily? FindFont(MediaOptions o)
+    {
+        if (o.FontPath is { Length: > 0 } path && File.Exists(path))
+        {
+            var collection = new FontCollection();
+            return collection.Add(path);
+        }
+        foreach (var name in o.FontFamilies)
+        {
+            if (SystemFonts.TryGet(name, out var family)) return family;
+        }
+        return null;
+    }
+
+    public async Task<ProcessedImage> RenderTextAsync(byte[] source, TextOverlay overlay, CancellationToken ct)
+    {
+        var family = _font.Value ?? throw new InvalidOperationException(
+            "日本語フォントが見つかりません。Media:FontPath に Noto Sans JP などのフォントファイルを設定してください。");
+        using var image = Image.Load<Rgba32>(s_decoder, source);
+        var w = image.Width;
+        var h = image.Height;
+        var band = Color.ParseHex(overlay.BandColorHex).ToPixel<Rgba32>();
+        // 帯の色に対してコントラストが高い方の文字色（WCAG の相対輝度で判定）
+        var text = Luminance(band) > 0.4 ? Color.Black : Color.White;
+        var padding = w * 0.06f;
+        var maxWidth = w - padding * 2;
+
+        // まず1行に収まる大きさを探し（読みやすさ優先・最小は幅の5.5%）、収まらなければ2行で折り返す
+        Font Fit(string value, float startRatio)
+        {
+            foreach (var (maxLines, minRatio) in new[] { (1, 0.055f), (2, 0.03f) })
+            {
+                for (var size = w * startRatio; size >= w * minRatio; size *= 0.94f)
+                {
+                    var font = family.CreateFont(size, FontStyle.Bold);
+                    var bounds = TextMeasurer.MeasureSize(value, new TextOptions(font) { WrappingLength = maxWidth });
+                    if (bounds.Width <= maxWidth && bounds.Height <= size * 1.3f * maxLines) return font;
+                }
+            }
+            return family.CreateFont(w * 0.03f, FontStyle.Bold);
+        }
+
+        var headlineFont = Fit(overlay.Headline, 0.085f);
+        var subFont = overlay.Sub is { Length: > 0 } ? Fit(overlay.Sub, Math.Min(0.045f, headlineFont.Size / w * 0.6f)) : null;
+        var headlineSize = TextMeasurer.MeasureSize(overlay.Headline, new TextOptions(headlineFont) { WrappingLength = maxWidth });
+        var subSize = subFont is null ? FontRectangle.Empty : TextMeasurer.MeasureSize(overlay.Sub!, new TextOptions(subFont) { WrappingLength = maxWidth });
+        var gap = subFont is null ? 0 : headlineFont.Size * 0.35f;
+        var bandHeight = headlineSize.Height + gap + subSize.Height + padding * 1.2f;
+        var top = overlay.Position switch
+        {
+            TextPosition.Top => 0f,
+            TextPosition.Center => (h - bandHeight) / 2,
+            _ => h - bandHeight,
+        };
+
+        image.Mutate(x =>
+        {
+            x.Fill(Color.FromPixel(new Rgba32(band.R, band.G, band.B, (byte)(255 * Math.Clamp(overlay.BandOpacity, 0.4f, 1f)))),
+                new RectangleF(0, top, w, bandHeight));
+            var y = top + padding * 0.6f;
+            x.DrawText(new RichTextOptions(headlineFont)
+            {
+                Origin = new PointF(w / 2f, y), WrappingLength = maxWidth,
+                HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center,
+            }, overlay.Headline, text);
+            if (subFont is not null)
+            {
+                x.DrawText(new RichTextOptions(subFont)
+                {
+                    Origin = new PointF(w / 2f, y + headlineSize.Height + gap), WrappingLength = maxWidth,
+                    HorizontalAlignment = HorizontalAlignment.Center, TextAlignment = TextAlignment.Center,
+                }, overlay.Sub!, text);
+            }
+        });
+        return await JpegAsync(image, 92, ct);
+    }
+
+    private static double Luminance(Rgba32 c)
+    {
+        static double Channel(byte v)
+        {
+            var s = v / 255.0;
+            return s <= 0.03928 ? s / 12.92 : Math.Pow((s + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
+    }
 
     private static readonly DecoderOptions s_decoder = new() { MaxFrames = 1 };
 

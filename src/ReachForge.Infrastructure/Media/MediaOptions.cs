@@ -16,6 +16,11 @@ public sealed class MediaOptions
     /// Blob を使わない環境で実投稿するには、インターネットから到達できる HTTPS の URL を設定する。
     /// </summary>
     public string? PublicBaseUrl { get; set; }
+
+    /// <summary>文字入れに使う日本語フォントのファイル（.ttf/.otf）。未設定なら OS のフォントから探す。</summary>
+    public string? FontPath { get; set; }
+
+    public string[] FontFamilies { get; set; } = ["Noto Sans JP", "Noto Sans CJK JP", "IPAexGothic", "IPAGothic", "Yu Gothic", "Meiryo"];
 }
 
 public sealed class ContentSafetyOptions

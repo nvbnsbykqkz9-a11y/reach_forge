@@ -16,6 +16,23 @@ public sealed class FacebookPublisher(IHttpClientFactory http, IOptions<SocialOp
     {
         var client = http.CreateClient(MetaConnector.HttpClientName);
         var text = Text(variant);
+        if (media.Count > 1)
+        {
+            // 複数写真：各写真を非公開（published=false）でアップロードし、attached_media で1つの投稿にまとめる
+            var album = new List<KeyValuePair<string, string>> { new("message", text) };
+            var index = 0;
+            foreach (var item in media.Take(Capabilities.MaxImages))
+            {
+                var photo = await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
+                    $"{Version}/{credential.ExternalAccountId}/photos",
+                    [new("url", await item.PublicUrlAsync(ct)), new("published", "false")], credential.AccessToken), "Facebook", ct);
+                album.Add(new($"attached_media[{index++}]", $"{{\"media_fbid\":\"{SocialHttp.Str(photo, "id")}\"}}"));
+            }
+            var feed = await SocialHttp.SendAsync(client,
+                SocialHttp.Form(HttpMethod.Post, $"{Version}/{credential.ExternalAccountId}/feed", album, credential.AccessToken), "Facebook", ct);
+            var feedId = SocialHttp.Str(feed, "id");
+            return new PublishResult(feedId, $"https://www.facebook.com/{feedId}");
+        }
         if (media.FirstOrDefault() is { } image)
         {
             // 写真投稿（POST /{page-id}/photos）：url から取得、message がキャプション

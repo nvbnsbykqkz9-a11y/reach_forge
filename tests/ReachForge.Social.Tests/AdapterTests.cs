@@ -269,6 +269,42 @@ public class AdapterTests
     }
 
     [Fact]
+    public async Task Instagram_threads_and_facebook_publish_multiple_images_as_one_post()
+    {
+        var ig = new FakeHttp()
+            .Respond("v24.0/ig1/media", """{"id":"k1"}""").Respond("v24.0/k1?fields=status_code", """{"status_code":"FINISHED"}""")
+            .Respond("v24.0/ig1/media", """{"id":"k2"}""").Respond("v24.0/k2?fields=status_code", """{"status_code":"FINISHED"}""")
+            .Respond("v24.0/ig1/media", """{"id":"parent"}""").Respond("v24.0/parent?fields=status_code", """{"status_code":"FINISHED"}""")
+            .Respond("v24.0/ig1/media_publish", """{"id":"p9"}""")
+            .Respond("v24.0/p9?fields=permalink", """{"permalink":"https://www.instagram.com/p/xyz/"}""");
+        var v = Variant(SocialPlatform.Instagram, "秋の新作", "秋限定");
+        await new InstagramPublisher(ig, FakeHttp.Options()).PublishAsync(v, Credential(SocialPlatform.Instagram, "ig1"),
+            [Image("https://cdn.example/1.jpg"), Image("https://cdn.example/2.jpg")], CancellationToken.None);
+        Assert.Contains("is_carousel_item=true", ig.Requests[0].Body);
+        Assert.Contains("media_type=CAROUSEL", ig.Requests[4].Body);
+        Assert.Contains("children=k1%2Ck2", ig.Requests[4].Body);
+        Assert.Contains("creation_id=parent", ig.Requests[6].Body);
+
+        var th = new FakeHttp()
+            .Respond("v1.0/u1/threads", """{"id":"t1"}""").Respond("v1.0/u1/threads", """{"id":"t2"}""")
+            .Respond("v1.0/u1/threads", """{"id":"tp"}""").Respond("v1.0/u1/threads_publish", """{"id":"tx"}""")
+            .Respond("v1.0/tx?fields=permalink", """{"permalink":"https://www.threads.net/@a/post/1"}""");
+        await new ThreadsPublisher(th, FakeHttp.Options()).PublishAsync(Variant(SocialPlatform.Threads, "本文"),
+            Credential(SocialPlatform.Threads, "u1"), [Image(), Image()], CancellationToken.None);
+        Assert.Contains("media_type=CAROUSEL", th.Requests[2].Body);
+        Assert.Contains("children=t1%2Ct2", th.Requests[2].Body);
+
+        var fb = new FakeHttp()
+            .Respond("v24.0/page-1/photos", """{"id":"f1"}""").Respond("v24.0/page-1/photos", """{"id":"f2"}""")
+            .Respond("v24.0/page-1/feed", """{"id":"page-1_77"}""");
+        var r = await new FacebookPublisher(fb, FakeHttp.Options()).PublishAsync(Variant(SocialPlatform.Facebook, "本文"),
+            Credential(SocialPlatform.Facebook, "page-1"), [Image(), Image()], CancellationToken.None);
+        Assert.Contains("published=false", fb.Requests[0].Body);
+        Assert.Contains("media_fbid", Uri.UnescapeDataString(fb.Requests[2].Body!));
+        Assert.Equal("page-1_77", r.ExternalPostId);
+    }
+
+    [Fact]
     public async Task Facebook_threads_and_line_attach_images()
     {
         var fb = new FakeHttp().Respond("v24.0/page-1/photos", """{"id":"ph1","post_id":"page-1_9"}""");

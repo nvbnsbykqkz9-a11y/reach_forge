@@ -1,4 +1,5 @@
 @page "/media"
+@inject WorkspaceService Workspaces
 @using System.Text.Json
 @inject MediaService Media
 @inject WebTenantContext Tenant
@@ -58,7 +59,7 @@
                 <RfMediaImage AssetId="cur.Id" Alt="@cur.AltText" ShowAiBadge="cur.IsAiLabeled" Class="my-2" />
                 <MudText Typo="Typo.caption" Class="d-block">@cur.Width × @cur.Height ・ @(cur.Bytes / 1024) KB ・ @Time.Short(cur.CreatedAt)</MudText>
                 <MudText Typo="Typo.caption" Class="d-block">
-                    @(cur.Source switch { MediaSource.AiGenerated => "AI生成", MediaSource.AiEdited => "AI編集", MediaSource.Upload => "アップロード", _ => "派生" })
+                    @(cur.Source switch { MediaSource.AiGenerated => "AI生成", MediaSource.AiEdited => "AI編集", MediaSource.Upload => "アップロード", _ => "編集（文字入れ）" })
                     ・ 安全性チェック：@(cur.SafetyResult == "ok" ? "問題なし" : cur.SafetyResult == "not_checked" ? "未設定（判定なし）" : cur.SafetyResult)
                 </MudText>
                 @if (_provenance is not null)
@@ -73,6 +74,26 @@
                     <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Small" StartIcon="@Icons.Material.Rounded.AutoAwesome"
                                OnClick="AltAsync" Disabled="_altBusy">ALTをAIで作る</MudButton>
                 </div>
+
+                <MudExpansionPanels Elevation="0" Class="mt-4">
+                    <MudExpansionPanel Text="文字を入れる">
+                        <MudTextField T="string" @bind-Value="_textHeadline" Label="見出し（30字まで）" Variant="Variant.Outlined" MaxLength="30" Counter="30" />
+                        <MudTextField T="string" @bind-Value="_textSub" Label="補足（任意・40字まで）" Variant="Variant.Outlined" MaxLength="40" Class="mt-2" />
+                        <div class="d-flex gap-2 align-center mt-2">
+                            <MudSelect T="TextPosition" @bind-Value="_textPosition" Label="位置" Variant="Variant.Outlined" Dense="true" Style="max-width:140px">
+                                <MudSelectItem Value="TextPosition.Top">上</MudSelectItem>
+                                <MudSelectItem Value="TextPosition.Center">中央</MudSelectItem>
+                                <MudSelectItem Value="TextPosition.Bottom">下</MudSelectItem>
+                            </MudSelect>
+                            <MudSelect T="string" @bind-Value="_textBand" Label="帯の色" Variant="Variant.Outlined" Dense="true" Style="max-width:180px">
+                                @foreach (var c in _bandColors) { <MudSelectItem Value="c"><span class="rf-swatch" style="background:@c"></span> @c</MudSelectItem> }
+                            </MudSelect>
+                        </div>
+                        <MudText Typo="Typo.caption" Class="d-block mt-1">文字はAIではなくフォントで正確に描きます。文字色は帯の色に合わせて読みやすい色になります。元の画像はそのまま残ります。</MudText>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" Class="mt-2" OnClick="AddTextAsync"
+                                   Disabled="@(_textBusy || string.IsNullOrWhiteSpace(_textHeadline))">文字入りの画像をつくる</MudButton>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
 
                 <MudText Typo="Typo.body2" Class="mt-4"><b>使用中の投稿（@_usages.Count）</b></MudText>
                 @foreach (var v in _usages)
@@ -95,12 +116,49 @@
     private MediaAsset? _current;
     private IReadOnlyList<PostVariant> _usages = [];
     private string? _alt, _provenance;
-    private bool _altBusy;
+    private bool _altBusy, _textBusy;
+    private string? _textHeadline, _textSub;
+    private TextPosition _textPosition = TextPosition.Bottom;
+    private string _textBand = "#1B2333";
+    private List<string> _bandColors = ["#1B2333", "#FFFFFF"];
+
+    private async Task AddTextAsync()
+    {
+        if (_current is null) return;
+        _textBusy = true;
+        try
+        {
+            var created = await Media.AddTextAsync(_current.Id, new TextOverlay(_textHeadline ?? "", _textSub, _textPosition, _textBand),
+                CancellationToken.None);
+            Snackbar.Add("文字入りの画像をつくりました", Severity.Success);
+            _textHeadline = _textSub = null;
+            await LoadAsync();
+            if (_items.FirstOrDefault(i => i.Id == created.Id) is { } m) await SelectAsync(m);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+        finally
+        {
+            _textBusy = false;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await Time.ZoneAsync();
         await LoadAsync();
+        try
+        {
+            var brand = await Workspaces.GetBrandAsync(CancellationToken.None);
+            _bandColors = [.. brand.BrandColors.Concat(_bandColors).Distinct()];
+            _textBand = _bandColors[0];
+        }
+        catch (Exception)
+        {
+            // ブランドを読めない権限でも既定の色で使える
+        }
     }
 
     private async Task LoadAsync() => _items = await Media.ListAsync(_filter, CancellationToken.None);

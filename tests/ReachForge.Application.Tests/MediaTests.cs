@@ -118,6 +118,45 @@ public class MediaServiceTests
             CancellationToken.None);
     }
 
+    [Fact]
+    public async Task Adds_japanese_text_as_new_library_image()
+    {
+        await using var f = await AppFixture.CreateAsync();
+        await using var scope = f.Scope();
+        var media = f.Get<MediaService>(scope);
+        var source = await UploadAsync(f, scope);
+        await Assert.ThrowsAsync<DomainException>(() => media.AddTextAsync(source.Id,
+            new TextOverlay(new string('長', 31), null, TextPosition.Bottom, "#1B2333"), CancellationToken.None));
+
+        MediaAsset banner;
+        try
+        {
+            banner = await media.AddTextAsync(source.Id, new TextOverlay("秋限定 さつまいもラテ", "10/10（土）から販売", TextPosition.Bottom, "#1B2333"),
+                CancellationToken.None);
+        }
+        catch (DomainException ex) when (ex.Message.Contains("日本語フォント"))
+        {
+            Assert.Skip("この環境には日本語フォントがありません");
+            return;
+        }
+        Assert.Equal((MediaSource.Derived, source.Id, source.Width, source.Height), (banner.Source, banner.ParentAssetId, banner.Width, banner.Height));
+        Assert.Contains("秋限定 さつまいもラテ", banner.AltText);
+        Assert.Contains(await media.ListAsync(MediaFilter.All, CancellationToken.None), m => m.Id == banner.Id); // ライブラリに出る
+
+        // 下部の帯に白い文字が描かれている（帯は暗い色）
+        using var image = Image.Load<Rgba32>(await media.ReadAsync(banner, CancellationToken.None));
+        var bright = 0;
+        for (var x = 0; x < image.Width; x += 2)
+        {
+            for (var y = image.Height * 85 / 100; y < image.Height; y += 2)
+            {
+                var p = image[x, y];
+                if (p.R > 220 && p.G > 220 && p.B > 220) bright++;
+            }
+        }
+        Assert.True(bright > 100, $"text pixels: {bright}");
+    }
+
     /// <summary>Worker の AiJobDispatcher と同じく、ジョブのテナントのコンテキストで1件実行する。</summary>
     private static async Task RunJobAsync(AppFixture f, Guid jobId)
     {

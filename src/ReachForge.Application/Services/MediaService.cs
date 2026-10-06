@@ -94,6 +94,46 @@ public sealed class MediaService(
         return asset;
     }
 
+    /// <summary>
+    /// 画像に文字を入れる（F-04 文字入れ）。日本語の文字は生成 AI に描かせず、フォントで正確に描く（0 クレジット）。
+    /// 元の画像は残し、新しい画像としてライブラリに追加する。
+    /// </summary>
+    public async Task<MediaAsset> AddTextAsync(Guid id, TextOverlay overlay, CancellationToken ct)
+    {
+        RolePolicy.Demand(tenant.Role, Permission.Generate);
+        var headline = overlay.Headline.Trim();
+        var sub = string.IsNullOrWhiteSpace(overlay.Sub) ? null : overlay.Sub.Trim();
+        if (headline.Length == 0) throw new DomainException(ErrorCodes.Validation, "入れる文字を入力してください。");
+        if (PostText.Length(headline) > TextOverlay.MaxHeadline || (sub is not null && PostText.Length(sub) > TextOverlay.MaxSub))
+        {
+            throw new DomainException(ErrorCodes.Validation, $"見出しは{TextOverlay.MaxHeadline}字、補足は{TextOverlay.MaxSub}字までです。");
+        }
+        if (!System.Text.RegularExpressions.Regex.IsMatch(overlay.BandColorHex, "^#[0-9A-Fa-f]{6}$"))
+        {
+            throw new DomainException(ErrorCodes.Validation, "帯の色は #RRGGBB の形式で指定してください。");
+        }
+        var source = await GetAsync(id, ct);
+        ProcessedImage rendered;
+        try
+        {
+            rendered = await images.RenderTextAsync(await ReadAsync(source, ct), overlay with { Headline = headline, Sub = sub }, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new DomainException(ErrorCodes.SysUnexpected, ex.Message);
+        }
+        var name = Path.GetFileNameWithoutExtension(source.FileName);
+        var asset = await SaveAsync(rendered, MediaSource.Derived, $"{name}-文字入れ.jpg", source.Id, null, ct);
+        asset.IsAiLabeled = source.IsAiLabeled;
+        asset.Provenance = source.Provenance;
+        asset.SafetyResult = source.SafetyResult;
+        asset.AltText = string.IsNullOrWhiteSpace(source.AltText) ? $"「{headline}」の文字が入った画像" : $"{source.AltText}。「{headline}」の文字入り";
+        asset.AltTextIsAi = source.AltTextIsAi;
+        db.Record(tenant, "media.text_added", nameof(MediaAsset), asset.Id);
+        await db.SaveChangesAsync(ct);
+        return asset;
+    }
+
     /// <summary>ALT テキストを AI で作る（分類と同様にクレジットは消費しない）。</summary>
     public async Task<MediaAsset> GenerateAltAsync(Guid id, CancellationToken ct)
     {

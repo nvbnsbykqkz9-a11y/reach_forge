@@ -5,6 +5,15 @@ namespace ReachForge.Application.Abstractions;
 
 public sealed record ProcessedImage(byte[] Bytes, string Mime, int Width, int Height);
 
+public enum TextPosition { Top = 1, Center = 2, Bottom = 3 }
+
+/// <summary>画像に入れる文字（F-04 文字入れ）。帯の色に合わせて文字色は読みやすい方（白／黒）を自動で選ぶ。</summary>
+public sealed record TextOverlay(string Headline, string? Sub, TextPosition Position, string BandColorHex, float BandOpacity = 0.78f)
+{
+    public const int MaxHeadline = 30;
+    public const int MaxSub = 40;
+}
+
 /// <summary>
 /// 画像処理（RF-DES-001 3.3 メディア処理）。実装は Infrastructure（ImageSharp）。
 /// ライセンスの都合で他ライブラリ（SkiaSharp など）へ差し替えられるよう、この抽象越しにのみ使う。
@@ -28,6 +37,11 @@ public interface IImageProcessor
 
     /// <summary>ロゴを右下に正確に重ねる（生成 AI でロゴを描かせない：F-04-5）。</summary>
     Task<ProcessedImage> OverlayLogoAsync(byte[] source, byte[] logo, double widthRatio, CancellationToken ct);
+
+    /// <summary>
+    /// 日本語の文字を画像に正確に描く（生成 AI に文字を描かせない）。帯の上に見出し・補足を置き、幅に収まるよう自動で縮める。
+    /// </summary>
+    Task<ProcessedImage> RenderTextAsync(byte[] source, TextOverlay overlay, CancellationToken ct);
 
     /// <summary>ローカル用スタブの画像（ブランド色のグラデーションと図形）。</summary>
     Task<ProcessedImage> RenderPlaceholderAsync(int width, int height, int seed, IReadOnlyList<string> colorsHex, CancellationToken ct);
