@@ -6,12 +6,13 @@ using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Persistence;
 using ReachForge.Social;
 using ReachForge.Social.Webhooks;
+using ReachForge.Web.Hosting;
 
 namespace ReachForge.Web.Api;
 
 /// <summary>
 /// SNS の Webhook 受信（RF-DES-001 5.5）。署名（HMAC-SHA256）を検証してから受け付ける。
-/// 取り込み（分類・統合受信箱・炎上検知）は F-09 で Service Bus 経由の WebhookProcessJob として実装する。
+/// 検証後はすぐ 200 を返し、取り込み（分類・統合受信箱・炎上検知）は WebhookQueue で後から行う。
 /// </summary>
 public static class WebhookEndpoints
 {
@@ -23,14 +24,14 @@ public static class WebhookEndpoints
         hooks.MapGet("/meta", (HttpRequest r, IOptions<SocialOptions> o) => Verify(r, o.Value.Meta.WebhookVerifyToken));
         hooks.MapGet("/threads", (HttpRequest r, IOptions<SocialOptions> o) => Verify(r, o.Value.Threads.WebhookVerifyToken));
 
-        hooks.MapPost("/meta", async (HttpRequest r, IOptions<SocialOptions> o, ILogger<Program> log) =>
-            await ReceiveAsync(r, o.Value.Meta.AppSecret, "meta", log));
-        hooks.MapPost("/threads", async (HttpRequest r, IOptions<SocialOptions> o, ILogger<Program> log) =>
-            await ReceiveAsync(r, o.Value.Threads.AppSecret, "threads", log));
+        hooks.MapPost("/meta", async (HttpRequest r, IOptions<SocialOptions> o, WebhookQueue queue, ILogger<Program> log) =>
+            await ReceiveAsync(r, o.Value.Meta.AppSecret, "meta", queue, log));
+        hooks.MapPost("/threads", async (HttpRequest r, IOptions<SocialOptions> o, WebhookQueue queue, ILogger<Program> log) =>
+            await ReceiveAsync(r, o.Value.Threads.AppSecret, "threads", queue, log));
 
         // LINE：チャネルごとの Webhook URL（チャネルシークレットで署名を検証）
         hooks.MapPost("/line/{channelId:guid}", async (Guid channelId, HttpRequest r, TenantContextOverride context,
-            IServiceProvider services, ILogger<Program> log, CancellationToken ct) =>
+            IServiceProvider services, WebhookQueue queue, ILogger<Program> log, CancellationToken ct) =>
         {
             context.Current = new MutableTenantContext { IsSystem = true, UserName = "webhook" };
             var db = services.GetRequiredService<ReachForgeDbContext>();
@@ -42,6 +43,7 @@ public static class WebhookEndpoints
             {
                 return Results.Unauthorized();
             }
+            queue.TryEnqueue(new WebhookWork("line", System.Text.Encoding.UTF8.GetString(body), channelId));
             log.LogInformation("LINE webhook accepted for channel {ChannelId} ({Bytes} bytes)", channelId, body.Length);
             return Results.Ok();
         });
@@ -52,14 +54,18 @@ public static class WebhookEndpoints
             ? Results.Text(r.Query["hub.challenge"].ToString())
             : Results.StatusCode(StatusCodes.Status403Forbidden);
 
-    private static async Task<IResult> ReceiveAsync(HttpRequest r, string? appSecret, string source, ILogger log)
+    private static async Task<IResult> ReceiveAsync(HttpRequest r, string? appSecret, string source, WebhookQueue queue, ILogger log)
     {
         var body = await ReadBodyAsync(r);
         if (string.IsNullOrEmpty(appSecret) || !WebhookSignature.VerifyMeta(body, r.Headers["X-Hub-Signature-256"], appSecret))
         {
             return Results.Unauthorized();
         }
-        // TODO(F-09): 冪等キー（SNS＋イベントID）で重複排除し、Service Bus へ投入する
+        // 重複配信は取り込み時に（チャネル＋SNS 上の ID）で排除する
+        if (!queue.TryEnqueue(new WebhookWork(source, System.Text.Encoding.UTF8.GetString(body))))
+        {
+            log.LogWarning("Webhook queue is full; {Source} event will be picked up by polling", source);
+        }
         log.LogInformation("{Source} webhook accepted ({Bytes} bytes)", source, body.Length);
         return Results.Ok();
     }

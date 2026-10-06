@@ -24,6 +24,8 @@ public static class DependencyInjection
         services.AddScoped<IImageGenerationService, ImageGenerationService>();
         services.AddScoped<IAltTextGenerator, AltTextGenerator>();
         services.AddScoped<IReportWriter, ReportWriter>();
+        services.AddScoped<IInboxClassifier, InboxClassifier>();
+        services.AddScoped<IReplySuggester, ReplySuggester>();
         return services;
     }
 }

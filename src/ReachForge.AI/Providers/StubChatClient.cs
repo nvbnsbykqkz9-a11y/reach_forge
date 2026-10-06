@@ -32,6 +32,8 @@ public sealed class StubChatClient : IChatClient
             JudgeStubPayload p => Serialize(Judge(p)),
             DigestStubPayload p => Serialize(new DigestResult(Digest(p))),
             ReportStubPayload p => Serialize(Report(p.Input)),
+            ClassifyStubPayload p => Serialize(Classify(p.Text)),
+            ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
                 : $"{PostText.Truncate(p.Hint, 40)}を表したイメージ",
@@ -205,6 +207,30 @@ public sealed class StubChatClient : IChatClient
             Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
         };
         return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
+    }
+
+    private static ClassificationDraft Classify(string text)
+    {
+        var l = Domain.Engagement.InboxHeuristics.Classify(text);
+        return new ClassificationDraft(l.Sentiment.ToString(), l.Intent.ToString(), l.Urgency.ToString(), l.Sensitive.ToString(), l.Language);
+    }
+
+    /// <summary>参考情報（FAQ）の回答を使った決定的な返信案。</summary>
+    private static ReplyBatch Replies(ReplyRequest r)
+    {
+        var polite = r.Brand.Profile.Tone.Casualness < 50;
+        var thanks = polite ? "お問い合わせありがとうございます。" : "コメントありがとうございます！";
+        var replies = new List<ReplyDraftItem>();
+        if (r.Knowledge.FirstOrDefault() is { } hit)
+        {
+            replies.Add(new ReplyDraftItem($"{thanks}{hit.Entry.Answer}", ["K1"]));
+            replies.Add(new ReplyDraftItem($"{hit.Entry.Answer}{(polite ? "お待ちしております。" : "お待ちしています☕")}", ["K1"]));
+        }
+        replies.Add(new ReplyDraftItem(polite
+            ? $"{thanks}確認のうえ、あらためてご連絡いたします。"
+            : $"{thanks}確認してお返事しますね。", []));
+        if (replies.Count < 3) replies.Add(new ReplyDraftItem(polite ? "ご来店を心よりお待ちしております。" : "またお店でお会いできるのを楽しみにしています！", []));
+        return new ReplyBatch([.. replies.Take(3)]);
     }
 
     private static string Digest(DigestStubPayload p) =>

@@ -103,6 +103,9 @@ builder.Services.AddScoped<TimeDisplay>();
 builder.Services.AddScoped<AppState>();
 
 // ローカル開発では Web プロセス内でも予約配信・トークン更新を動かせる（本番は ReachForge.Worker が担当）
+// Webhook は Web で受けるため、取り込み処理は常に Web プロセスで動かす
+builder.Services.AddSingleton<WebhookQueue>();
+builder.Services.AddHostedService<WebhookProcessor>();
 builder.Services.Configure<PublishDispatcherOptions>(builder.Configuration.GetSection(PublishDispatcherOptions.SectionName));
 if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
 {
@@ -111,6 +114,7 @@ if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
     builder.Services.AddHostedService<AiJobDispatcher>();
     builder.Services.AddHostedService<MetricsCollectScheduler>();
     builder.Services.AddHostedService<ReportScheduler>();
+    builder.Services.AddHostedService<InboxPollScheduler>();
 }
 
 var app = builder.Build();
@@ -135,6 +139,7 @@ app.MapAccountEndpoints();
 app.MapReachForgeApi();
 app.MapMediaEndpoints();
 app.MapAnalyticsEndpoints();
+app.MapInboxEndpoints();
 app.MapWebhookEndpoints();
 app.MapDefaultEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();

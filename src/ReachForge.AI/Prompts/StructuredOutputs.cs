@@ -18,3 +18,10 @@ public sealed record DigestResult(string Message);
 public sealed record ClaimDraft(string Text, string[] Evidence);
 
 public sealed record InsightDraft(ClaimDraft[] Summary, ClaimDraft[] Good, ClaimDraft[] Issues, ClaimDraft[] NextActions);
+
+/// <summary>受信メッセージの分類（列挙値は英語の識別子で受け取り、パースで検証する）。</summary>
+public sealed record ClassificationDraft(string Sentiment, string Intent, string Urgency, string Sensitive, string Language);
+
+public sealed record ReplyDraftItem(string Text, string[] Sources);
+
+public sealed record ReplyBatch(ReplyDraftItem[] Replies);

@@ -156,7 +156,58 @@ public static class DemoSeeder
 
         SeedHistory(db, channels, now);
         SeedFollowers(db, channels, now);
+        SeedInbox(db, channels, now);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>FAQ（返信案の根拠）と受信箱のサンプル。</summary>
+    private static void SeedInbox(ReachForgeDbContext db, IReadOnlyList<Channel> channels, DateTimeOffset now)
+    {
+        (string Q, string A, bool Auto)[] faq =
+        [
+            ("営業時間は何時から何時までですか？", "平日は8:00〜20:00、土日祝は9:00〜18:00です（火曜定休）。", true),
+            ("席の予約はできますか？", "4名様以上の席のご予約はお電話（03-0000-0000）で承っています。", false),
+            ("テイクアウトはできますか？", "すべてのドリンクと焼き菓子をテイクアウトいただけます。", true),
+            ("駐車場はありますか？", "専用の駐車場はありません。近くのコインパーキングをご利用ください。", true),
+            ("さつまいもラテはいつから販売しますか？", "秋限定さつまいもラテは10月10日（土）から販売します。", false),
+        ];
+        foreach (var (q, a, auto) in faq)
+        {
+            db.KnowledgeEntries.Add(new KnowledgeEntry { TenantId = TenantId, WorkspaceId = WorkspaceId, Question = q, Answer = a, AllowAutoReply = auto });
+        }
+
+        (int Minutes, string Author, string Text)[] samples =
+        [
+            (5, "@yuki_123", "注文したのに届いていません…どうなっていますか？"),
+            (12, "@hana_cafe", "ラテは何時から買えますか？"),
+            (60, "ゆうこ", "4人で予約できますか？"),
+            (95, "@mari.coffee", "写真すてきです！週末に行きます☕"),
+            (180, "@aya_m", "テイクアウトはできますか？"),
+            (300, "@promo_bot99", "フォロワーを1000人増やします！今すぐDMください"),
+            (1500, "@kenta_88", "土曜日は何時まで営業していますか？"),
+            (2000, "@sweets_love", "さつまいもラテ、とても美味しかったです！"),
+        ];
+        var settings = new InboxSettings();
+        for (var i = 0; i < samples.Length; i++)
+        {
+            var (minutes, author, text) = samples[i];
+            var channel = channels[i % channels.Count];
+            var labels = Domain.Engagement.InboxHeuristics.Classify(text);
+            var m = new InboxMessage
+            {
+                TenantId = TenantId, WorkspaceId = WorkspaceId, ChannelId = channel.Id, Platform = channel.Platform,
+                Kind = channel.Platform == SocialPlatform.Line ? InboxKind.DirectMessage : InboxKind.Comment,
+                ExternalId = $"seed-inbox-{i}", AuthorId = author, AuthorName = author, Text = text, ReceivedAt = now.AddMinutes(-minutes),
+            };
+            m.Classify(labels.Sentiment, labels.Intent, labels.Urgency, labels.Sensitive, labels.Language,
+                labels.Urgency switch
+                {
+                    Urgency.High => TimeSpan.FromHours(settings.SlaHighHours),
+                    Urgency.Medium => TimeSpan.FromHours(settings.SlaMediumHours),
+                    _ => null,
+                });
+            db.InboxMessages.Add(m);
+        }
     }
 
     /// <summary>過去60日のフォロワー数（日次）。</summary>

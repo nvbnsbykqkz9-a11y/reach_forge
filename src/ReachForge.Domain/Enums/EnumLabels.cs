@@ -82,4 +82,47 @@ public static class EnumLabels
         AiJobStage.Done => "完了",
         _ => s.ToString(),
     };
+
+    public static string ToLabel(this Entities.InboxIntent i) => i switch
+    {
+        Entities.InboxIntent.Question => "質問",
+        Entities.InboxIntent.Purchase => "購入",
+        Entities.InboxIntent.Reservation => "予約",
+        Entities.InboxIntent.Complaint => "苦情",
+        Entities.InboxIntent.Praise => "称賛",
+        Entities.InboxIntent.Spam => "スパム",
+        _ => "その他",
+    };
+
+    public static string ToLabel(this Entities.Sentiment s) => s switch
+    {
+        Entities.Sentiment.Positive => "好意的",
+        Entities.Sentiment.Negative => "不満",
+        _ => "ふつう",
+    };
+
+    public static string ToLabel(this Entities.Urgency u) => u switch
+    {
+        Entities.Urgency.High => "急ぎ",
+        Entities.Urgency.Medium => "ふつう",
+        _ => "低",
+    };
+
+    public static string ToLabel(this Entities.SensitiveTopic t) => t switch
+    {
+        Entities.SensitiveTopic.Complaint => "苦情・トラブル",
+        Entities.SensitiveTopic.Medical => "健康・医療",
+        Entities.SensitiveTopic.Legal => "法律・権利",
+        _ => "なし",
+    };
+
+    public static string ToLabel(this Entities.InboxStatus s) => s switch
+    {
+        Entities.InboxStatus.New => "未対応",
+        Entities.InboxStatus.InProgress => "対応中",
+        Entities.InboxStatus.Replied => "返信済み",
+        Entities.InboxStatus.Closed => "完了",
+        Entities.InboxStatus.Hidden => "非表示",
+        _ => s.ToString(),
+    };
 }

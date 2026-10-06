@@ -51,6 +51,9 @@ public sealed class ReachForgeDbContext(
     public DbSet<AiJob> AiJobs => Set<AiJob>();
     public DbSet<ChannelMetric> ChannelMetrics => Set<ChannelMetric>();
     public DbSet<Report> Reports => Set<Report>();
+    public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
+    public DbSet<KnowledgeEntry> KnowledgeEntries => Set<KnowledgeEntry>();
+    public DbSet<InboxAlert> InboxAlerts => Set<InboxAlert>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
@@ -136,6 +139,17 @@ public sealed class ReachForgeDbContext(
         b.Entity<Workspace>().Ignore(x => x.RequiresApproval);
         b.Entity<Workspace>().Property(x => x.Reports).HasConversion(Json<ReportSettings>(), JsonComparer<ReportSettings>());
         b.Entity<Report>().HasIndex(x => new { x.WorkspaceId, x.CreatedAt });
+        b.Entity<Workspace>().Property(x => x.Inbox).HasConversion(Json<InboxSettings>(), JsonComparer<InboxSettings>());
+        b.Entity<InboxMessage>(e =>
+        {
+            e.HasIndex(x => new { x.ChannelId, x.ExternalId }).IsUnique();
+            e.HasIndex(x => new { x.WorkspaceId, x.Status, x.ReceivedAt });
+            e.Property(x => x.ExternalId).HasMaxLength(200);
+            e.Ignore(x => x.RequiresHuman);
+            e.Ignore(x => x.IsOpen);
+        });
+        b.Entity<KnowledgeEntry>().HasIndex(x => x.WorkspaceId);
+        b.Entity<InboxAlert>().HasIndex(x => new { x.WorkspaceId, x.Status });
     }
 
     private static readonly MethodInfo s_applyFilter =

@@ -23,6 +23,9 @@ public sealed class Channel : Entity
     /// <summary>デモ接続（モック SNS）のチャネル。公式 API へは投稿しない（ローカル・Dev 環境用）。</summary>
     public bool IsDemo { get; set; }
 
+    /// <summary>受信箱の取り込み（ポーリング）を最後に行った日時。</summary>
+    public DateTimeOffset? InboxSyncedAt { get; set; }
+
     /// <summary>トークン期限まで7日以内なら「まもなく再接続が必要です」を表示する（RF-UX-001 SCR-03）。</summary>
     public bool IsTokenExpiringSoon(DateTimeOffset now) =>
         TokenExpiresAt is { } exp && exp - now <= TimeSpan.FromDays(7);

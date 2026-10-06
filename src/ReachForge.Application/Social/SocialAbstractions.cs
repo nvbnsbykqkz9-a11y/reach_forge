@@ -109,14 +109,40 @@ public interface IInsightsReaderFactory
     ISocialInsightsReader? Get(SocialPlatform platform, bool demo);
 }
 
-public sealed record InboxItem(string ExternalId, SocialPlatform Platform, string Author, string Text,
-    DateTimeOffset ReceivedAt, string? InReplyToExternalPostId);
+/// <summary>SNS から取り込んだコメント・メンション・DM。</summary>
+public sealed record InboxItem(
+    string ExternalId,
+    SocialPlatform Platform,
+    InboxKind Kind,
+    string AuthorId,
+    string AuthorName,
+    string Text,
+    DateTimeOffset ReceivedAt,
+    string? InReplyToExternalPostId);
 
+/// <summary>受信箱（F-09）：コメント等の取得・返信・非表示。SNS ごとの差異はアダプタで吸収する。</summary>
 public interface ISocialInboxReader
 {
     SocialPlatform Platform { get; }
-    Task<IReadOnlyList<InboxItem>> FetchAsync(DateTimeOffset since, ChannelCredential credential, CancellationToken ct);
-    Task ReplyAsync(InboxItem target, string text, ChannelCredential credential, CancellationToken ct);
+    bool IsSimulation { get; }
+
+    /// <summary>
+    /// <paramref name="since"/> 以降のコメント等を取得する（Webhook 非対応・取りこぼし対策のポーリング）。
+    /// コメントを投稿単位で取得する SNS（Facebook / Instagram / Threads）には、直近に公開した投稿の ID を渡す。
+    /// </summary>
+    Task<IReadOnlyList<InboxItem>> FetchAsync(DateTimeOffset since, IReadOnlyList<string> recentPostIds,
+        ChannelCredential credential, CancellationToken ct);
+
+    /// <summary>返信して、SNS 上の返信の ID を返す。</summary>
+    Task<string?> ReplyAsync(InboxItem target, string text, ChannelCredential credential, CancellationToken ct);
+
+    /// <summary>コメントを非表示にする（スパム対策）。対応していない SNS は false。</summary>
+    Task<bool> HideAsync(InboxItem target, ChannelCredential credential, CancellationToken ct) => Task.FromResult(false);
+}
+
+public interface IInboxReaderFactory
+{
+    ISocialInboxReader? Get(SocialPlatform platform, bool demo);
 }
 
 public interface IPublisherFactory

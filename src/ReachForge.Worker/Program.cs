@@ -17,6 +17,7 @@ builder.Services.AddHostedService<TokenRefreshScheduler>();
 builder.Services.AddHostedService<AiJobDispatcher>();
 builder.Services.AddHostedService<MetricsCollectScheduler>();
 builder.Services.AddHostedService<ReportScheduler>();
+builder.Services.AddHostedService<InboxPollScheduler>();
 // TODO(14章): MetricsCollectJob / TokenRefreshJob / InboxPollJob / WeeklyReportJob / CreditResetJob などを Hangfire で登録する
 
 var host = builder.Build();

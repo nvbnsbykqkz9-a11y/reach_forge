@@ -16,4 +16,6 @@ public sealed class Workspace : Entity
     public bool RequiresApproval => ApprovalSteps > 0;
 
     public ReportSettings Reports { get; set; } = new();
+
+    public InboxSettings Inbox { get; set; } = new();
 }

@@ -22,7 +22,7 @@
 
 @if (_brand is not null)
 {
-    <MudTabs Elevation="0" Rounded="true" TabPanelsClass="pt-4">
+    <MudTabs Elevation="0" Rounded="true" TabPanelsClass="pt-4" @bind-ActivePanelIndex="_tab">
         <MudTabPanel Text="基本">
             <MudTextField @bind-Value="_brand.BrandName" Label="ブランド名（必須）" Variant="Variant.Outlined" ReadOnly="!CanEdit" />
             <MudTextField @bind-Value="_brand.Industry" Label="業種" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit"
@@ -63,10 +63,16 @@
             </MudSimpleTable>
             <MudText Typo="Typo.caption" Style="color:var(--rf-color-text-secondary)">価格・期間はAIの事実性チェック（生成文との突合）に使います。</MudText>
         </MudTabPanel>
+        <MudTabPanel Text="よくある質問・受信箱">
+            <RfKnowledgeEditor CanEdit="CanEdit" />
+        </MudTabPanel>
     </MudTabs>
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "tab")] public string? TabQuery { get; set; }
+
+    private int _tab;
     private BrandProfile? _brand;
     private IReadOnlyList<Product> _products = [];
     private string _ng = "", _must = "", _tags = "";
@@ -87,6 +93,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (TabQuery == "faq") _tab = 4;
         _brand = await Workspaces.GetBrandAsync(CancellationToken.None);
         _products = await Workspaces.ProductsAsync(CancellationToken.None);
         _ng = string.Join("\n", _brand.NgWords);

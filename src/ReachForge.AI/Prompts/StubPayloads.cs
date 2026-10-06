@@ -16,3 +16,7 @@ public sealed record DigestStubPayload(string Headline, string Body);
 public sealed record AltStubPayload(string Hint);
 
 public sealed record ReportStubPayload(ReportWriterInput Input);
+
+public sealed record ClassifyStubPayload(string Text);
+
+public sealed record ReplyStubPayload(ReplyRequest Request);
