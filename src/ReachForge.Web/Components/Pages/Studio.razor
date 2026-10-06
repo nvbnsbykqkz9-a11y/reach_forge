@@ -1,4 +1,5 @@
 @page "/studio"
+@inject TrendService Trends
 @using ReachForge.Domain.Analytics
 @inject StudioService StudioSvc
 @inject MediaService MediaSvc
@@ -449,8 +450,15 @@
         if (on) _selectedChannels.Add(id); else _selectedChannels.Remove(id);
     }
 
-    private void Omakase()
+    /// <summary>「おまかせ」：ネタ帳の一番近いネタ、なければ季節イベントからテーマを提案する（RF-UX-001 SCR-05 ①）。</summary>
+    private async Task Omakase()
     {
+        var idea = (await Trends.ListAsync(CancellationToken.None)).FirstOrDefault();
+        if (idea is not null)
+        {
+            _theme = idea.Angles.FirstOrDefault() is { } angle ? $"{idea.Topic}：{angle}" : $"{idea.Topic}（{idea.RecommendedDate:M/d}）に合わせた投稿";
+            return;
+        }
         var today = DateOnly.FromDateTime(Time.ToLocal(Time.Now));
         var next = SeasonalEvents.Upcoming(today, 45).FirstOrDefault();
         _theme = next.Name is null ? "今週のおすすめメニューの紹介" : $"{next.Name}（{next.Date:M/d}）に合わせたおすすめの紹介";

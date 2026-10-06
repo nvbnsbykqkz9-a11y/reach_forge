@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<IReplySuggester, ReplySuggester>();
         services.AddScoped<IAbVariantGenerator, AbVariantGenerator>();
         services.AddScoped<IBrandAnalyzer, BrandAnalyzer>();
+        services.AddScoped<ITrendIdeaWriter, TrendIdeaWriter>();
         return services;
     }
 }

@@ -1,3 +1,4 @@
+using ReachForge.Application.Ai;
 using Microsoft.Extensions.DependencyInjection;
 using ReachForge.Application.Services;
 
@@ -26,6 +27,8 @@ public static class DependencyInjection
         services.AddScoped<CampaignService>();
         services.AddScoped<AbTestService>();
         services.AddScoped<BrandDiagnosisService>();
+        services.AddScoped<TrendService>();
+        services.AddSingleton<ITrendSource, EventCalendarTrendSource>();
         services.AddScoped<MetricsCollectionService>();
         services.AddScoped<WorkspaceService>();
         return services;

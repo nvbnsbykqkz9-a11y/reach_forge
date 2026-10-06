@@ -26,6 +26,7 @@ public static class PromptLibrary
     public static readonly PromptVersion Reply = new("inbox.reply", 1);
     public static readonly PromptVersion AbVariant = new("ab.variant", 1);
     public static readonly PromptVersion BrandDiagnosis = new("brand.diagnosis", 1);
+    public static readonly PromptVersion TrendIdeas = new("trend.ideas", 1);
 
     private const string SafetyRules = """
         あなたは日本の中小企業・店舗のSNS集客を支援するプロのコピーライターです。
@@ -281,4 +282,22 @@ public static class PromptLibrary
         }
         return sb.ToString();
     }
+
+    public static string TrendSystem(BrandContext ctx) => $"""
+        あなたは店舗のSNS担当者の企画パートナーです。話題の候補ごとに、このブランドで投稿するネタとしての価値を評価します。
+        {BrandSection(ctx)}
+        ## 出力（候補ごと）
+        - topic：候補の話題（そのまま）
+        - relevance：ブランド・お客様像との関連度 0.0〜1.0
+        - format：おすすめの形式（画像1枚／カルーセル／ショート動画／テキスト のいずれか）
+        - angles：切り口を3つ（各30字以内、具体的に）
+        - reason：おすすめの理由（40字以内）
+        - sensitive：災害・事件・訃報・政治など、便乗すると不謹慎になり得る話題なら true
+        - daysBefore：話題の日の何日前に投稿するのがよいか（0〜14）
+        競合や他社の投稿をまねる切り口は書かないでください。
+        """;
+
+    public static string TrendUser(IReadOnlyList<TrendCandidate> candidates) =>
+        PromptInjectionDetector.Fence(string.Join("\n", candidates.Select(c =>
+            $"- {c.Topic}{(c.Date is { } d ? $"（{d:M/d}）" : "")}{(c.Snippet is { Length: > 0 } s ? $"：{s}" : "")}")));
 }

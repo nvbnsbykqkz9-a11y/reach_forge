@@ -116,6 +116,7 @@ if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
     builder.Services.AddHostedService<ReportScheduler>();
     builder.Services.AddHostedService<InboxPollScheduler>();
     builder.Services.AddHostedService<AbTestScheduler>();
+    builder.Services.AddHostedService<TrendScheduler>();
 }
 
 var app = builder.Build();

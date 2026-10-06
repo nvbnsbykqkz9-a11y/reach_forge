@@ -35,6 +35,7 @@ public sealed class StubChatClient : IChatClient
             ClassifyStubPayload p => Serialize(Classify(p.Text)),
             AbStubPayload p => Serialize(new AbVariantDraft(AbVariant(p.Body, p.Variable))),
             BrandStubPayload p => Serialize(Brand(p.Input)),
+            TrendStubPayload p => Serialize(Ideas(p)),
             ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
@@ -209,6 +210,24 @@ public sealed class StubChatClient : IChatClient
             Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
         };
         return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
+    }
+
+    /// <summary>業種の言葉を含む話題ほど関連度を高くする決定的な採点。</summary>
+    private static IdeaBatch Ideas(TrendStubPayload p)
+    {
+        var industry = p.Brand.Profile.Industry;
+        var food = industry.Contains("カフェ") || industry.Contains("飲食");
+        string[] foodWords = ["コーヒー", "さつまいも", "ハロウィン", "クリスマス", "バレンタイン", "お月見", "七夕", "ポッキー", "冬至"];
+        return new IdeaBatch([.. p.Candidates.Select(c =>
+        {
+            var hit = food && foodWords.Any(w => c.Topic.Contains(w));
+            var relevance = Math.Round((hit ? 0.8 : 0.45) + (c.Topic.Length % 5) / 50.0, 2);
+            var name = p.Brand.Profile.BrandName;
+            return new IdeaDraft(c.Topic, relevance, hit ? "カルーセル" : "画像1枚",
+                [$"{c.Topic}限定の楽しみ方を紹介", $"スタッフの{c.Topic}エピソード", $"{name}で{c.Topic}を過ごす提案"],
+                hit ? $"{industry}と相性がよく、お客様の関心が高い話題です" : "季節感を伝えられる話題です",
+                Domain.Engagement.SensitiveTopicFilter.IsSensitive(c.Topic), hit ? 5 : 2);
+        })]);
     }
 
     /// <summary>ページの文章から決定的に作るブランドの下書き（FAQ は「Q／A」形式の行だけを拾う）。</summary>

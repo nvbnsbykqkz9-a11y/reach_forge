@@ -1,0 +1,131 @@
+@page "/ideas"
+@inject TrendService Trends
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>ネタ帳｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">ネタ帳</MudText>
+    <span class="rf-spacer"></span>
+    @if (CanEdit)
+    {
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.Refresh" OnClick="RefreshAsync" Disabled="_busy">@(_busy ? "更新しています…" : "いま更新する")</MudButton>
+    }
+</div>
+<MudText Typo="Typo.body2" Class="mb-3" Style="color:var(--rf-color-text-secondary)">
+    季節の行事・記念日などから、このブランドに合う話題をAIが選びました（毎朝6時に更新）。災害・事件・訃報などの話題は出しません。
+</MudText>
+
+@if (_ideas is null)
+{
+    <MudSkeleton Height="160px" />
+}
+else if (_ideas.Count == 0)
+{
+    <RfEmptyState Icon="@Icons.Material.Rounded.Lightbulb" Title="ネタはまだありません" Message="「いま更新する」で、近い行事・記念日から話題を集めます。" />
+}
+else
+{
+    <MudGrid>
+        @foreach (var i in _ideas)
+        {
+            <MudItem xs="12" sm="6" lg="4">
+                <MudCard Class="rf-card" Elevation="0" Outlined="true" Style="height:100%">
+                    <MudCardContent>
+                        <div class="d-flex align-center gap-2">
+                            <MudText Typo="Typo.h6">@i.Topic</MudText>
+                            <MudSpacer />
+                            <span class="rf-tag" title="ブランド・お客様像との関連度">関連度 @((int)Math.Round(i.Relevance * 100))</span>
+                        </div>
+                        <MudText Typo="Typo.caption" Class="d-block">おすすめ投稿日 @i.RecommendedDate.ToString("M/d")（@DashboardService.DayLabel(i.RecommendedDate.DayOfWeek)） ・ @i.Format</MudText>
+                        <MudText Typo="Typo.body2" Class="mt-2">@i.Reason</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="mt-2">切り口</MudText>
+                        @foreach (var angle in i.Angles)
+                        {
+                            <MudButton Variant="Variant.Text" Size="Size.Small" Class="rf-angle" OnClick="() => UseAsync(i, angle)" Disabled="!CanEdit"
+                                       EndIcon="@Icons.Material.Rounded.ArrowForward">@angle</MudButton>
+                        }
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" OnClick="() => UseAsync(i, null)" Disabled="!CanEdit">この話題でつくる</MudButton>
+                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => DismissAsync(i)" Disabled="!CanEdit">使わない</MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private IReadOnlyList<TrendIdea>? _ideas;
+    private bool _busy;
+    private bool CanEdit => RolePolicy.Can(Tenant.Role, Permission.Generate);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _ideas = await Trends.ListAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        _busy = true;
+        try
+        {
+            var n = await Trends.RefreshAsync(CancellationToken.None);
+            Snackbar.Add($"{n}件のネタを集めました", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <summary>スタジオへ引き継ぐ（テーマに話題と切り口を入れる）。</summary>
+    private async Task UseAsync(TrendIdea idea, string? angle)
+    {
+        try
+        {
+            await Trends.SetStatusAsync(idea.Id, IdeaStatus.Used, CancellationToken.None);
+            var theme = angle is null ? $"{idea.Topic}（{idea.RecommendedDate:M/d}）に合わせた投稿" : $"{idea.Topic}：{angle}";
+            Nav.NavigateTo($"/studio?theme={Uri.EscapeDataString(theme)}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task DismissAsync(TrendIdea idea)
+    {
+        try
+        {
+            await Trends.SetStatusAsync(idea.Id, IdeaStatus.Dismissed, CancellationToken.None);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+}

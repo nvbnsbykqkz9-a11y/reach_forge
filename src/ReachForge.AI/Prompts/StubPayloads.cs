@@ -24,3 +24,5 @@ public sealed record ReplyStubPayload(ReplyRequest Request);
 public sealed record AbStubPayload(string Body, ReachForge.Domain.Entities.AbVariable Variable);
 
 public sealed record BrandStubPayload(BrandAnalysisInput Input);
+
+public sealed record TrendStubPayload(ReachForge.Application.Services.BrandContext Brand, IReadOnlyList<TrendCandidate> Candidates);
