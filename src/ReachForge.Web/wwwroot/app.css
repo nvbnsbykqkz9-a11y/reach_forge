@@ -223,3 +223,4 @@ body { font-variant-numeric: tabular-nums; }
 .rf-steps li.is-done { background: var(--rf-color-surface-subtle); }
 .rf-ab-card { background: var(--rf-color-surface-subtle) !important; border: 2px solid transparent; height: 100%; }
 .rf-ab-card.is-winner { border-color: var(--rf-color-success); }
+.rf-swatch { display: inline-block; width: 20px; height: 20px; border-radius: 4px; border: 1px solid var(--rf-color-border); vertical-align: middle; }

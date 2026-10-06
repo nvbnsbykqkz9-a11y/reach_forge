@@ -24,6 +24,10 @@
 {
     <MudTabs Elevation="0" Rounded="true" TabPanelsClass="pt-4" @bind-ActivePanelIndex="_tab">
         <MudTabPanel Text="基本">
+            @if (CanEdit)
+            {
+                <RfBrandDiagnosis Brand="_brand" OnApplied="OnDiagnosisApplied" />
+            }
             <MudTextField @bind-Value="_brand.BrandName" Label="ブランド名（必須）" Variant="Variant.Outlined" ReadOnly="!CanEdit" />
             <MudTextField @bind-Value="_brand.Industry" Label="業種" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit"
                           HelperText="化粧品・健康食品・医療などの業種では、薬機法の表現チェックを自動で適用します" />
@@ -117,6 +121,12 @@
         _products = await Workspaces.ProductsAsync(CancellationToken.None);
         _ng = string.Join("\n", _brand.NgWords);
         _must = string.Join("\n", _brand.MustPhrases);
+        _tags = string.Join(" ", _brand.PreferredHashtags.Select(t => "#" + t));
+    }
+
+    private void OnDiagnosisApplied()
+    {
+        _ng = string.Join("\n", _brand!.NgWords);
         _tags = string.Join(" ", _brand.PreferredHashtags.Select(t => "#" + t));
     }
 

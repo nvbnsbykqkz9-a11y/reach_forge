@@ -14,6 +14,8 @@ using ReachForge.Infrastructure.Identity;
 using ReachForge.Infrastructure.Media;
 using ReachForge.Infrastructure.Persistence;
 using ReachForge.Infrastructure.Reporting;
+using ReachForge.Infrastructure.Web;
+using ReachForge.Application.Ai;
 using ReachForge.Infrastructure.Security;
 using ReachForge.Social;
 
@@ -96,6 +98,32 @@ public static class DependencyInjection
         {
             services.AddSingleton<IImageSafetyChecker, NotConfiguredImageSafetyChecker>();
         }
+
+        // ---- ブランド診断（F-02）：外部サイトの取得。リダイレクトは自前で検査するため自動追従しない ----
+        services.AddHttpClient(SafeWebPageFetcher.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                AllowAutoRedirect = false,
+                // 名前解決後の接続先も検査する（DNS リバインディング対策）
+                ConnectCallback = async (context, ct) =>
+                {
+                    var entries = await System.Net.Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);
+                    var address = entries.FirstOrDefault(SafeWebPageFetcher.IsPublic)
+                                  ?? throw new HttpRequestException("非公開のアドレスには接続できません。");
+                    var socket = new System.Net.Sockets.Socket(System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        await socket.ConnectAsync(address, context.DnsEndPoint.Port, ct);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                },
+            });
+        services.AddScoped<IWebPageFetcher, SafeWebPageFetcher>();
 
         // ---- レポート（F-10）・メール ----
         services.Configure<ReportOptions>(configuration.GetSection(ReportOptions.SectionName));

@@ -20,6 +20,7 @@ public static class ErrorCodes
     public const string PubFailed = "E-PUB-010";
     public const string AprReapprovalRequired = "E-APR-001";
     public const string SysUnexpected = "E-SYS-500";
+    public const string BrdUrlUnavailable = "W-BRD-001";
 
     // 本実装で追加したコード（設計書の体系に沿って採番）
     public const string AprInvalidTransition = "E-APR-002";

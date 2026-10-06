@@ -34,6 +34,7 @@ public sealed class StubChatClient : IChatClient
             ReportStubPayload p => Serialize(Report(p.Input)),
             ClassifyStubPayload p => Serialize(Classify(p.Text)),
             AbStubPayload p => Serialize(new AbVariantDraft(AbVariant(p.Body, p.Variable))),
+            BrandStubPayload p => Serialize(Brand(p.Input)),
             ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
@@ -208,6 +209,33 @@ public sealed class StubChatClient : IChatClient
             Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
         };
         return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
+    }
+
+    /// <summary>ページの文章から決定的に作るブランドの下書き（FAQ は「Q／A」形式の行だけを拾う）。</summary>
+    private static BrandDraftOutput Brand(BrandAnalysisInput input)
+    {
+        var text = $"{input.Page?.Title}\n{input.Page?.Description}\n{input.Page?.Text}\n{input.ExtraText}\n{string.Join('\n', input.PastPosts)}";
+        var name = (input.Page?.Title ?? "").Split(['|', '｜', '-', '–', '　'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault() ?? "";
+        var industry = text.Contains("カフェ") || text.Contains("コーヒー") ? "カフェ" : text.Contains("美容") ? "美容室"
+            : text.Contains("化粧品") || text.Contains("コスメ") ? "化粧品" : "小売";
+        var exclaims = text.Count(c => c is '！' or '!');
+        var casual = Math.Clamp(30 + exclaims * 5, 0, 90);
+        var emoji = text.Count(char.IsSurrogate) / 2 > 3 ? 2 : 1;
+        var lines = text.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        var faqs = new List<FaqDraft>();
+        for (var i = 0; i + 1 < lines.Length; i++)
+        {
+            if (lines[i].StartsWith("Q", StringComparison.OrdinalIgnoreCase) && lines[i + 1].StartsWith("A", StringComparison.OrdinalIgnoreCase))
+            {
+                faqs.Add(new FaqDraft(lines[i].TrimStart('Q', 'q', '.', '．', ':', '：', ' '), lines[i + 1].TrimStart('A', 'a', '.', '．', ':', '：', ' ')));
+            }
+        }
+        var appeal = lines.Where(l => l.Length is >= 8 and <= 40).Take(3).ToArray();
+        return new BrandDraftOutput(name, industry, casual, industry == "カフェ" ? "私たち" : "当店", emoji, null,
+            [new PersonaDraft("近所で働く人", "25〜39歳", $"{industry}・ひと息つける時間", "忙しくてゆっくりできない")],
+            appeal, [.. BuildTags(industry, name.Length is > 0 and <= 12 ? name : null, [])], industry == "化粧品" ? ["シワが消える", "必ず痩せる"] : ["No.1"],
+            [.. faqs.Take(5)]);
     }
 
     /// <summary>書き出しを問いかけに、または最後の行を具体的な呼びかけに変える。</summary>

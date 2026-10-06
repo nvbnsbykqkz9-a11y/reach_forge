@@ -1,0 +1,134 @@
+@* ブランド診断（F-02）：URL・紹介文・過去の投稿から AI が下書きをつくり、選んだ項目だけを反映する *@
+@inject BrandDiagnosisService Diagnosis
+@inject InboxService InboxSvc
+@inject AppState State
+@inject ISnackbar Snackbar
+
+<MudPaper Class="pa-4 mb-4 rf-ai-surface" Elevation="0">
+    <span class="rf-ai-badge"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" aria-hidden="true" />AIでブランド診断</span>
+    <MudText Typo="Typo.body2" Class="mt-1">WebサイトのURL（または紹介文）と、これまでの投稿から、口調・お客様像・ハッシュタグ・よくある質問の下書きをつくります。反映するまで保存されません。</MudText>
+    <MudTextField T="string" @bind-Value="_url" Label="WebサイトのURL" Variant="Variant.Outlined" Class="mt-2" Placeholder="https://" />
+    <MudTextField T="string" @bind-Value="_text" Label="紹介文・資料の文章（任意）" Variant="Variant.Outlined" Class="mt-2" Lines="3"
+                  HelperText="サイトを読み込めない場合は、ここに貼り付けた文章だけで診断します" />
+    <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="mt-2" OnClick="RunAsync" Disabled="_busy">
+        @(_busy ? "診断しています…" : "診断する（3クレジット）")
+    </MudButton>
+
+    @if (_draft is { } d)
+    {
+        @if (_warning is not null) { <MudAlert Severity="Severity.Warning" Dense="true" Class="mt-3">@_warning</MudAlert> }
+        <MudText Typo="Typo.subtitle1" Class="mt-4"><b>下書き</b>（反映する項目を選んでください）</MudText>
+        <MudCheckBox T="bool" @bind-Value="_pick.Basic" Label="@($"基本：{(d.BrandName.Length > 0 ? d.BrandName : "（名前は変えません）")}・業種 {d.Industry}")" />
+        <MudCheckBox T="bool" @bind-Value="_pick.Tone" Label="@($"話し方：{(d.Casualness >= 50 ? "くだけた" : "丁寧")}（{d.Casualness}）・一人称「{d.FirstPerson}」・絵文字 {d.EmojiLevel}")" />
+        @if (d.Personas.Count > 0)
+        {
+            <MudCheckBox T="bool" @bind-Value="_pick.Personas" Label="@($"お客様像：{string.Join("／", d.Personas.Select(p => $"{p.Name}（{p.AgeRange}）"))}")" />
+        }
+        @if (d.Hashtags.Count > 0)
+        {
+            <MudCheckBox T="bool" @bind-Value="_pick.Hashtags" Label="@($"ハッシュタグ：{string.Join(" ", d.Hashtags.Select(h => "#" + h))}")" />
+        }
+        @if (d.NgWordSuggestions.Count > 0)
+        {
+            <MudCheckBox T="bool" @bind-Value="_pick.NgWords" Label="@($"使わない言葉に追加：{string.Join("、", d.NgWordSuggestions)}")" />
+        }
+        @if (d.Colors.Count > 0)
+        {
+            <div class="d-flex align-center gap-2">
+                <MudCheckBox T="bool" @bind-Value="_pick.Colors" Label="ブランドカラー：" />
+                @foreach (var c in d.Colors) { <span class="rf-swatch" style="background:@c" title="@c"></span><MudText Typo="Typo.caption">@c</MudText> }
+            </div>
+        }
+        @if (d.AppealPoints.Count > 0)
+        {
+            <MudText Typo="Typo.caption" Class="d-block mt-1">訴求軸（参考）：@string.Join("／", d.AppealPoints)</MudText>
+        }
+        @if (d.Faqs.Count > 0)
+        {
+            <MudCheckBox T="bool" @bind-Value="_pick.Faqs" Label="@($"よくある質問 {d.Faqs.Count}件を受信箱の返信の根拠に登録")" />
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="ApplyAsync">選んだ項目を反映</MudButton>
+        <MudText Typo="Typo.caption" Class="d-block mt-1">反映後、画面右上の「保存する」で確定します（版が上がります）。</MudText>
+    }
+</MudPaper>
+
+@code {
+    [Parameter, EditorRequired] public BrandProfile Brand { get; set; } = default!;
+    [Parameter] public EventCallback OnApplied { get; set; }
+
+    private sealed class Pick
+    {
+        public bool Basic { get; set; } = true;
+        public bool Tone { get; set; } = true;
+        public bool Personas { get; set; } = true;
+        public bool Hashtags { get; set; } = true;
+        public bool NgWords { get; set; } = true;
+        public bool Colors { get; set; } = true;
+        public bool Faqs { get; set; } = true;
+    }
+
+    private string? _url, _text, _warning;
+    private BrandProfileDraft? _draft;
+    private Pick _pick = new();
+    private bool _busy;
+
+    protected override void OnParametersSet() => _url ??= Brand.WebsiteUrl;
+
+    private async Task RunAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Diagnosis.DiagnoseAsync(_url, _text, CancellationToken.None);
+            _draft = result.Draft;
+            _warning = result.Warning;
+            _pick = new Pick();
+            await State.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (_draft is not { } d) return;
+        if (_pick.Basic)
+        {
+            if (d.BrandName.Length > 0) Brand.BrandName = d.BrandName;
+            if (d.Industry.Length > 0) Brand.Industry = d.Industry;
+            if (!string.IsNullOrWhiteSpace(_url) && _warning is null) Brand.WebsiteUrl = _url; // 読み込めた URL だけ
+        }
+        if (_pick.Tone)
+        {
+            Brand.Tone = new BrandTone { Casualness = d.Casualness, FirstPerson = d.FirstPerson, EmojiLevel = d.EmojiLevel, EndingRule = d.EndingRule ?? Brand.Tone.EndingRule };
+        }
+        if (_pick.Personas) Brand.Personas = [.. d.Personas.Select(p => new Persona { Name = p.Name, AgeRange = p.AgeRange, Interests = p.Interests, Pains = p.Pains })];
+        if (_pick.Hashtags) Brand.PreferredHashtags = [.. Brand.PreferredHashtags.Concat(d.Hashtags).Distinct()];
+        if (_pick.NgWords) Brand.NgWords = [.. Brand.NgWords.Concat(d.NgWordSuggestions).Distinct()];
+        if (_pick.Colors && d.Colors.Count > 0) Brand.BrandColors = [.. d.Colors];
+        if (_pick.Faqs && d.Faqs.Count > 0)
+        {
+            try
+            {
+                var existing = (await InboxSvc.KnowledgeAsync(CancellationToken.None)).Select(k => k.Question).ToHashSet();
+                foreach (var f in d.Faqs.Where(f => !existing.Contains(f.Question)))
+                {
+                    await InboxSvc.SaveKnowledgeAsync(null, f.Question, f.Answer, allowAutoReply: false, CancellationToken.None);
+                }
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Show(ex);
+            }
+        }
+        await OnApplied.InvokeAsync();
+        Snackbar.Add("下書きを反映しました。内容を確認して「保存する」を押してください", Severity.Info);
+        _draft = null;
+    }
+}

@@ -47,6 +47,8 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
         profile.NgWords = Clean(input.NgWords);
         profile.MustPhrases = Clean(input.MustPhrases);
         profile.PreferredHashtags = Clean(input.PreferredHashtags);
+        profile.BrandColors = [.. Clean(input.BrandColors).Select(c => c.ToUpperInvariant())
+            .Where(c => System.Text.RegularExpressions.Regex.IsMatch(c, "^#[0-9A-F]{6}$")).Take(5)];
         // お手本（Few-shot）は A/B テストの勝ちパターンから登録される。画面では有効・無効と削除だけ行う
         profile.FewShotExamples = [.. input.FewShotExamples
             .Where(e => !string.IsNullOrWhiteSpace(e.Text))

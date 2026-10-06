@@ -27,3 +27,7 @@ public sealed record ReplyDraftItem(string Text, string[] Sources);
 public sealed record ReplyBatch(ReplyDraftItem[] Replies);
 
 public sealed record AbVariantDraft(string Body);
+
+/// <summary>ブランド診断の構造化出力（RF-DES-001 F-02 BrandProfileDraft）。</summary>
+public sealed record BrandDraftOutput(string BrandName, string Industry, int Casualness, string FirstPerson, int EmojiLevel,
+    string? EndingRule, PersonaDraft[] Personas, string[] AppealPoints, string[] Hashtags, string[] NgWordSuggestions, FaqDraft[] Faqs);
