@@ -41,6 +41,19 @@ public sealed record PublishValidation(IReadOnlyList<string> Errors)
 
 public sealed record PublishResult(string ExternalPostId, string? Url);
 
+/// <summary>
+/// 投稿に添付する画像（SNS 別の比率・形式に変換済み）。SNS が URL から取得する場合は公開 URL（短時間 SAS）、
+/// アップロードする場合（X）はバイト列を使う。
+/// </summary>
+public sealed record PublishMedia(
+    Guid AssetId,
+    string Mime,
+    string? AltText,
+    bool IsAiGenerated,
+    Func<CancellationToken, Task<byte[]>> ReadAsync,
+    Func<CancellationToken, Task<string>> PublicUrlAsync,
+    Func<CancellationToken, Task<string>> PreviewUrlAsync);
+
 /// <summary>SNS API のエラー。一時的（再試行可）か恒久的かを分類する（F-08-5）。</summary>
 public sealed class SocialApiException(string errorCode, string message, bool isTransient) : Exception(message)
 {
@@ -61,7 +74,8 @@ public interface ISocialPublisher
     bool IsSimulation { get; }
 
     Task<PublishValidation> ValidateAsync(PostVariant variant, CancellationToken ct);
-    Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential, CancellationToken ct);
+    Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential, IReadOnlyList<PublishMedia> media,
+        CancellationToken ct);
     Task DeleteAsync(string externalPostId, ChannelCredential credential, CancellationToken ct);
 }
 

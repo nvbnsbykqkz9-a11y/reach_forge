@@ -44,6 +44,12 @@ public sealed class AiProviderOptions
     public decimal InputPricePerMTok { get; set; }
     public decimal OutputPricePerMTok { get; set; }
 
+    /// <summary>画像1枚あたりの単価（USD）。</summary>
+    public decimal PricePerImage { get; set; }
+
+    /// <summary>画像生成に対応するプロバイダか（Anthropic は画像の理解のみ）。</summary>
+    public bool SupportsImageGeneration => Type is AiProviderType.OpenAI or AiProviderType.Stub;
+
     public bool IsConfigured => Type == AiProviderType.Stub || !string.IsNullOrWhiteSpace(ApiKey);
 
     public string? ModelFor(AiTaskType task) => TaskModels.GetValueOrDefault(task.ToString(), Model ?? "");

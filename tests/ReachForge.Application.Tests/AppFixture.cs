@@ -13,6 +13,7 @@ namespace ReachForge.Application.Tests;
 public sealed class AppFixture : IAsyncDisposable
 {
     private readonly string _dbPath = Path.Combine(Path.GetTempPath(), $"rf-test-{Guid.NewGuid():N}.db");
+    public string MediaPath { get; } = Path.Combine(Path.GetTempPath(), $"rf-media-{Guid.NewGuid():N}");
 
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero));
     public ServiceProvider Services { get; }
@@ -26,6 +27,7 @@ public sealed class AppFixture : IAsyncDisposable
             ["AI:Providers:local:Type"] = "Stub",
             ["AI:Routes:Default:0"] = "local",
             ["Social:UseMock"] = "true",
+            ["Media:LocalPath"] = MediaPath,
         };
         foreach (var (k, v) in overrides ?? []) settings[k] = v;
         var config = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
@@ -69,6 +71,7 @@ public sealed class AppFixture : IAsyncDisposable
     {
         await Services.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        if (Directory.Exists(MediaPath)) Directory.Delete(MediaPath, recursive: true);
         foreach (var f in new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" })
         {
             if (File.Exists(f)) File.Delete(f);

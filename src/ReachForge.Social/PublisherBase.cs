@@ -34,7 +34,8 @@ public abstract class PublisherBase(SocialPlatform platform) : ISocialPublisher
         return Task.FromResult(new PublishValidation(errors));
     }
 
-    public abstract Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential, CancellationToken ct);
+    public abstract Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential,
+        IReadOnlyList<PublishMedia> media, CancellationToken ct);
 
     public abstract Task DeleteAsync(string externalPostId, ChannelCredential credential, CancellationToken ct);
 

@@ -181,3 +181,21 @@ public class PostVariantTests
         Assert.Equal(VariantStatus.Approved, v.Status);
     }
 }
+
+public class PostVariantMediaTests
+{
+    [Fact]
+    public void Changing_media_after_approval_requires_reapproval()
+    {
+        var now = new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero);
+        var master = new MasterPost { Title = "t", CoreMessage = "本文" };
+        var channel = new Channel { Platform = SocialPlatform.Instagram, ExternalAccountId = "x", DisplayName = "d", CredentialSecretRef = "r" };
+        var v = PostVariant.Create(master, channel, "本文", []);
+        Assert.False(v.SetMedia([Guid.NewGuid()], requiresApproval: true)); // 下書き中は再承認不要
+        v.Submit();
+        v.Approve();
+        Assert.False(v.SetMedia(v.MediaAssetIds.ToList(), requiresApproval: true)); // 同じなら変化なし
+        Assert.True(v.SetMedia([Guid.NewGuid()], requiresApproval: true));
+        Assert.Equal(VariantStatus.Draft, v.Status);
+    }
+}

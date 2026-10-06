@@ -48,6 +48,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<CreditAccount> CreditAccounts => Set<CreditAccount>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<AiJob> AiJobs => Set<AiJob>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
@@ -115,6 +116,17 @@ public sealed class ReachForgeDbContext(
         });
 
         b.Entity<PostMetric>().HasIndex(x => new { x.PostVariantId, x.CapturedAt });
+        b.Entity<MediaAsset>(e =>
+        {
+            e.HasIndex(x => new { x.WorkspaceId, x.DerivationKey });
+            e.HasIndex(x => x.ParentAssetId);
+            e.Ignore(x => x.AspectRatio);
+        });
+        b.Entity<AiJob>(e =>
+        {
+            e.HasIndex(x => new { x.Status, x.CreatedAt });
+            e.Ignore(x => x.IsFinished);
+        });
         b.Entity<AuditLog>().HasIndex(x => x.CreatedAt);
         b.Entity<AiGeneration>().HasIndex(x => new { x.TenantId, x.CreatedAt });
         b.Entity<CreditAccount>().HasIndex(x => x.TenantId).IsUnique();
@@ -129,6 +141,8 @@ public sealed class ReachForgeDbContext(
         Expression<Func<T, bool>> filter = e => IsSystem || e.TenantId == CurrentTenantId;
         b.Entity<T>().HasQueryFilter(filter);
     }
+
+    public Task ReloadAsync(object entity, CancellationToken cancellationToken = default) => Entry(entity).ReloadAsync(cancellationToken);
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {

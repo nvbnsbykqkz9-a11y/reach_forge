@@ -21,6 +21,8 @@ public sealed class PublishingService(
     ITenantContext context,
     IPublisherFactory publishers,
     ChannelTokenService tokens,
+    IMediaStorage storage,
+    IMediaUrlSigner signer,
     TimeProvider clock,
     ILogger<PublishingService> log)
 {
@@ -95,7 +97,8 @@ public sealed class PublishingService(
             }
 
             var credential = await tokens.GetCredentialAsync(channel, ct);
-            var result = await publisher.PublishAsync(v, credential, ct);
+            var media = await MediaForAsync(v, ct);
+            var result = await publisher.PublishAsync(v, credential, media, ct);
             v.MarkPublished(result.ExternalPostId, result.Url, clock.GetUtcNow());
             Record(v, "variant.published", result.Url);
             // TODO(F-10): MetricsCollectJob を 1h, 6h, 24h, 72h, 7d, 30d で登録する
@@ -123,6 +126,50 @@ public sealed class PublishingService(
 
         await db.SaveChangesAsync(ct);
         return v.Status;
+    }
+
+    /// <summary>
+    /// 公開 URL の有効期間。Instagram・Threads・Facebook は投稿時に取得するため短時間でよいが、
+    /// LINE は受信者が開いたときに取得されうるため長めにする。
+    /// </summary>
+    public static TimeSpan MediaUrlLifetime(SocialPlatform platform) =>
+        platform == SocialPlatform.Line ? TimeSpan.FromDays(30) : TimeSpan.FromMinutes(30);
+
+    private async Task<IReadOnlyList<PublishMedia>> MediaForAsync(PostVariant v, CancellationToken ct)
+    {
+        if (v.MediaAssetIds.Count == 0) return [];
+        var assets = await db.MediaAssets.Where(m => v.MediaAssetIds.Contains(m.Id)).ToListAsync(ct);
+        var ids = assets.Select(a => a.Id).ToList();
+        var thumbs = await db.MediaAssets.Where(m => m.ParentAssetId != null && ids.Contains(m.ParentAssetId.Value) && m.DerivationKey == MediaService.ThumbnailKey)
+            .ToDictionaryAsync(m => m.ParentAssetId!.Value, ct);
+
+        return v.MediaAssetIds
+            .Select(id => assets.FirstOrDefault(a => a.Id == id))
+            .Where(a => a is not null)
+            .Select(a => new PublishMedia(a!.Id, a.Mime, a.AltText, a.IsAiLabeled,
+                async c =>
+                {
+                    await using var stream = await storage.OpenReadAsync(a.BlobPath, c);
+                    using var ms = new MemoryStream();
+                    await stream.CopyToAsync(ms, c);
+                    return ms.ToArray();
+                },
+                c => PublicUrlAsync(a.Id, v.Platform, c),
+                c => PublicUrlAsync(thumbs.TryGetValue(a.Id, out var t) ? t.Id : a.Id, v.Platform, c)))
+            .ToList();
+    }
+
+    /// <summary>SNS が取得できる公開 HTTPS URL（Blob の SAS、またはアプリ配信 URL）。</summary>
+    private async Task<string> PublicUrlAsync(Guid assetId, SocialPlatform platform, CancellationToken ct)
+    {
+        var url = await signer.CreateReadUrlAsync(assetId, MediaUrlLifetime(platform), ct);
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps)
+        {
+            throw new SocialApiException(ErrorCodes.PubFailed,
+                "画像の公開URLを作れません。Blob Storage（Media:BlobServiceUri）か、外部から到達できる HTTPS の Media:PublicBaseUrl を設定してください。",
+                isTransient: false);
+        }
+        return url;
     }
 
     /// <summary>希望公開日時までに承認されなかった投稿を保留にする（F-07-2）。</summary>

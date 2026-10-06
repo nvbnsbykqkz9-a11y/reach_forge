@@ -9,6 +9,10 @@
         <div class="rf-preview rf-preview-line">
             <div class="rf-preview-header"><div class="rf-preview-avatar"></div><span class="rf-preview-name" style="color:#fff">@AccountName</span></div>
             <div class="rf-bubble">@Body</div>
+            @if (ImageAssetId is { } lineImage)
+            {
+                <div class="rf-preview-image" style="margin-top:8px"><RfMediaImage AssetId="lineImage" Alt="@ImageAlt" ShowAiBadge="ImageIsAi" /></div>
+            }
         </div>
     }
     else
@@ -27,7 +31,7 @@
             }
             @if (Platform is SocialPlatform.Instagram or SocialPlatform.Pinterest or SocialPlatform.TikTok)
             {
-                <div class="rf-preview-media" style="aspect-ratio:@c.ImageAspect.Width/@c.ImageAspect.Height;max-height:260px">画像 @c.ImageAspect</div>
+                @PreviewImage(c)
             }
             <div class="rf-preview-body">
                 @if (c.FoldAt is { } fold && PostText.Length(text) > fold)
@@ -43,7 +47,7 @@
             </div>
             @if (Platform is SocialPlatform.X or SocialPlatform.Threads or SocialPlatform.Facebook or SocialPlatform.LinkedIn)
             {
-                <div class="rf-preview-media" style="aspect-ratio:@c.ImageAspect.Width/@c.ImageAspect.Height;max-height:200px">画像 @c.ImageAspect</div>
+                @PreviewImage(c)
             }
         </div>
     }
@@ -57,6 +61,24 @@
     [Parameter] public string? Title { get; set; }
     [Parameter] public string AccountName { get; set; } = "@shop";
     [Parameter] public bool Dark { get; set; }
+    [Parameter] public Guid? ImageAssetId { get; set; }
+    [Parameter] public string? ImageAlt { get; set; }
+    [Parameter] public bool ImageIsAi { get; set; }
+    [Parameter] public int ImageCount { get; set; }
+
+    private RenderFragment PreviewImage(PlatformConstraint c) => __builder =>
+    {
+        if (ImageAssetId is { } id)
+        {
+            <div class="rf-preview-image" style="aspect-ratio:@c.ImageAspect.Width/@c.ImageAspect.Height">
+                <RfMediaImage AssetId="id" Alt="@ImageAlt" ShowAiBadge="ImageIsAi" Style="height:100%" />
+            </div>
+            if (ImageCount > 1)
+            {
+                <div class="rf-preview-sub">画像 @ImageCount 枚</div>
+            }
+        }
+    };
 
     private static string Take(string s, int n) => new System.Globalization.StringInfo(s).SubstringByTextElements(0, n);
     private static string Skip(string s, int n) => new System.Globalization.StringInfo(s).SubstringByTextElements(n);

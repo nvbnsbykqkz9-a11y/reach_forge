@@ -161,3 +161,18 @@ body { font-variant-numeric: tabular-nums; }
 .rf-auth-info { background: var(--rf-color-info-bg); color: var(--rf-color-text-primary); border-color: var(--rf-color-primary); }
 .rf-code { font-family: "Noto Sans Mono", monospace; background: var(--rf-color-surface-subtle); border: 1px solid var(--rf-color-border); border-radius: var(--rf-radius-md); padding: 8px 12px; word-break: break-all; display: block; }
 @media (max-width: 959px) { .rf-auth { grid-template-columns: 1fr; } .rf-auth-hero { display: none; } }
+
+/* メディア */
+.rf-media { position: relative; overflow: hidden; border-radius: var(--rf-radius-md); background: var(--rf-color-surface-subtle); }
+.rf-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.rf-media-loading { width: 100%; height: 100%; min-height: 80px; background: linear-gradient(90deg, var(--rf-color-surface-subtle), var(--rf-color-border), var(--rf-color-surface-subtle)); }
+.rf-media-ai { position: absolute; left: 6px; top: 6px; background: rgba(84, 67, 209, .92); color: #fff; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: var(--rf-radius-sm); display: inline-flex; align-items: center; gap: 2px; }
+.rf-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
+.rf-media-grid .rf-media { aspect-ratio: 1 / 1; }
+.rf-media-pick { position: relative; padding: 0; border: 2px solid transparent; border-radius: var(--rf-radius-md); background: none; cursor: pointer; }
+.rf-media-pick-on { border-color: var(--rf-color-primary); }
+.rf-media-order { position: absolute; right: 6px; top: 6px; background: var(--rf-color-primary); color: #fff; border-radius: 50%; width: 22px; height: 22px; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.rf-media-library { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; }
+.rf-media-library .rf-media { aspect-ratio: 1 / 1; }
+.rf-preview-image { margin: 8px 0; border-radius: 12px; overflow: hidden; }
+.rf-preview-image img { width: 100%; display: block; }

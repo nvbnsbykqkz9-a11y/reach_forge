@@ -24,6 +24,7 @@ public sealed record SaveMasterPost
     public Guid? CampaignId { get; init; }
     public Guid? AiGenerationId { get; init; }
     public bool IsAiEdited { get; init; }
+    public IReadOnlyList<Guid> MediaAssetIds { get; init; } = [];
 }
 
 public sealed record VariantOptions(string? LinkUrl = null, bool IncludeUrlForX = false);
@@ -39,7 +40,8 @@ public sealed class StudioService(
     ICopyGenerationService copies,
     IVariantGenerationService variants,
     IBrandContextProvider brand,
-    ICreditService credits)
+    ICreditService credits,
+    MediaService media)
 {
     public Task<CopyResult> GenerateCopiesAsync(CopyRequest request, CancellationToken ct)
     {
@@ -88,6 +90,7 @@ public sealed class StudioService(
         post.CampaignId = cmd.CampaignId;
         post.AiGenerationId = cmd.AiGenerationId ?? post.AiGenerationId;
         post.IsAiEdited |= cmd.IsAiEdited;
+        post.MediaAssetIds = [.. cmd.MediaAssetIds.Distinct()];
 
         await db.SaveChangesAsync(ct);
         return post;
@@ -155,6 +158,8 @@ public sealed class StudioService(
                 variant.Edit(result.Body, result.Hashtags, result.Title, requiresApproval: false);
             }
             variant.UrlCostAcknowledged = channel.Platform == SocialPlatform.X && options.IncludeUrlForX;
+            variant.SetMedia(await DeriveMediaAsync(post, channel.Platform, variant.AspectMethod is AspectMethod.Outpaint
+                ? AspectMethod.SmartCrop : variant.AspectMethod, ct), requiresApproval: false);
             variant.ApplyGuardrail(CheckVariant(variant, ctx.ToGuardrailContext()));
         }
 
@@ -163,8 +168,56 @@ public sealed class StudioService(
         return existing.Where(v => channelIds.Contains(v.ChannelId)).OrderBy(v => v.Platform).ToList();
     }
 
-    public async Task<IReadOnlyList<PostVariant>> GetVariantsAsync(Guid masterPostId, CancellationToken ct) =>
-        await db.PostVariants.Where(v => v.MasterPostId == masterPostId).OrderBy(v => v.Platform).ToListAsync(ct);
+    /// <summary>
+    /// バリアントの画像の比率変換方法を変える（F-04-6）。自動トリミング・余白は即時（0 クレジット）、
+    /// 「AIで広げる」はジョブを登録し（5 クレジット）、完了時にバリアントの画像が差し替わる。
+    /// </summary>
+    public async Task<AiJob?> ChangeAspectMethodAsync(Guid variantId, AspectMethod method, CancellationToken ct)
+    {
+        RolePolicy.Demand(tenant.Role, Permission.Generate);
+        var variant = await db.PostVariants.FirstOrDefaultAsync(v => v.Id == variantId, ct) ?? throw new NotFoundException("投稿");
+        var post = await db.MasterPosts.FirstAsync(p => p.Id == variant.MasterPostId, ct);
+        if (post.MediaAssetIds.Count == 0)
+        {
+            throw new DomainException(ErrorCodes.Validation, "この投稿には画像がありません。");
+        }
+        if (method == AspectMethod.Outpaint)
+        {
+            return await media.EnqueueOutpaintAsync(new OutpaintJobRequest(post.MediaAssetIds[0], variant.Platform, variant.Id), ct);
+        }
+
+        var workspace = await db.Workspaces.FirstAsync(w => w.Id == variant.WorkspaceId, ct);
+        variant.AspectMethod = method;
+        var reapproval = variant.SetMedia(await DeriveMediaAsync(post, variant.Platform, method, ct), workspace.RequiresApproval);
+        if (reapproval) db.Record(tenant, "variant.reapproval_required", nameof(PostVariant), variant.Id, ErrorCodes.AprReapprovalRequired);
+        await db.SaveChangesAsync(ct);
+        return null;
+    }
+
+    /// <summary>マスター投稿の画像を SNS の推奨比率・形式に変換する（引き伸ばしはしない）。</summary>
+    private async Task<List<Guid>> DeriveMediaAsync(MasterPost post, SocialPlatform platform, AspectMethod method, CancellationToken ct)
+    {
+        var limit = PlatformCatalog.Get(platform).MaxImages;
+        var ids = post.MediaAssetIds.Take(limit).ToList();
+        var sources = await db.MediaAssets.Where(m => ids.Contains(m.Id)).ToListAsync(ct);
+        var derived = new List<Guid>();
+        foreach (var id in ids)
+        {
+            if (sources.FirstOrDefault(s => s.Id == id) is { } source)
+            {
+                derived.Add((await media.DeriveForPlatformAsync(source, platform, method, ct)).Id);
+            }
+        }
+        return derived;
+    }
+
+    /// <summary>バリアント一覧（Worker が画像を差し替えた場合も反映するよう最新値を読み直す）。</summary>
+    public async Task<IReadOnlyList<PostVariant>> GetVariantsAsync(Guid masterPostId, CancellationToken ct)
+    {
+        var variants = await db.PostVariants.Where(v => v.MasterPostId == masterPostId).OrderBy(v => v.Platform).ToListAsync(ct);
+        foreach (var v in variants) await db.ReloadAsync(v, ct);
+        return variants;
+    }
 
     /// <summary>バリアントを個別に編集する。他のバリアントには影響しない。</summary>
     public async Task<VariantEditResult> UpdateVariantAsync(Guid variantId, string body, IReadOnlyList<string> hashtags,

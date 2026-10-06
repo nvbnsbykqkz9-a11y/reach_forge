@@ -10,7 +10,7 @@ namespace ReachForge.Social.Meta;
 /// Instagram への投稿（Content Publishing：コンテナ作成 → 処理完了待ち → 公開、RF-DES-001 付録 A.3）。
 /// 画像は JPEG の公開 URL（短時間 SAS）から取得されるため、メディアの添付が必須。
 /// </summary>
-public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialOptions> options, IServiceProvider services)
+public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialOptions> options)
     : PublisherBase(SocialPlatform.Instagram)
 {
     public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
@@ -20,12 +20,12 @@ public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialO
     protected override bool RequiresMedia => true;
 
     public override async Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential,
-        CancellationToken ct)
+        IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
-        var signer = services.GetService(typeof(IMediaUrlSigner)) as IMediaUrlSigner
-                     ?? throw new SocialApiException(ErrorCodes.PubFailed, "画像の配信設定（Blob Storage）がありません", isTransient: false);
+        var image = media.FirstOrDefault()
+                    ?? throw new SocialApiException(ErrorCodes.PubFailed, "Instagram には画像が必要です", isTransient: false);
         var client = http.CreateClient(MetaConnector.HttpClientName);
-        var imageUrl = await signer.CreateReadUrlAsync(variant.MediaAssetIds[0], TimeSpan.FromMinutes(30), ct);
+        var imageUrl = await image.PublicUrlAsync(ct); // JPEG（sRGB・8MB 以下）に変換済み
 
         // ① メディアコンテナ作成
         var container = SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,

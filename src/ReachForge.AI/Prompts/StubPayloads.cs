@@ -12,3 +12,5 @@ public sealed record VariantStubPayload(VariantRequest Request, string? Link, st
 public sealed record JudgeStubPayload(GeneratedCopy Copy, BrandProfile Brand);
 
 public sealed record DigestStubPayload(string Headline, string Body);
+
+public sealed record AltStubPayload(string Hint);

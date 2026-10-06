@@ -10,6 +10,7 @@ namespace ReachForge.Web.Tests;
 public sealed class WebFixture : WebApplicationFactory<Program>
 {
     private readonly string _db = Path.Combine(Path.GetTempPath(), $"rf-web-{Guid.NewGuid():N}.db");
+    private readonly string _media = Path.Combine(Path.GetTempPath(), $"rf-web-media-{Guid.NewGuid():N}");
     private readonly Dictionary<string, string?> _settings;
 
     public WebFixture(Dictionary<string, string?>? overrides = null)
@@ -18,6 +19,7 @@ public sealed class WebFixture : WebApplicationFactory<Program>
         {
             ["ConnectionStrings:ReachForge"] = $"Data Source={_db}",
             ["Database:SeedDemo"] = "true",
+            ["Media:LocalPath"] = _media,
             ["Worker:RunInWeb"] = "false",
             ["Social:UseMock"] = "true",
             ["Social:Meta:AppSecret"] = "meta-secret",
@@ -56,6 +58,7 @@ public sealed class WebFixture : WebApplicationFactory<Program>
         await base.DisposeAsync();
         SqliteConnection.ClearAllPools();
         if (File.Exists(_db)) File.Delete(_db);
+        if (Directory.Exists(_media)) Directory.Delete(_media, recursive: true);
     }
 }
 

@@ -20,6 +20,9 @@ public static class DependencyInjection
         services.AddScoped<ICopyGenerationService, CopyGenerationService>();
         services.AddScoped<IVariantGenerationService, VariantGenerationService>();
         services.AddScoped<IApprovalSummaryService, ApprovalSummaryService>();
+        services.AddSingleton<IImageGeneratorFactory, ImageGeneratorFactory>();
+        services.AddScoped<IImageGenerationService, ImageGenerationService>();
+        services.AddScoped<IAltTextGenerator, AltTextGenerator>();
         return services;
     }
 }

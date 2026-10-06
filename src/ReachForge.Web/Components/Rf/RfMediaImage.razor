@@ -1,0 +1,34 @@
+@* 画像の表示（期限付き URL を解決する）。AI 生成物には ✦ バッジを付ける（RF-UX-001 6.1 原則1） *@
+@inject MediaService Media
+<div class="rf-media @Class" style="@Style">
+    @if (_url is not null)
+    {
+        <img src="@_url" alt="@(Alt ?? "")" loading="lazy" />
+    }
+    else
+    {
+        <div class="rf-media-loading" aria-hidden="true"></div>
+    }
+    @if (ShowAiBadge)
+    {
+        <span class="rf-media-ai" title="AI生成"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" />AI</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Guid AssetId { get; set; }
+    [Parameter] public string? Alt { get; set; }
+    [Parameter] public bool ShowAiBadge { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private Guid _loaded;
+    private string? _url;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loaded == AssetId) return;
+        _loaded = AssetId;
+        _url = await Media.UrlAsync(AssetId, CancellationToken.None);
+    }
+}

@@ -484,3 +484,4 @@ $RECYCLE.BIN/
 # Local SQLite
 *.local.db
 *.local.db-*
+media.local/

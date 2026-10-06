@@ -12,12 +12,21 @@ public sealed class ThreadsPublisher(IHttpClientFactory http, IOptions<SocialOpt
     private string Version => options.Value.Threads.ApiVersion;
 
     public override async Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential,
-        CancellationToken ct)
+        IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
         var client = http.CreateClient(ThreadsConnector.HttpClientName);
+        var fields = new List<KeyValuePair<string, string>> { new("text", Text(variant)) };
+        if (media.FirstOrDefault() is { } image)
+        {
+            fields.Add(new("media_type", "IMAGE"));
+            fields.Add(new("image_url", await image.PublicUrlAsync(ct)));
+        }
+        else
+        {
+            fields.Add(new("media_type", "TEXT"));
+        }
         var container = SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
-            $"{Version}/{credential.ExternalAccountId}/threads",
-            [new("media_type", "TEXT"), new("text", Text(variant))], credential.AccessToken), "Threads", ct), "id");
+            $"{Version}/{credential.ExternalAccountId}/threads", fields, credential.AccessToken), "Threads", ct), "id");
 
         var id = SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
             $"{Version}/{credential.ExternalAccountId}/threads_publish", [new("creation_id", container)], credential.AccessToken),

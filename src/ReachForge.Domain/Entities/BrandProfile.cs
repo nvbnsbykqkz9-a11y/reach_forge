@@ -18,6 +18,12 @@ public sealed class BrandProfile : Entity
     public List<string> PreferredHashtags { get; set; } = [];
     public string? WebsiteUrl { get; set; }
 
+    /// <summary>ブランドカラー（HEX）。画像生成の色指定・余白の背景色に使う。</summary>
+    public List<string> BrandColors { get; set; } = [];
+
+    /// <summary>ロゴ画像（透過 PNG 推奨）。生成画像への合成は画像処理で正確に行う（F-04-5）。</summary>
+    public Guid? LogoAssetId { get; set; }
+
     /// <summary>版数。変更のたびに増やし、生成記録に使用版を残す（F-02）。</summary>
     public int Version { get; set; } = 1;
 }

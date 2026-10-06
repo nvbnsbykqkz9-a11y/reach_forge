@@ -16,7 +16,8 @@ public sealed class MockPublisher(SocialPlatform platform, ILogger<MockPublisher
 
     public override bool IsSimulation => true;
 
-    public override Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential, CancellationToken ct)
+    public override Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential,
+        IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
         if (variant.Body.Contains(FailMarker, StringComparison.Ordinal))
         {
@@ -28,7 +29,8 @@ public sealed class MockPublisher(SocialPlatform platform, ILogger<MockPublisher
         }
 
         var id = $"mock-{Platform.ToString().ToLowerInvariant()}-{Guid.CreateVersion7():N}";
-        log.LogInformation("[Mock] Published {Platform} post {ExternalId} for channel {ChannelId}", Platform, id, credential.ChannelId);
+        log.LogInformation("[Mock] Published {Platform} post {ExternalId} with {Images} image(s) for channel {ChannelId}",
+            Platform, id, media.Count, credential.ChannelId);
         return Task.FromResult(new PublishResult(id, $"https://example.invalid/{Platform.ToString().ToLowerInvariant()}/{id}"));
     }
 

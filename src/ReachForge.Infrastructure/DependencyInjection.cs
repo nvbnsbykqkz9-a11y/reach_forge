@@ -1,4 +1,5 @@
 using Azure.Identity;
+using Azure.Storage.Blobs;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +10,7 @@ using ReachForge.Application;
 using ReachForge.Application.Abstractions;
 using ReachForge.Application.Social;
 using ReachForge.Infrastructure.Identity;
+using ReachForge.Infrastructure.Media;
 using ReachForge.Infrastructure.Persistence;
 using ReachForge.Infrastructure.Security;
 using ReachForge.Social;
@@ -64,6 +66,34 @@ public static class DependencyInjection
         }
 
         services.AddScoped<AccountService>();
+
+        // ---- メディア（F-04 / SCR-13） ----
+        services.Configure<MediaOptions>(configuration.GetSection(MediaOptions.SectionName));
+        services.Configure<ContentSafetyOptions>(configuration.GetSection(ContentSafetyOptions.SectionName));
+        services.AddSingleton<IImageProcessor, ImageSharpProcessor>();
+        var media = configuration.GetSection(MediaOptions.SectionName).Get<MediaOptions>() ?? new MediaOptions();
+        if (!string.IsNullOrWhiteSpace(media.BlobServiceUri))
+        {
+            var blobService = new BlobServiceClient(new Uri(media.BlobServiceUri), new DefaultAzureCredential());
+            services.AddSingleton(blobService);
+            services.AddSingleton(blobService.GetBlobContainerClient(media.BlobContainer));
+            services.AddSingleton<IMediaStorage, BlobMediaStorage>();
+            services.AddScoped<IMediaUrlSigner, BlobSasUrlSigner>();
+        }
+        else
+        {
+            services.AddSingleton<IMediaStorage, LocalMediaStorage>();
+            services.AddSingleton<IMediaUrlSigner, AppMediaUrlSigner>();
+        }
+        if (configuration.GetSection(ContentSafetyOptions.SectionName).Get<ContentSafetyOptions>() is { IsConfigured: true })
+        {
+            services.AddHttpClient(AzureContentSafetyImageChecker.HttpClientName);
+            services.AddScoped<IImageSafetyChecker, AzureContentSafetyImageChecker>();
+        }
+        else
+        {
+            services.AddSingleton<IImageSafetyChecker, NotConfiguredImageSafetyChecker>();
+        }
         return services;
     }
 }

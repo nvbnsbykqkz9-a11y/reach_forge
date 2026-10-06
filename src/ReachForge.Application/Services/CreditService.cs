@@ -11,6 +11,13 @@ public interface ICreditService
 
     /// <summary>推定消費をホールドする。確定しないまま破棄すると解放される（失敗・ブロック時はクレジットを消費しない）。</summary>
     Task<CreditHold> HoldAsync(int estimate, CancellationToken ct);
+
+    /// <summary>非同期ジョブ用：ホールドだけ行う（確定・解放はジョブの完了時に <see cref="CommitReservedAsync"/> / <see cref="ReleaseReservedAsync"/>）。</summary>
+    Task ReserveAsync(int amount, CancellationToken ct);
+
+    Task<int> CommitReservedAsync(int held, int actual, CancellationToken ct);
+
+    Task ReleaseReservedAsync(int held, CancellationToken ct);
 }
 
 public sealed class CreditHold(CreditService owner, int amount) : IAsyncDisposable
@@ -55,6 +62,12 @@ public sealed class CreditService(IAppDbContext db, ITenantContext tenant, TimeP
         await MutateAsync(a => a.Hold(estimate), ct);
         return new CreditHold(this, estimate);
     }
+
+    public Task ReserveAsync(int amount, CancellationToken ct) => MutateAsync(a => a.Hold(amount), ct);
+
+    public Task<int> CommitReservedAsync(int held, int actual, CancellationToken ct) => CommitAsync(held, actual, ct);
+
+    public Task ReleaseReservedAsync(int held, CancellationToken ct) => ReleaseAsync(held, ct);
 
     internal async Task<int> CommitAsync(int held, int actual, CancellationToken ct)
     {

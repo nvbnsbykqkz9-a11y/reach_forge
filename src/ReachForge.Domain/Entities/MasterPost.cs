@@ -18,6 +18,9 @@ public sealed class MasterPost : Entity
     public string Cta { get; set; } = "";
     public List<string> Hashtags { get; set; } = [];
     public List<Guid> ProductIds { get; set; } = [];
+
+    /// <summary>添付メディア（元画像、順序付き）。SNS 別の比率に変換した派生画像はバリアント側に持つ。</summary>
+    public List<Guid> MediaAssetIds { get; set; } = [];
     public Guid? CampaignId { get; set; }
     public string Language { get; set; } = "ja";
 

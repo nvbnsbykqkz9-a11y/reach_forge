@@ -12,12 +12,23 @@ public sealed class FacebookPublisher(IHttpClientFactory http, IOptions<SocialOp
     private string Version => options.Value.Meta.GraphVersion;
 
     public override async Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential,
-        CancellationToken ct)
+        IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
+        var client = http.CreateClient(MetaConnector.HttpClientName);
         var text = Text(variant);
+        if (media.FirstOrDefault() is { } image)
+        {
+            // 写真投稿（POST /{page-id}/photos）：url から取得、message がキャプション
+            var photo = await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
+                $"{Version}/{credential.ExternalAccountId}/photos",
+                [new("url", await image.PublicUrlAsync(ct)), new("message", text)], credential.AccessToken), "Facebook", ct);
+            var postId = SocialHttp.StrOrNull(photo, "post_id") ?? SocialHttp.Str(photo, "id");
+            return new PublishResult(postId, $"https://www.facebook.com/{postId}");
+        }
+
         var fields = new List<KeyValuePair<string, string>> { new("message", text) };
         if (PostText.Urls(text).FirstOrDefault() is { } link) fields.Add(new("link", link)); // OGP カードを表示
-        var json = await SocialHttp.SendAsync(http.CreateClient(MetaConnector.HttpClientName),
+        var json = await SocialHttp.SendAsync(client,
             SocialHttp.Form(HttpMethod.Post, $"{Version}/{credential.ExternalAccountId}/feed", fields, credential.AccessToken),
             "Facebook", ct);
         var id = SocialHttp.Str(json, "id");

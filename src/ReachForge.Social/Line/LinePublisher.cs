@@ -15,11 +15,21 @@ namespace ReachForge.Social.Line;
 public sealed class LinePublisher(IHttpClientFactory http) : PublisherBase(SocialPlatform.Line)
 {
     public override async Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential,
-        CancellationToken ct)
+        IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
         var retryKey = RetryKey(variant);
-        var request = SocialHttp.Json(HttpMethod.Post, "v2/bot/message/broadcast",
-            new { messages = new[] { new { type = "text", text = Text(variant) } } }, credential.AccessToken);
+        var messages = new List<object> { new { type = "text", text = Text(variant) } };
+        if (media.FirstOrDefault() is { } image)
+        {
+            // 画像メッセージ：本体（JPEG/PNG・10MB 以下）とプレビュー（1MB 以下）の HTTPS URL
+            messages.Add(new
+            {
+                type = "image",
+                originalContentUrl = await image.PublicUrlAsync(ct),
+                previewImageUrl = await image.PreviewUrlAsync(ct),
+            });
+        }
+        var request = SocialHttp.Json(HttpMethod.Post, "v2/bot/message/broadcast", new { messages }, credential.AccessToken);
         request.Headers.Add("X-Line-Retry-Key", retryKey);
         try
         {

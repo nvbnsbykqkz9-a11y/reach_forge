@@ -1,6 +1,7 @@
 @page "/studio"
 @using ReachForge.Domain.Analytics
 @inject StudioService StudioSvc
+@inject MediaService MediaSvc
 @inject ChannelService Channels
 @inject WorkspaceService Workspaces
 @inject ApprovalService Approvals
@@ -157,6 +158,8 @@
                     {
                         <MudText Typo="Typo.caption" Class="mt-2 rf-ai-hint">✦ AI生成@(IsEdited ? "（編集あり）" : "")</MudText>
                     }
+                    <MudText Typo="Typo.body2" Class="mt-4 mb-2"><b>画像</b>（Instagram は画像が必要です）</MudText>
+                    <RfMediaPicker @bind-Selected="_mediaIds" Max="4" DefaultPrompt="@(string.IsNullOrWhiteSpace(_headline) ? _theme : _headline)" />
                     <MudText Typo="Typo.body2" Class="mt-4 mb-2"><b>確認結果</b></MudText>
                     <RfGuardrailPanel Findings="MasterFindings" OnApply="ApplyToMaster" />
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" FullWidth="true"
@@ -227,7 +230,26 @@
                                     <MudSwitch T="bool" @bind-Value="_previewDark" Label="ダーク" />
                                 </div>
                                 <RfPlatformPreview Platform="v.Platform" Body="@edit.Body" Hashtags="ParseTags(edit.Tags)" Title="@edit.Title"
-                                                   AccountName="@AccountName(v.ChannelId)" Dark="_previewDark" />
+                                                   AccountName="@AccountName(v.ChannelId)" Dark="_previewDark"
+                                                   ImageAssetId="@(v.MediaAssetIds.Count > 0 ? v.MediaAssetIds[0] : null)"
+                                                   ImageAlt="@AltOf(v)" ImageIsAi="@IsAiImage(v)" ImageCount="v.MediaAssetIds.Count" />
+                                @if (_mediaIds.Count > 0)
+                                {
+                                    <MudText Typo="Typo.body2" Class="mt-3 mb-1"><b>画像の比率（@c.ImageAspect）の合わせ方</b></MudText>
+                                    <MudToggleGroup T="AspectMethod" Value="v.AspectMethod" ValueChanged="m => ChangeAspectAsync(v, m)" Size="Size.Small"
+                                                    Color="Color.Primary" Disabled="_outpaintJobs.ContainsKey(v.Id)">
+                                        <MudToggleItem Value="AspectMethod.SmartCrop" Text="自動トリミング" />
+                                        <MudToggleItem Value="AspectMethod.Pad" Text="余白を付ける" />
+                                        <MudToggleItem Value="AspectMethod.Outpaint" Text="✦ AIで広げる（5）" />
+                                    </MudToggleGroup>
+                                    <MudText Typo="Typo.caption" Class="d-block mt-1" Style="color:var(--rf-color-text-secondary)">
+                                        引き伸ばしはしません。自動トリミングは写っているものが多い部分を残します。
+                                    </MudText>
+                                    @if (_outpaintJobs.TryGetValue(v.Id, out var jobId))
+                                    {
+                                        <div class="mt-2"><RfJobProgress JobId="jobId" Title="AIで画像を広げています" EstimatedSeconds="30" OnFinished="j => OutpaintFinishedAsync(v, j)" /></div>
+                                    }
+                                }
                             </MudItem>
                         </MudGrid>
                     </MudTabPanel>
@@ -283,6 +305,10 @@
                                 }
                             </tbody>
                         </MudSimpleTable>
+                        @if (_variants.Any(v => v.Platform == SocialPlatform.Instagram && v.MediaAssetIds.Count == 0))
+                        {
+                            <MudAlert Severity="Severity.Warning" Class="mt-3">Instagram は画像がないと投稿できません。ステップ1で画像を選び、ステップ2で「下書きを作り直す」を押してください。</MudAlert>
+                        }
                         @if (_variants.Any(v => v.HasGuardrailErrors))
                         {
                             <MudAlert Severity="Severity.Error" Class="mt-3">修正が必要なSNSがあります。ステップ2で修正案を適用してください。修正が終わるまで予約・承認依頼はできません。</MudAlert>
@@ -352,6 +378,9 @@
     private CopyCandidate? _selected;
     private string _headline = "", _body = "", _cta = "", _tags = "";
     private BrandContext? _brand;
+    private List<Guid> _mediaIds = [];
+    private readonly Dictionary<Guid, Guid> _outpaintJobs = [];
+    private IReadOnlyDictionary<Guid, MediaAsset> _assets = new Dictionary<Guid, MediaAsset>();
 
     private Guid? _masterId;
     private List<PostVariant> _variants = [];
@@ -528,6 +557,7 @@
                 CampaignId = _campaignId,
                 AiGenerationId = _selected is null ? null : _generationId,
                 IsAiEdited = IsEdited,
+                MediaAssetIds = _mediaIds,
             }, CancellationToken.None);
             _masterId = post.Id;
             return true;
@@ -548,6 +578,7 @@
             _variants = [.. await StudioSvc.GenerateVariantsAsync(_masterId!.Value, _selectedChannels.ToList(),
                 new VariantOptions(_linkUrl, _includeUrlForX), CancellationToken.None)];
             SyncEdits(force: true);
+            await LoadAssetsAsync();
             Snackbar.Add($"{_variants.Count}つのSNS向けに整えました", Severity.Success);
             await State.RefreshAsync();
         }
@@ -638,6 +669,62 @@
             _finishing = false;
         }
     }
+
+    private async Task ChangeAspectAsync(PostVariant v, AspectMethod method)
+    {
+        try
+        {
+            if (method == AspectMethod.Outpaint)
+            {
+                var ok = await Dialogs.ShowMessageBoxAsync("AIで画像を広げますか？",
+                    "足りない部分をAIが描き足して、この SNS の比率に合わせます。約5クレジット・30秒ほどかかります。",
+                    yesText: "AIで広げる", cancelText: "やめる");
+                if (ok != true) return;
+            }
+            var job = await StudioSvc.ChangeAspectMethodAsync(v.Id, method, CancellationToken.None);
+            if (job is not null)
+            {
+                _outpaintJobs[v.Id] = job.Id;
+                await State.RefreshAsync();
+            }
+            await RefreshVariantsAsync();
+            await LoadAssetsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex, Log);
+        }
+    }
+
+    private async Task OutpaintFinishedAsync(PostVariant v, AiJob job)
+    {
+        _outpaintJobs.Remove(v.Id);
+        if (job.Status == AiJobStatus.Failed) Snackbar.Add(job.Error ?? "画像を広げられませんでした。", Severity.Error);
+        await RefreshVariantsAsync();
+        await LoadAssetsAsync();
+        await State.RefreshAsync();
+    }
+
+    private async Task LoadAssetsAsync()
+    {
+        var ids = _variants.SelectMany(v => v.MediaAssetIds).Distinct().ToList();
+        var map = new Dictionary<Guid, MediaAsset>();
+        foreach (var id in ids)
+        {
+            try
+            {
+                map[id] = await MediaSvc.GetAsync(id, CancellationToken.None);
+            }
+            catch (NotFoundException)
+            {
+            }
+        }
+        _assets = map;
+    }
+
+    private string? AltOf(PostVariant v) => v.MediaAssetIds.Count > 0 && _assets.TryGetValue(v.MediaAssetIds[0], out var a) ? a.AltText : null;
+
+    private bool IsAiImage(PostVariant v) => v.MediaAssetIds.Count > 0 && _assets.TryGetValue(v.MediaAssetIds[0], out var a) && a.IsAiLabeled;
 
     private string AccountName(Guid channelId) => _channels.FirstOrDefault(c => c.Id == channelId)?.DisplayName ?? "@shop";
 

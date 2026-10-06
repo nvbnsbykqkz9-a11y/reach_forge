@@ -54,7 +54,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 | SNS | 設定キー | 方式 |
 |---|---|---|
 | X | `Social:X:ClientId` / `ClientSecret` | OAuth 2.0 PKCE（S256）。約2時間で失効するため使用前にリフレッシュ |
-| Facebook / Instagram | `Social:Meta:AppId` / `AppSecret`（`GraphVersion`） | Facebook Login for Business → 長期トークン → ページ・IG ビジネスアカウントを選択。Instagram は画像必須（画像機能 F-04 で対応予定） |
+| Facebook / Instagram | `Social:Meta:AppId` / `AppSecret`（`GraphVersion`） | Facebook Login for Business → 長期トークン → ページ・IG ビジネスアカウントを選択。Instagram は画像必須（画像の公開 URL を Meta が取得） |
 | Threads | `Social:Threads:AppId` / `AppSecret` | 長期トークン（60日）、期限7日前から自動更新 |
 | LINE 公式アカウント | （アプリ設定なし） | 画面でチャネル ID・シークレットを入力。ステートレストークンを都度発行。一斉配信は決定的な `X-Line-Retry-Key` で二重配信を防止 |
 
@@ -69,6 +69,26 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 ```bash
 dotnet test   # xUnit v3（Microsoft.Testing.Platform）
 ```
+
+## 画像生成・メディア配信（F-04）
+
+- メディアライブラリ（`/media`）：JPEG・PNG・WebP（20MB まで）。取り込み時に向き補正・位置情報などのメタデータ削除・sRGB 化。代替テキストは手入力か AI 生成（AI 生成は「AI」表示）。投稿で使用中の画像は削除不可
+- AI 画像生成：スタジオのステップ1またはメディア画面から。非同期ジョブ（`AiJob`）で、受付時にクレジットを予約し、成功時に確定・失敗時に解放。安全性チェック → 正規化 → ロゴ合成（任意）→ 来歴記録 → 代替テキスト生成
+- SNS 別の画像：変換時に SNS ごとの比率へ自動調整（スマートクロップ／余白追加／AI 拡張＝アウトペイント・クレジット消費）。Instagram は JPEG 8MB 以下（4:5 等）、LINE は 10MB 以下＋サムネイル 1MB 以下。拡大はしない
+- 投稿時：X は `2/media/upload` → 代替テキスト登録 → `media_ids`、Facebook は `/photos`、Instagram は `image_url`、Threads は `IMAGE`、LINE は画像メッセージ
+- 配信 URL：Blob 未設定時はアプリ経由の期限付き署名トークン（`/media/{token}`、改ざん・期限切れは 404）、Blob 設定時はユーザー委任 SAS。有効期限は LINE 30日、その他 30分
+
+| 設定キー | 用途 |
+|---|---|
+| `Media:LocalPath` | ローカル保存先（Web と Worker で同じ場所） |
+| `Media:BlobServiceUri` / `BlobContainer` | Azure Blob Storage（Managed Identity）。設定時は SAS で配信 |
+| `Media:PublicBaseUrl` | Blob を使わずに実投稿する場合の公開 HTTPS URL（SNS が画像を取得できること） |
+| `ContentSafety:Endpoint` / `Key` / `BlockSeverity` | Azure AI Content Safety（未設定時はチェックを省略しログに記録） |
+| `AI:Providers:openai:ApiKey` | 画像生成（`AI:Routes:Image` / `ImageEdit`）。開発時は `local`（スタブ）で動作 |
+
+> **ライセンス注意**：画像処理は SixLabors.ImageSharp 3.1 を使用しています（`IImageProcessor` の実装を差し替え可能）。
+> Six Labors Split License では、年間売上 100万米ドル以上の営利企業による利用は商用ライセンスが必要です。本番利用前に確認してください。
+> 4.x はライセンスキーがないとリリースビルドが失敗するため、3.1 系に固定しています。
 
 ## 構成（RF-DES-001 3.4）
 
@@ -96,7 +116,8 @@ tests/
 | F-01 SNS連携 | ○ | X / Facebook / Instagram / Threads（OAuth）、LINE（チャネル資格情報）、アカウント選択、暗号化保存、自動更新・要再接続、Webhook 署名検証 |
 | F-02 ブランド | ○ | 口調・NGワード・必須表記・商品・版管理。ブランド診断（URL解析・RAG）は未着手 |
 | F-03 投稿文生成 | ○ | 構造化出力（失敗時1回再生成）・入出力ガードレール・PR表記自動挿入・ブランド適合度採点・クイック修正 |
-| F-04/F-05 画像・動画 | − | 未着手 |
+| F-04 画像 | ○ | ライブラリ、AI 生成（非同期ジョブ・クレジット予約）、SNS 別リサイズ（スマートクロップ／余白／AI 拡張）、代替テキスト、安全性チェック、来歴記録、署名付き配信、全 SNS の画像投稿。カルーセル・画像内テキスト・C2PA は未着手 |
+| F-05 動画 | − | 未着手 |
 | F-06 マルチSNS変換 | ○ | 9 SNS の制約マスタ、並列変換、自動修正最大2回、UTM 付与、X の URL 費用対策、SNS別プレビュー |
 | F-07 承認 | ○ | 状態遷移、承認後編集の再承認、エラー時の承認不可・オーナー例外承認、一括承認、AI確認ポイント要約、期限切れ保留、監査ログ |
 | F-08 予約・配信 | ○ | 最適時刻（過去90日・30件未満は既定値）、日次上限、指数バックオフ再試行、二重投稿防止、緊急停止 |
@@ -108,7 +129,7 @@ tests/
 ## 次の段階（設計書との差分）
 
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
-2. 画像生成・メディア配信（F-04、Instagram 投稿・X の画像付き投稿に必要）、受信箱（F-09）
+2. 受信箱（F-09）、動画（F-05）、Instagram・Threads のカルーセル投稿、画像内テキスト、C2PA 署名
 3. パスワード再設定・メール送信（招待・ロック通知）、API キー認証（外部連携）、レート制限
 4. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
 5. PostgreSQL のマイグレーションと RLS

@@ -58,6 +58,9 @@ public sealed record PlatformConstraint
     public required AspectRatio ImageAspect { get; init; }
     public required (int Width, int Height) ImageSize { get; init; }
     public AspectRatio? VideoAspect { get; init; }
+
+    /// <summary>1投稿に添付できる画像の数（現状の実装範囲。Instagram・Threads のカルーセルは今後対応）。</summary>
+    public int MaxImages { get; init; } = 1;
     public int? MaxVideoSeconds { get; init; }
 
     /// <summary>「続きを読む」で切れる位置（Instagram 冒頭約125字）。プレビューで点線表示に使う。</summary>

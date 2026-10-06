@@ -76,7 +76,10 @@
         <nav aria-label="メインナビゲーション">
             <MudNavMenu Class="pt-2">
                 <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Home">ホーム</MudNavLink>
-                <MudNavLink Href="/studio" Icon="@Icons.Material.Rounded.AutoAwesome" IconColor="Color.Secondary">つくる</MudNavLink>
+                <MudNavGroup Title="つくる" Icon="@Icons.Material.Rounded.AutoAwesome" IconColor="Color.Secondary" Expanded="true">
+                    <MudNavLink Href="/studio">スタジオ</MudNavLink>
+                    <MudNavLink Href="/media">メディア</MudNavLink>
+                </MudNavGroup>
                 <MudNavLink Href="/calendar" Icon="@Icons.Material.Rounded.CalendarMonth">予定</MudNavLink>
                 <MudNavLink Href="/approvals" Icon="@Icons.Material.Rounded.FactCheck">
                     承認キュー

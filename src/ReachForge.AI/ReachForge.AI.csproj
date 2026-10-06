@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- IImageGenerator（Microsoft.Extensions.AI）は評価版 API。このプロジェクト内に閉じ込め、外部には IImageGenerationService で公開する -->
+    <NoWarn>$(NoWarn);MEAI001</NoWarn>
+  </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ReachForge.Application\ReachForge.Application.csproj" />
   </ItemGroup>

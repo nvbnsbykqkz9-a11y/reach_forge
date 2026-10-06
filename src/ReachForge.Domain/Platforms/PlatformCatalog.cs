@@ -17,7 +17,7 @@ public static class PlatformCatalog
             MaxBodyLength = 280, TargetBodyLength = 140, RecommendedHashtags = (1, 2),
             LinkPolicy = LinkPolicy.DiscouragedByCost,
             ImageAspect = new(16, 9), ImageSize = (1600, 900), VideoAspect = new(16, 9), MaxVideoSeconds = 140,
-            CostPerPostUsd = 0.015m, CostPerPostWithUrlUsd = 0.20m,
+            CostPerPostUsd = 0.015m, CostPerPostWithUrlUsd = 0.20m, MaxImages = 4,
             StyleGuide = "140字前後で要点とフックを入れる。ハッシュタグは1〜2個。本文にURLを含めない（リンクはリプライやプロフィールへ誘導）。",
             Note = "URL付き投稿は通常の約13倍の費用（2026/4/20〜）",
         },

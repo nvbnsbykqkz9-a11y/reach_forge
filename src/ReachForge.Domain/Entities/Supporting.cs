@@ -12,24 +12,6 @@ public sealed class ApprovalAction : Entity
     public string? Comment { get; set; }
 }
 
-/// <summary>画像・動画・音声（RF-DES-001 6.2 (4)）。</summary>
-public sealed class MediaAsset : Entity
-{
-    public Guid WorkspaceId { get; set; }
-    public MediaKind Kind { get; set; }
-    public MediaSource Source { get; set; }
-    public required string BlobPath { get; set; }
-    public required string Mime { get; set; }
-    public int? Width { get; set; }
-    public int? Height { get; set; }
-    public int? DurationMs { get; set; }
-    public long Bytes { get; set; }
-    public Guid? ParentAssetId { get; set; }
-    public Guid? AiGenerationId { get; set; }
-    public bool IsAiLabeled { get; set; }
-    public string? AltText { get; set; }
-}
-
 /// <summary>AI 生成の記録（来歴）。ユーザー操作1回＝1件。</summary>
 public sealed class AiGeneration : Entity
 {

@@ -23,7 +23,7 @@ public sealed class XOptions
     public string? ClientSecret { get; set; }
     public string AuthorizeUrl { get; set; } = "https://x.com/i/oauth2/authorize";
     public string ApiBaseUrl { get; set; } = "https://api.x.com/";
-    public string Scopes { get; set; } = "tweet.read tweet.write users.read offline.access";
+    public string Scopes { get; set; } = "tweet.read tweet.write users.read media.write offline.access";
     public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId);
 }
 

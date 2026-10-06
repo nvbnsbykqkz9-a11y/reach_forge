@@ -38,6 +38,12 @@ public static class DemoSeeder
 
         // TODO: 本番（PostgreSQL）は EF Core マイグレーション（Expand → Migrate → Contract）で管理する
         await db.Database.EnsureCreatedAsync(ct);
+        if (seed && !await SchemaIsCurrentAsync(db, ct))
+        {
+            // 開発用 DB（デモデータ）のみ：スキーマが古ければ作り直す。本番はマイグレーションで更新する
+            await db.Database.EnsureDeletedAsync(ct);
+            await db.Database.EnsureCreatedAsync(ct);
+        }
         if (!seed || await db.Tenants.AnyAsync(ct)) return;
 
         await SeedAsync(db, clock.GetUtcNow(), ct);
@@ -60,6 +66,23 @@ public static class DemoSeeder
                 });
             }
             await db.SaveChangesAsync(ct);
+        }
+    }
+
+    /// <summary>最新のテーブル・列があるか（開発用 DB の作り直し判定）。</summary>
+    private static async Task<bool> SchemaIsCurrentAsync(ReachForgeDbContext db, CancellationToken ct)
+    {
+        try
+        {
+            _ = await db.AiJobs.AnyAsync(ct);
+            _ = await db.MediaAssets.Select(m => m.DerivationKey).FirstOrDefaultAsync(ct);
+            _ = await db.BrandProfiles.Select(b => b.LogoAssetId).FirstOrDefaultAsync(ct);
+            _ = await db.PostVariants.Select(v => v.AspectMethod).FirstOrDefaultAsync(ct);
+            return true;
+        }
+        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or Npgsql.PostgresException)
+        {
+            return false;
         }
     }
 
@@ -87,6 +110,7 @@ public static class DemoSeeder
                 new Persona { Name = "近所で働く会社員", AgeRange = "25〜39歳", Interests = "季節限定メニュー、テイクアウト", Pains = "昼休みが短い" },
             ],
             NgWords = ["激安", "コスパ最強"],
+            BrandColors = ["#B45309", "#FDE68A", "#7C2D12"],
             PreferredHashtags = ["ほっこりカフェ", "渋谷カフェ"],
         });
 

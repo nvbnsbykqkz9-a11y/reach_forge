@@ -78,7 +78,9 @@ else
                     <MudItem xs="12" lg="6">
                         <MudText Typo="Typo.body2" Class="mb-2"><b>プレビュー（全文）</b></MudText>
                         <RfPlatformPreview Platform="cur.Variant.Platform" Body="@cur.Variant.Body" Hashtags="cur.Variant.Hashtags" Title="@cur.Variant.Title"
-                                           AccountName="@cur.Channel.DisplayName" />
+                                           AccountName="@cur.Channel.DisplayName"
+                                           ImageAssetId="@(cur.Variant.MediaAssetIds.Count > 0 ? cur.Variant.MediaAssetIds[0] : null)"
+                                           ImageCount="cur.Variant.MediaAssetIds.Count" />
                     </MudItem>
                     <MudItem xs="12" lg="6">
                         <MudText Typo="Typo.body2" Class="mb-2"><b>確認結果</b></MudText>

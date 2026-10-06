@@ -52,7 +52,28 @@ public enum AiTaskType : short
     Classify = 10,
     Judge = 11,
     Summarize = 12,
+    /// <summary>画像・動画の理解（ALT テキスト生成・素材解析）。</summary>
+    Vision = 13,
 }
+
+public enum AiJobStatus : short { Queued = 1, Running = 2, Succeeded = 3, Failed = 4, Canceled = 5 }
+
+/// <summary>非同期処理の段階（RF-UX-001 RfJobProgress「待機中 → 生成中 → 確認中 → 完了」）。</summary>
+public enum AiJobStage : short { Waiting = 1, Generating = 2, Checking = 3, Done = 4 }
+
+/// <summary>比率変換の方法（F-04-6：引き伸ばし禁止）。</summary>
+public enum AspectMethod : short
+{
+    /// <summary>被写体を中心にしたスマートクロップ（0 クレジット・既定）。</summary>
+    SmartCrop = 1,
+    /// <summary>余白（背景色）を付ける（0 クレジット）。</summary>
+    Pad = 2,
+    /// <summary>AI で画像を広げる（アウトペインティング、5 クレジット）。</summary>
+    Outpaint = 3,
+}
+
+/// <summary>画像のスタイル（F-04 入力）。</summary>
+public enum ImageStyle : short { Photo = 1, Illustration = 2, Flat = 3, ThreeD = 4 }
 
 public enum AiGenerationStatus : short { Queued = 1, Running = 2, Succeeded = 3, Failed = 4, Blocked = 5 }
 

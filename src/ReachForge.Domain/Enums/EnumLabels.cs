@@ -56,4 +56,30 @@ public static class EnumLabels
         CopyFramework.List => "リスト型",
         _ => f.ToString(),
     };
+
+    public static string ToLabel(this ImageStyle s) => s switch
+    {
+        ImageStyle.Photo => "写真調",
+        ImageStyle.Illustration => "イラスト",
+        ImageStyle.Flat => "フラット",
+        ImageStyle.ThreeD => "3D",
+        _ => s.ToString(),
+    };
+
+    public static string ToLabel(this AspectMethod m) => m switch
+    {
+        AspectMethod.SmartCrop => "自動トリミング",
+        AspectMethod.Pad => "余白を付ける",
+        AspectMethod.Outpaint => "AIで広げる",
+        _ => m.ToString(),
+    };
+
+    public static string ToLabel(this AiJobStage s) => s switch
+    {
+        AiJobStage.Waiting => "待機中",
+        AiJobStage.Generating => "生成中",
+        AiJobStage.Checking => "確認中",
+        AiJobStage.Done => "完了",
+        _ => s.ToString(),
+    };
 }

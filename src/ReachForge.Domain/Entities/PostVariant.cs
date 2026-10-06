@@ -25,6 +25,9 @@ public sealed class PostVariant : Entity
     public string? Title { get; private set; }
     public List<Guid> MediaAssetIds { get; private set; } = [];
 
+    /// <summary>画像の比率変換の方法（F-04-6）。</summary>
+    public AspectMethod AspectMethod { get; set; } = AspectMethod.SmartCrop;
+
     /// <summary>SNS 固有設定（IG：Reels/カルーセル、TikTok：公開範囲 等）。</summary>
     public Dictionary<string, string> PlatformOptions { get; set; } = [];
 
@@ -99,7 +102,21 @@ public sealed class PostVariant : Entity
         Hashtags = [.. hashtags];
         Title = title;
         if (AiGenerationId is not null) IsAiEdited = true;
+        return AfterContentChange(requiresApproval);
+    }
 
+    /// <summary>添付メディア（SNS 用に比率変換済み）を差し替える。承認後の変更は再承認が必要。</summary>
+    public bool SetMedia(IEnumerable<Guid> mediaAssetIds, bool requiresApproval)
+    {
+        EnsureNot([VariantStatus.Publishing, VariantStatus.Published, VariantStatus.Canceled], "メディアの変更");
+        var ids = mediaAssetIds.ToList();
+        if (ids.SequenceEqual(MediaAssetIds)) return false;
+        MediaAssetIds = ids;
+        return AfterContentChange(requiresApproval);
+    }
+
+    private bool AfterContentChange(bool requiresApproval)
+    {
         if (Status == VariantStatus.Failed)
         {
             Status = VariantStatus.Draft;
@@ -123,12 +140,6 @@ public sealed class PostVariant : Entity
             Status = VariantStatus.Draft;
         }
         return false;
-    }
-
-    public void SetMedia(IEnumerable<Guid> mediaAssetIds)
-    {
-        EnsureNot([VariantStatus.Publishing, VariantStatus.Published, VariantStatus.Canceled], "メディアの変更");
-        MediaAssetIds = [.. mediaAssetIds];
     }
 
     /// <summary>承認を依頼する（Draft → InReview）。</summary>

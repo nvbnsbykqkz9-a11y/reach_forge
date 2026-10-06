@@ -30,6 +30,9 @@ public sealed class StubChatClient : IChatClient
             VariantStubPayload p => Serialize(Variant(p)),
             JudgeStubPayload p => Serialize(Judge(p)),
             DigestStubPayload p => Serialize(new DigestResult(Digest(p))),
+            AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
+                ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
+                : $"{PostText.Truncate(p.Hint, 40)}を表したイメージ",
             _ => "{}",
         };
         var response = new ChatResponse(new ChatMessage(ChatRole.Assistant, text))

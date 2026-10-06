@@ -24,6 +24,10 @@ public interface IAppDbContext
     DbSet<CreditAccount> CreditAccounts { get; }
     DbSet<WorkspaceMember> WorkspaceMembers { get; }
     DbSet<Invitation> Invitations { get; }
+    DbSet<AiJob> AiJobs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>追跡中のエンティティを DB の最新値で読み直す（Blazor のサーキットで他プロセスの更新を反映するため）。</summary>
+    Task ReloadAsync(object entity, CancellationToken cancellationToken = default);
 }

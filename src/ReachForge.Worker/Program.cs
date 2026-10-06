@@ -14,6 +14,7 @@ builder.Services.AddScoped<ITenantContext>(sp =>
     sp.GetRequiredService<TenantContextOverride>().Current ?? new MutableTenantContext { IsSystem = true, UserName = "system" });
 builder.Services.AddHostedService<PublishDispatcher>();
 builder.Services.AddHostedService<TokenRefreshScheduler>();
+builder.Services.AddHostedService<AiJobDispatcher>();
 // TODO(14章): MetricsCollectJob / TokenRefreshJob / InboxPollJob / WeeklyReportJob / CreditResetJob などを Hangfire で登録する
 
 var host = builder.Build();

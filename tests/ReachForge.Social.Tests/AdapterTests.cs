@@ -82,7 +82,7 @@ public class AdapterTests
     {
         var http = new FakeHttp().Respond("2/tweets", """{"data":{"id":"999","text":"..."}}""", HttpStatusCode.Created);
         var result = await new XPublisher(http).PublishAsync(Variant(SocialPlatform.X, "秋の新作", "秋限定"),
-            Credential(SocialPlatform.X, token: new StoredToken("at").With("username", "hokkori")), CancellationToken.None);
+            Credential(SocialPlatform.X, token: new StoredToken("at").With("username", "hokkori")), [], CancellationToken.None);
 
         Assert.Equal("Bearer at", http.Requests[0].Headers["Authorization"]);
         Assert.Equal("秋の新作\n\n#秋限定",
@@ -99,7 +99,7 @@ public class AdapterTests
     {
         var http = new FakeHttp().Respond("2/tweets", """{"title":"Error","detail":"something"}""", status);
         var ex = await Assert.ThrowsAsync<SocialApiException>(() =>
-            new XPublisher(http).PublishAsync(Variant(SocialPlatform.X, "本文"), Credential(SocialPlatform.X), CancellationToken.None));
+            new XPublisher(http).PublishAsync(Variant(SocialPlatform.X, "本文"), Credential(SocialPlatform.X), [], CancellationToken.None));
         Assert.Equal(transient, ex.IsTransient);
         Assert.Equal(reauth, ex.RequiresReauth);
     }
@@ -132,7 +132,7 @@ public class AdapterTests
     {
         var http = new FakeHttp().Respond("v24.0/page-1/feed", """{"id":"page-1_42"}""");
         var result = await new FacebookPublisher(http, FakeHttp.Options()).PublishAsync(
-            Variant(SocialPlatform.Facebook, "新作です https://example.com/menu"), Credential(SocialPlatform.Facebook, "page-1"),
+            Variant(SocialPlatform.Facebook, "新作です https://example.com/menu"), Credential(SocialPlatform.Facebook, "page-1"), [],
             CancellationToken.None);
         Assert.Contains("link=https%3A%2F%2Fexample.com%2Fmenu", http.Requests[0].Body);
         Assert.Equal("https://www.facebook.com/page-1_42", result.Url);
@@ -144,14 +144,14 @@ public class AdapterTests
         var http = new FakeHttp().Respond("feed", """{"error":{"message":"Error validating access token","type":"OAuthException","code":190}}""",
             HttpStatusCode.BadRequest);
         var ex = await Assert.ThrowsAsync<SocialApiException>(() => new FacebookPublisher(http, FakeHttp.Options())
-            .PublishAsync(Variant(SocialPlatform.Facebook, "本文"), Credential(SocialPlatform.Facebook), CancellationToken.None));
+            .PublishAsync(Variant(SocialPlatform.Facebook, "本文"), Credential(SocialPlatform.Facebook), [], CancellationToken.None));
         Assert.True(ex.RequiresReauth);
     }
 
     [Fact]
     public async Task Instagram_requires_media()
     {
-        var publisher = new InstagramPublisher(new FakeHttp(), FakeHttp.Options(), new ServiceCollection().BuildServiceProvider());
+        var publisher = new InstagramPublisher(new FakeHttp(), FakeHttp.Options());
         var validation = await publisher.ValidateAsync(Variant(SocialPlatform.Instagram, "本文"), CancellationToken.None);
         Assert.Contains(validation.Errors, e => e.Contains("画像"));
     }
@@ -166,7 +166,7 @@ public class AdapterTests
             .Respond("v1.0/th-1/threads_publish", """{"id":"post-1"}""")
             .Respond("v1.0/post-1?fields=permalink", """{"permalink":"https://www.threads.net/@hokkori/post/abc"}""");
         var result = await new ThreadsPublisher(http, FakeHttp.Options()).PublishAsync(
-            Variant(SocialPlatform.Threads, "秋の新作、飲みました？", "秋限定"), Credential(SocialPlatform.Threads, "th-1"), CancellationToken.None);
+            Variant(SocialPlatform.Threads, "秋の新作、飲みました？", "秋限定"), Credential(SocialPlatform.Threads, "th-1"), [], CancellationToken.None);
 
         Assert.Contains("media_type=TEXT", http.Requests[0].Body);
         Assert.Contains("creation_id=container", http.Requests[1].Body);
@@ -220,13 +220,75 @@ public class AdapterTests
             .Respond("v2/bot/message/broadcast", """{"message":"The retry key is already accepted"}""", HttpStatusCode.Conflict);
         var publisher = new LinePublisher(http);
 
-        var first = await publisher.PublishAsync(variant, Credential(SocialPlatform.Line), CancellationToken.None);
-        var second = await publisher.PublishAsync(variant, Credential(SocialPlatform.Line), CancellationToken.None);
+        var first = await publisher.PublishAsync(variant, Credential(SocialPlatform.Line), [], CancellationToken.None);
+        var second = await publisher.PublishAsync(variant, Credential(SocialPlatform.Line), [], CancellationToken.None);
 
         Assert.Equal(http.Requests[0].Headers["X-Line-Retry-Key"], http.Requests[1].Headers["X-Line-Retry-Key"]);
         Assert.True(Guid.TryParse(http.Requests[0].Headers["X-Line-Retry-Key"], out _));
         Assert.Equal(first.ExternalPostId, second.ExternalPostId);
         Assert.Contains("\"type\":\"text\"", http.Requests[0].Body);
+    }
+
+    // ---------- 画像付き投稿 ----------
+
+    private static PublishMedia Image(string url = "https://cdn.example/img.jpg", string? alt = "湯気の立つラテ") =>
+        new(Guid.NewGuid(), "image/jpeg", alt, true, _ => Task.FromResult(new byte[] { 0xFF, 0xD8, 0xFF }),
+            _ => Task.FromResult(url), _ => Task.FromResult(url + "?thumb"));
+
+    [Fact]
+    public async Task X_uploads_media_sets_alt_text_and_attaches_ids()
+    {
+        var http = new FakeHttp()
+            .Respond("2/media/upload", """{"data":{"id":"m1","media_key":"3_m1"}}""")
+            .Respond("2/media/metadata", "{}")
+            .Respond("2/tweets", """{"data":{"id":"t1"}}""");
+        await new XPublisher(http).PublishAsync(Variant(SocialPlatform.X, "秋の新作"), Credential(SocialPlatform.X), [Image()],
+            CancellationToken.None);
+
+        Assert.Contains("tweet_image", http.Requests[0].Body);
+        Assert.Contains("alt_text", http.Requests[1].Body);
+        var tweet = System.Text.Json.Nodes.JsonNode.Parse(http.Requests[2].Body!)!;
+        Assert.Equal("m1", tweet["media"]!["media_ids"]![0]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task Instagram_publishes_image_container_with_public_url()
+    {
+        var http = new FakeHttp()
+            .Respond("v24.0/ig1/media", """{"id":"c1"}""")
+            .Respond("v24.0/c1?fields=status_code", """{"status_code":"FINISHED"}""")
+            .Respond("v24.0/ig1/media_publish", """{"id":"p1"}""")
+            .Respond("v24.0/p1?fields=permalink", """{"permalink":"https://www.instagram.com/p/abc/"}""");
+        var v = Variant(SocialPlatform.Instagram, "秋の新作", "秋限定");
+        v.SetMedia([Guid.NewGuid()], requiresApproval: false);
+        var result = await new InstagramPublisher(http, FakeHttp.Options()).PublishAsync(v, Credential(SocialPlatform.Instagram, "ig1"),
+            [Image("https://cdn.example/ig.jpg")], CancellationToken.None);
+
+        Assert.Contains("image_url=https%3A%2F%2Fcdn.example%2Fig.jpg", http.Requests[0].Body);
+        Assert.Equal("https://www.instagram.com/p/abc/", result.Url);
+    }
+
+    [Fact]
+    public async Task Facebook_threads_and_line_attach_images()
+    {
+        var fb = new FakeHttp().Respond("v24.0/page-1/photos", """{"id":"ph1","post_id":"page-1_9"}""");
+        var r = await new FacebookPublisher(fb, FakeHttp.Options()).PublishAsync(Variant(SocialPlatform.Facebook, "本文"),
+            Credential(SocialPlatform.Facebook, "page-1"), [Image()], CancellationToken.None);
+        Assert.Equal("page-1_9", r.ExternalPostId);
+        Assert.Contains("url=https%3A%2F%2Fcdn.example", fb.Requests[0].Body);
+
+        var th = new FakeHttp()
+            .Respond("threads", """{"id":"c"}""").Respond("threads_publish", """{"id":"p"}""").Respond("p?fields=permalink", "{}");
+        await new ThreadsPublisher(th, FakeHttp.Options()).PublishAsync(Variant(SocialPlatform.Threads, "本文"),
+            Credential(SocialPlatform.Threads, "th-1"), [Image()], CancellationToken.None);
+        Assert.Contains("media_type=IMAGE", th.Requests[0].Body);
+
+        var line = new FakeHttp().Respond("v2/bot/message/broadcast", "{}");
+        await new LinePublisher(line).PublishAsync(Variant(SocialPlatform.Line, "本文"), Credential(SocialPlatform.Line), [Image()],
+            CancellationToken.None);
+        var messages = System.Text.Json.Nodes.JsonNode.Parse(line.Requests[0].Body!)!["messages"]!.AsArray();
+        Assert.Equal("image", messages[1]!["type"]!.GetValue<string>());
+        Assert.EndsWith("?thumb", messages[1]!["previewImageUrl"]!.GetValue<string>());
     }
 
     // ---------- Webhook ----------
