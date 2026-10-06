@@ -23,7 +23,13 @@
 {
     <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
         <RfMediaPicker Selected="_picked" SelectedChanged="PickedAsync" Max="99" ShowLibrary="false" />
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.Movie" Class="mt-2"
+                   OnClick="() => _videoMaker = !_videoMaker">ショート動画をつくる</MudButton>
     </MudPaper>
+    @if (_videoMaker)
+    {
+        <div class="mb-4"><RfVideoMaker OnCreated="VideoCreatedAsync" /></div>
+    }
 }
 
 <MudGrid>
@@ -56,8 +62,14 @@
                     <MudSpacer />
                     <MudIconButton Icon="@Icons.Material.Rounded.Close" aria-label="詳細を閉じる" OnClick="() => _current = null" />
                 </div>
-                <RfMediaImage AssetId="cur.Id" Alt="@cur.AltText" ShowAiBadge="cur.IsAiLabeled" Class="my-2" />
-                <MudText Typo="Typo.caption" Class="d-block">@cur.Width × @cur.Height ・ @(cur.Bytes / 1024) KB ・ @Time.Short(cur.CreatedAt)</MudText>
+                <RfMediaImage AssetId="cur.Id" Alt="@cur.AltText" ShowAiBadge="cur.IsAiLabeled" Class="my-2" Controls="true" />
+                <MudText Typo="Typo.caption" Class="d-block">@cur.Width × @cur.Height@(cur.DurationMs is { } ms ? $" ・ {ms / 1000.0:0.#}秒" : "") ・ @(cur.Bytes / 1024) KB ・ @Time.Short(cur.CreatedAt)</MudText>
+                @if (cur.SubtitlesSrt is { Length: > 0 } srt)
+                {
+                    <MudExpansionPanels Elevation="0" Class="mt-2">
+                        <MudExpansionPanel Text="字幕（SRT）"><pre class="rf-srt">@srt</pre></MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
                 <MudText Typo="Typo.caption" Class="d-block">
                     @(cur.Source switch { MediaSource.AiGenerated => "AI生成", MediaSource.AiEdited => "AI編集", MediaSource.Upload => "アップロード", _ => "編集（文字入れ）" })
                     ・ 安全性チェック：@(cur.SafetyResult == "ok" ? "問題なし" : cur.SafetyResult == "not_checked" ? "未設定（判定なし）" : cur.SafetyResult)
@@ -75,6 +87,8 @@
                                OnClick="AltAsync" Disabled="_altBusy">ALTをAIで作る</MudButton>
                 </div>
 
+                @if (cur.Kind == MediaKind.Image)
+                {
                 <MudExpansionPanels Elevation="0" Class="mt-4">
                     <MudExpansionPanel Text="文字を入れる">
                         <MudTextField T="string" @bind-Value="_textHeadline" Label="見出し（30字まで）" Variant="Variant.Outlined" MaxLength="30" Counter="30" />
@@ -94,6 +108,7 @@
                                    Disabled="@(_textBusy || string.IsNullOrWhiteSpace(_textHeadline))">文字入りの画像をつくる</MudButton>
                     </MudExpansionPanel>
                 </MudExpansionPanels>
+                }
 
                 <MudText Typo="Typo.body2" Class="mt-4"><b>使用中の投稿（@_usages.Count）</b></MudText>
                 @foreach (var v in _usages)
@@ -116,7 +131,14 @@
     private MediaAsset? _current;
     private IReadOnlyList<PostVariant> _usages = [];
     private string? _alt, _provenance;
-    private bool _altBusy, _textBusy;
+    private bool _altBusy, _textBusy, _videoMaker;
+
+    private async Task VideoCreatedAsync(Guid id)
+    {
+        _videoMaker = false;
+        await LoadAsync();
+        if (_items.FirstOrDefault(i => i.Id == id) is { } m) await SelectAsync(m);
+    }
     private string? _textHeadline, _textSub;
     private TextPosition _textPosition = TextPosition.Bottom;
     private string _textBand = "#1B2333";

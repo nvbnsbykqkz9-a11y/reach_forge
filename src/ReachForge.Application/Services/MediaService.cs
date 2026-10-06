@@ -134,13 +134,56 @@ public sealed class MediaService(
         return asset;
     }
 
+    /// <summary>合成した動画を保存し、先頭のシーンからサムネイル（LINE のプレビュー等）を作る。</summary>
+    internal async Task<MediaAsset> SaveVideoAsync(ComposedVideo video, string fileName, byte[] firstFrame, string srt, CancellationToken ct)
+    {
+        var id = Guid.CreateVersion7();
+        var path = $"{tenant.TenantId:N}/{tenant.WorkspaceId:N}/{id:N}.mp4";
+        await storage.SaveAsync(path, video.Mp4, "video/mp4", ct);
+        var asset = new MediaAsset
+        {
+            TenantId = tenant.TenantId,
+            WorkspaceId = tenant.WorkspaceId,
+            Kind = MediaKind.Video,
+            Source = MediaSource.AiGenerated,
+            BlobPath = path,
+            Mime = "video/mp4",
+            FileName = fileName,
+            Width = video.Width,
+            Height = video.Height,
+            DurationMs = video.DurationMs,
+            Bytes = video.Mp4.LongLength,
+            SubtitlesSrt = srt,
+            SafetyResult = "ok",
+        };
+        typeof(MediaAsset).GetProperty(nameof(MediaAsset.Id))!.SetValue(asset, id);
+        db.MediaAssets.Add(asset);
+        await ThumbnailCoreAsync(asset, firstFrame, ct);
+        return asset;
+    }
+
+    /// <summary>画面表示用：URL と種類（動画ならサムネイルの URL も）。</summary>
+    public async Task<(string Url, MediaKind Kind, string? PosterUrl)> DisplayAsync(Guid id, CancellationToken ct)
+    {
+        var asset = await db.MediaAssets.AsNoTracking().FirstOrDefaultAsync(m => m.Id == id, ct) ?? throw new NotFoundException("画像");
+        var url = await UrlAsync(id, ct);
+        if (asset.Kind != MediaKind.Video) return (url, asset.Kind, null);
+        var thumb = await db.MediaAssets.AsNoTracking().FirstOrDefaultAsync(m => m.ParentAssetId == id && m.DerivationKey == ThumbnailKey, ct);
+        return (url, asset.Kind, thumb is null ? null : await UrlAsync(thumb.Id, ct));
+    }
+
     /// <summary>ALT テキストを AI で作る（分類と同様にクレジットは消費しない）。</summary>
     public async Task<MediaAsset> GenerateAltAsync(Guid id, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
         var asset = await GetAsync(id, ct);
-        var bytes = await ReadAsync(asset, ct);
-        asset.AltText = await alt.DescribeAsync(bytes, asset.Mime, asset.FileName, ct);
+        // 動画はサムネイル（先頭のシーン）を見て説明する
+        var target = asset.Kind == MediaKind.Video
+            ? await db.MediaAssets.FirstOrDefaultAsync(m => m.ParentAssetId == asset.Id && m.DerivationKey == ThumbnailKey, ct) ?? asset
+            : asset;
+        if (target.Kind == MediaKind.Video) throw new DomainException(ErrorCodes.Validation, "この動画の説明は手入力してください。");
+        var bytes = await ReadAsync(target, ct);
+        asset.AltText = await alt.DescribeAsync(bytes, target.Mime, asset.FileName, ct);
         asset.AltTextIsAi = true;
         await db.SaveChangesAsync(ct);
         return asset;
@@ -199,6 +242,7 @@ public sealed class MediaService(
         {
             throw new DomainException(ErrorCodes.Validation, "「AIで広げる」は EnqueueOutpaintAsync で依頼してください。");
         }
+        if (source.Kind == MediaKind.Video) return source; // 動画は 9:16 で作成済み（変換しない）
         var c = PlatformCatalog.Get(platform);
         var key = $"{platform}:{c.ImageSize.Width}x{c.ImageSize.Height}:{method}";
         var existing = await db.MediaAssets.FirstOrDefaultAsync(m => m.ParentAssetId == source.Id && m.DerivationKey == key, ct);

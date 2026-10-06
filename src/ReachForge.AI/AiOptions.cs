@@ -44,6 +44,9 @@ public sealed class AiProviderOptions
     public decimal InputPricePerMTok { get; set; }
     public decimal OutputPricePerMTok { get; set; }
 
+    /// <summary>音声合成の声（OpenAI の voice 名など）。声のクローン（実在人物の声）は使わない。</summary>
+    public string? Voice { get; set; }
+
     /// <summary>画像1枚あたりの単価（USD）。</summary>
     public decimal PricePerImage { get; set; }
 

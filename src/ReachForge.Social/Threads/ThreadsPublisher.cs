@@ -20,7 +20,12 @@ public sealed class ThreadsPublisher(IHttpClientFactory http, IOptions<SocialOpt
         var client = http.CreateClient(ThreadsConnector.HttpClientName);
         var endpoint = $"{Version}/{credential.ExternalAccountId}/threads";
         var fields = new List<KeyValuePair<string, string>> { new("text", Text(variant)) };
-        if (media.Count > 1)
+        if (media.FirstOrDefault() is { IsVideo: true } video)
+        {
+            fields.Add(new("media_type", "VIDEO"));
+            fields.Add(new("video_url", await video.PublicUrlAsync(ct)));
+        }
+        else if (media.Count > 1)
         {
             var children = new List<string>();
             foreach (var item in media.Take(Capabilities.MaxImages))

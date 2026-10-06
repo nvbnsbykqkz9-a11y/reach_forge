@@ -26,3 +26,5 @@ public sealed record AbStubPayload(string Body, ReachForge.Domain.Entities.AbVar
 public sealed record BrandStubPayload(BrandAnalysisInput Input);
 
 public sealed record TrendStubPayload(ReachForge.Application.Services.BrandContext Brand, IReadOnlyList<TrendCandidate> Candidates);
+
+public sealed record ScriptStubPayload(string Theme, int SceneCount, int TargetSeconds, string BrandName);

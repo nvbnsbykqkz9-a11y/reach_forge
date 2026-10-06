@@ -99,4 +99,6 @@ public enum CreditOperation : short
     Narration30s = 7,
     ReplySuggestion = 8,
     Classification = 9,
+    /// <summary>テンプレート合成のショート動画（画像＋テロップ＋ナレーション）。生成AI動画（ShortVideo）より安い。</summary>
+    TemplateVideo = 10,
 }

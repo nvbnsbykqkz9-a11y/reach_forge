@@ -91,6 +91,7 @@ public static class CreditTable
         CreditOperation.Narration30s => 2 * quantity,
         CreditOperation.ReplySuggestion => 1,
         CreditOperation.Classification => 0,
+        CreditOperation.TemplateVideo => 20 * quantity,
         _ => throw new ArgumentOutOfRangeException(nameof(op)),
     };
 }

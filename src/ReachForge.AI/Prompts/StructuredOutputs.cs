@@ -35,3 +35,7 @@ public sealed record BrandDraftOutput(string BrandName, string Industry, int Cas
 public sealed record IdeaDraft(string Topic, double Relevance, string Format, string[] Angles, string Reason, bool Sensitive, int DaysBefore);
 
 public sealed record IdeaBatch(IdeaDraft[] Ideas);
+
+public sealed record SceneDraft(string Caption, string Narration, double Seconds);
+
+public sealed record ScriptDraft(string Title, SceneDraft[] Scenes);

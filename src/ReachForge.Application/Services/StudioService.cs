@@ -198,16 +198,18 @@ public sealed class StudioService(
     /// <summary>マスター投稿の画像を SNS の推奨比率・形式に変換する（引き伸ばしはしない）。</summary>
     private async Task<List<Guid>> DeriveMediaAsync(MasterPost post, SocialPlatform platform, AspectMethod method, CancellationToken ct)
     {
-        var limit = PlatformCatalog.Get(platform).MaxImages;
-        var ids = post.MediaAssetIds.Take(limit).ToList();
-        var sources = await db.MediaAssets.Where(m => ids.Contains(m.Id)).ToListAsync(ct);
+        var c = PlatformCatalog.Get(platform);
+        var all = await db.MediaAssets.Where(m => post.MediaAssetIds.Contains(m.Id)).ToListAsync(ct);
+        var ordered = post.MediaAssetIds.Select(id => all.FirstOrDefault(a => a.Id == id)).OfType<MediaAsset>().ToList();
+        // 動画は1本だけ（画像とは混ぜない）。動画に対応しない SNS（X は初期リリースで画像のみ、LINE を除く動画非対応）では画像を使う
+        var video = platform != SocialPlatform.X && (c.VideoAspect is not null || platform is SocialPlatform.Facebook or SocialPlatform.Line)
+            ? ordered.FirstOrDefault(a => a.Kind == MediaKind.Video)
+            : null;
+        if (video is not null) return [video.Id];
         var derived = new List<Guid>();
-        foreach (var id in ids)
+        foreach (var source in ordered.Where(a => a.Kind == MediaKind.Image).Take(c.MaxImages))
         {
-            if (sources.FirstOrDefault(s => s.Id == id) is { } source)
-            {
-                derived.Add((await media.DeriveForPlatformAsync(source, platform, method, ct)).Id);
-            }
+            derived.Add((await media.DeriveForPlatformAsync(source, platform, method, ct)).Id);
         }
         return derived;
     }

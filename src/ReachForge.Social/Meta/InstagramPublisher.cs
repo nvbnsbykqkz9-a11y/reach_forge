@@ -16,6 +16,7 @@ public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialO
 {
     public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(2);
     public const int MaxPolls = 30;
+    public const int VideoMaxPolls = 150; // 2秒×150＝5分
 
     private string Version => options.Value.Meta.GraphVersion;
     protected override bool RequiresMedia => true;
@@ -29,7 +30,15 @@ public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialO
 
         // ① メディアコンテナ作成（画像は JPEG（sRGB・8MB 以下）に変換済み）
         string container;
-        if (media.Count == 1)
+        if (media[0].IsVideo)
+        {
+            // リール（縦型動画）：動画の処理には時間がかかるため、完了待ちを長めにする
+            container = await CreateAsync(client, endpoint,
+                [new("media_type", "REELS"), new("video_url", await media[0].PublicUrlAsync(ct)), new("caption", Text(variant)),
+                 new("share_to_feed", "true")], credential, ct);
+            await WaitAsync(client, container, credential, ct, VideoMaxPolls);
+        }
+        else if (media.Count == 1)
         {
             container = await CreateAsync(client, endpoint,
                 [new("image_url", await media[0].PublicUrlAsync(ct)), new("caption", Text(variant))], credential, ct);
@@ -65,7 +74,7 @@ public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialO
         SocialHttp.Str(await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post, endpoint, fields, credential.AccessToken),
             "Instagram", ct), "id");
 
-    private async Task WaitAsync(HttpClient client, string container, ChannelCredential credential, CancellationToken ct)
+    private async Task WaitAsync(HttpClient client, string container, ChannelCredential credential, CancellationToken ct, int maxPolls = MaxPolls)
     {
         for (var i = 0; ; i++)
         {
@@ -77,7 +86,7 @@ public sealed class InstagramPublisher(IHttpClientFactory http, IOptions<SocialO
             {
                 throw new SocialApiException(ErrorCodes.PubFailed, $"Instagram がメディアを処理できませんでした（{code}）", isTransient: false);
             }
-            if (i >= MaxPolls) throw new SocialApiException(SocialHttp.TransientCode, "Instagram のメディア処理が終わりません", isTransient: true);
+            if (i >= maxPolls) throw new SocialApiException(SocialHttp.TransientCode, "Instagram のメディア処理が終わりません", isTransient: true);
             await Task.Delay(PollInterval, ct);
         }
     }

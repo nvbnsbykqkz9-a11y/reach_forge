@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<AbTestService>();
         services.AddScoped<BrandDiagnosisService>();
         services.AddScoped<TrendService>();
+        services.AddScoped<VideoService>();
         services.AddSingleton<ITrendSource, EventCalendarTrendSource>();
         services.AddScoped<MetricsCollectionService>();
         services.AddScoped<WorkspaceService>();

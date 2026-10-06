@@ -52,7 +52,10 @@ public sealed record PublishMedia(
     bool IsAiGenerated,
     Func<CancellationToken, Task<byte[]>> ReadAsync,
     Func<CancellationToken, Task<string>> PublicUrlAsync,
-    Func<CancellationToken, Task<string>> PreviewUrlAsync);
+    Func<CancellationToken, Task<string>> PreviewUrlAsync)
+{
+    public bool IsVideo => Mime.StartsWith("video/", StringComparison.Ordinal);
+}
 
 /// <summary>SNS API のエラー。一時的（再試行可）か恒久的かを分類する（F-08-5）。</summary>
 public sealed class SocialApiException(string errorCode, string message, bool isTransient) : Exception(message)

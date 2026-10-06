@@ -99,6 +99,10 @@ public static class DependencyInjection
             services.AddSingleton<IImageSafetyChecker, NotConfiguredImageSafetyChecker>();
         }
 
+        // ---- ショート動画（F-05）：FFmpeg ----
+        services.Configure<VideoOptions>(configuration.GetSection(VideoOptions.SectionName));
+        services.AddSingleton<IVideoComposer, FfmpegVideoComposer>();
+
         // ---- ブランド診断（F-02）：外部サイトの取得。リダイレクトは自前で検査するため自動追従しない ----
         services.AddHttpClient(SafeWebPageFetcher.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler

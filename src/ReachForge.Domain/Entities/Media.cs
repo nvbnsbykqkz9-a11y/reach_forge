@@ -37,6 +37,9 @@ public sealed class MediaAsset : Entity
     public string? AltText { get; set; }
     public bool AltTextIsAi { get; set; }
 
+    /// <summary>動画の字幕（SRT）。YouTube などへは字幕トラックとして送る。</summary>
+    public string? SubtitlesSrt { get; set; }
+
     /// <summary>有害性判定の結果（"ok" / "not_checked" / ブロック分類）。</summary>
     public string SafetyResult { get; set; } = "not_checked";
 

@@ -16,6 +16,11 @@ public sealed class XPublisher(IHttpClientFactory http, ILogger<XPublisher>? log
         IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
         var client = http.CreateClient(XConnector.HttpClientName);
+        // 動画は分割アップロード（INIT／APPEND／FINALIZE）が必要なため、初期リリースでは画像のみ（変換時に動画は外す）
+        if (media.Any(m => m.IsVideo))
+        {
+            throw new SocialApiException(Domain.Common.ErrorCodes.PubFailed, "X への動画投稿は準備中です。画像で投稿してください。", isTransient: false);
+        }
         var mediaIds = new List<string>();
         foreach (var item in media.Take(Capabilities.MaxImages))
         {

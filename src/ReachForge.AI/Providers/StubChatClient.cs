@@ -36,6 +36,7 @@ public sealed class StubChatClient : IChatClient
             AbStubPayload p => Serialize(new AbVariantDraft(AbVariant(p.Body, p.Variable))),
             BrandStubPayload p => Serialize(Brand(p.Input)),
             TrendStubPayload p => Serialize(Ideas(p)),
+            ScriptStubPayload p => Serialize(Script(p)),
             ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
@@ -210,6 +211,24 @@ public sealed class StubChatClient : IChatClient
             Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
         };
         return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
+    }
+
+    private static ScriptDraft Script(ScriptStubPayload p)
+    {
+        var theme = PostText.Truncate(p.Theme.Trim(), 14);
+        var lines = new[]
+        {
+            ($"{theme}", $"{theme}、もうチェックしましたか？"),
+            ("こだわりのポイント", "素材と仕上げにこだわりました。"),
+            ("おすすめの楽しみ方", "ゆったりした時間にぴったりです。"),
+            ("期間限定です", "期間限定なので、お早めにどうぞ。"),
+            ("お店で待っています", $"{p.BrandName}でお待ちしています！"),
+            ("詳しくはプロフィールへ", "詳しくはプロフィールのリンクから。"),
+        };
+        var count = Math.Clamp(p.SceneCount, 1, lines.Length);
+        var per = Math.Round((double)p.TargetSeconds / count, 1);
+        var picked = lines.Take(count - 1).Append(lines[4]).Take(count);
+        return new ScriptDraft($"{theme}のショート動画", [.. picked.Select(l => new SceneDraft(l.Item1, l.Item2, per))]);
     }
 
     /// <summary>業種の言葉を含む話題ほど関連度を高くする決定的な採点。</summary>

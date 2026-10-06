@@ -28,6 +28,7 @@ public sealed class AiJobProcessor(
     IAltTextGenerator alt,
     ICreditService credits,
     ReportService reports,
+    VideoService videos,
     TimeProvider clock,
     ILogger<AiJobProcessor> log)
 {
@@ -52,6 +53,11 @@ public sealed class AiJobProcessor(
         if (job.TaskType == AiTaskType.Report)
         {
             await ProcessReportAsync(job, ct);
+            return;
+        }
+        if (job.TaskType == AiTaskType.Video)
+        {
+            await ProcessVideoAsync(job, ct);
             return;
         }
 
@@ -82,6 +88,27 @@ public sealed class AiJobProcessor(
             if (ex is not DomainException) log.LogError(ex, "AI job {JobId} failed", job.Id);
             DiscardUnsaved();
             job.Fail(code, message, clock.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+            await credits.ReleaseReservedAsync(job.CreditsHeld, CancellationToken.None);
+        }
+    }
+
+    /// <summary>ショート動画（テンプレート合成）。成功時に実際の長さで確定し、失敗時は予約を解放する。</summary>
+    private async Task ProcessVideoAsync(AiJob job, CancellationToken ct)
+    {
+        try
+        {
+            var (video, actual) = await videos.ProcessAsync(job, ct);
+            var charged = await credits.CommitReservedAsync(job.CreditsHeld, actual, ct);
+            job.Succeed([video.Id], charged, clock.GetUtcNow());
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            if (ex is not DomainException) log.LogError(ex, "Video job {JobId} failed", job.Id);
+            DiscardUnsaved();
+            job.Fail(ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected,
+                ex is DomainException ? ex.Message : "動画を作成できませんでした。もう一度お試しください（クレジットは消費されていません）。", clock.GetUtcNow());
             await db.SaveChangesAsync(CancellationToken.None);
             await credits.ReleaseReservedAsync(job.CreditsHeld, CancellationToken.None);
         }

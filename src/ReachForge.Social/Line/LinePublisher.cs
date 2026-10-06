@@ -21,6 +21,17 @@ public sealed class LinePublisher(IHttpClientFactory http) : PublisherBase(Socia
         var messages = new List<object> { new { type = "text", text = Text(variant) } };
         foreach (var image in media.Take(Capabilities.MaxImages)) // 1回の送信は最大5メッセージ（本文＋画像4枚）
         {
+            if (image.IsVideo)
+            {
+                // 動画メッセージ：mp4 とプレビュー画像の HTTPS URL
+                messages.Add(new
+                {
+                    type = "video",
+                    originalContentUrl = await image.PublicUrlAsync(ct),
+                    previewImageUrl = await image.PreviewUrlAsync(ct),
+                });
+                continue;
+            }
             // 画像メッセージ：本体（JPEG/PNG・10MB 以下）とプレビュー（1MB 以下）の HTTPS URL
             messages.Add(new
             {

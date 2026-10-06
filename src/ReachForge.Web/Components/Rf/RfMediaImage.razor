@@ -1,7 +1,19 @@
-@* 画像の表示（期限付き URL を解決する）。AI 生成物には ✦ バッジを付ける（RF-UX-001 6.1 原則1） *@
+@* 画像・動画の表示（期限付き URL を解決する）。AI 生成物には ✦ バッジを付ける（RF-UX-001 6.1 原則1） *@
 @inject MediaService Media
 <div class="rf-media @Class" style="@Style">
-    @if (_url is not null)
+    @if (_url is not null && _kind == MediaKind.Video)
+    {
+        @if (Controls)
+        {
+            <video src="@_url" poster="@_poster" controls playsinline preload="metadata" aria-label="@(Alt ?? "動画")"></video>
+        }
+        else
+        {
+            <img src="@(_poster ?? "")" alt="@(Alt ?? "動画")" loading="lazy" />
+            <span class="rf-media-video" aria-hidden="true"><MudIcon Icon="@Icons.Material.Rounded.PlayCircle" Size="Size.Small" />動画</span>
+        }
+    }
+    else if (_url is not null)
     {
         <img src="@_url" alt="@(Alt ?? "")" loading="lazy" />
     }
@@ -22,13 +34,17 @@
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
 
+    /// <summary>動画を再生できる表示にする（一覧では静止画＋「動画」の印）。</summary>
+    [Parameter] public bool Controls { get; set; }
+
     private Guid _loaded;
-    private string? _url;
+    private string? _url, _poster;
+    private MediaKind _kind;
 
     protected override async Task OnParametersSetAsync()
     {
         if (_loaded == AssetId) return;
         _loaded = AssetId;
-        _url = await Media.UrlAsync(AssetId, CancellationToken.None);
+        (_url, _kind, _poster) = await Media.DisplayAsync(AssetId, CancellationToken.None);
     }
 }

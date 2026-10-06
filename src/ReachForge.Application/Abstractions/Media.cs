@@ -55,6 +55,19 @@ public interface IMediaStorage
     Task DeleteAsync(string path, CancellationToken ct);
 }
 
+/// <summary>動画の1シーン（9:16・1080×1920 にテロップを焼き込んだ画像と、表示秒数・ナレーション）。</summary>
+public sealed record VideoSceneInput(byte[] Image, double Seconds, byte[]? NarrationWav);
+
+public sealed record ComposedVideo(byte[] Mp4, int DurationMs, int Width, int Height);
+
+/// <summary>
+/// 動画の合成（F-05 ③ 処理 4〜5：FFmpeg）。9:16・1080×1920・H.264/AAC・faststart で書き出す。
+/// </summary>
+public interface IVideoComposer
+{
+    Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct);
+}
+
 public sealed record SafetyVerdict(bool Blocked, string Result)
 {
     public static readonly SafetyVerdict NotChecked = new(false, "not_checked");

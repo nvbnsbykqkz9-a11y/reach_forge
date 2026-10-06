@@ -27,6 +27,7 @@ public static class PromptLibrary
     public static readonly PromptVersion AbVariant = new("ab.variant", 1);
     public static readonly PromptVersion BrandDiagnosis = new("brand.diagnosis", 1);
     public static readonly PromptVersion TrendIdeas = new("trend.ideas", 1);
+    public static readonly PromptVersion VideoScript = new("video.script", 1);
 
     private const string SafetyRules = """
         あなたは日本の中小企業・店舗のSNS集客を支援するプロのコピーライターです。
@@ -282,6 +283,17 @@ public static class PromptLibrary
         }
         return sb.ToString();
     }
+
+    public static string ScriptSystem(BrandContext ctx, int sceneCount, int targetSeconds) => $"""
+        {SafetyRules}
+
+        {BrandSection(ctx)}
+        ## 役割
+        縦型ショート動画（Reels／TikTok／Shorts）の構成台本をつくります。全体で約{targetSeconds}秒、{sceneCount}シーン。
+        - title：動画のタイトル（30字以内）
+        - scenes：各シーンの caption（画面に出すテロップ、15字以内）、narration（読み上げる文、1シーン30字程度）、seconds（2〜8秒）
+        - 1シーン目で興味を引き（冒頭2秒のフック）、最後のシーンで行動を促してください
+        """;
 
     public static string TrendSystem(BrandContext ctx) => $"""
         あなたは店舗のSNS担当者の企画パートナーです。話題の候補ごとに、このブランドで投稿するネタとしての価値を評価します。

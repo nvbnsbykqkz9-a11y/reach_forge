@@ -16,6 +16,15 @@ public sealed class FacebookPublisher(IHttpClientFactory http, IOptions<SocialOp
     {
         var client = http.CreateClient(MetaConnector.HttpClientName);
         var text = Text(variant);
+        if (media.FirstOrDefault() is { IsVideo: true } video)
+        {
+            // 動画投稿（POST /{page-id}/videos）：file_url から取得
+            var uploaded = await SocialHttp.SendAsync(client, SocialHttp.Form(HttpMethod.Post,
+                $"{Version}/{credential.ExternalAccountId}/videos",
+                [new("file_url", await video.PublicUrlAsync(ct)), new("description", text)], credential.AccessToken), "Facebook", ct);
+            var videoId = SocialHttp.Str(uploaded, "id");
+            return new PublishResult(videoId, $"https://www.facebook.com/{videoId}");
+        }
         if (media.Count > 1)
         {
             // 複数写真：各写真を非公開（published=false）でアップロードし、attached_media で1つの投稿にまとめる
