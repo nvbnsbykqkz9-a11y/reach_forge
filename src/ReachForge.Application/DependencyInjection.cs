@@ -15,6 +15,8 @@ public static class DependencyInjection
         services.AddScoped<SchedulingService>();
         services.AddScoped<PublishingService>();
         services.AddScoped<ChannelService>();
+        services.AddScoped<ChannelTokenService>();
+        services.AddScoped<MemberService>();
         services.AddScoped<DashboardService>();
         services.AddScoped<WorkspaceService>();
         return services;

@@ -17,7 +17,7 @@ public sealed class AppFixture : IAsyncDisposable
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero));
     public ServiceProvider Services { get; }
 
-    private AppFixture(Dictionary<string, string?>? overrides)
+    private AppFixture(Dictionary<string, string?>? overrides, Action<IServiceCollection>? configure, bool prependConnector)
     {
         var settings = new Dictionary<string, string?>
         {
@@ -32,7 +32,9 @@ public sealed class AppFixture : IAsyncDisposable
 
         var services = new ServiceCollection();
         services.AddLogging(b => b.SetMinimumLevel(LogLevel.Warning));
+        if (prependConnector) configure?.Invoke(services); // 実コネクタ・デモより前に登録して優先させる
         services.AddReachForge(config);
+        if (!prependConnector) configure?.Invoke(services);
         services.AddSingleton<TimeProvider>(Clock);
         services.AddScoped<MutableTenantContext>(_ => new MutableTenantContext
         {
@@ -45,9 +47,10 @@ public sealed class AppFixture : IAsyncDisposable
         Services = services.BuildServiceProvider();
     }
 
-    public static async Task<AppFixture> CreateAsync(Dictionary<string, string?>? overrides = null)
+    public static async Task<AppFixture> CreateAsync(Dictionary<string, string?>? overrides = null,
+        Action<IServiceCollection>? configure = null, bool prependConnector = false)
     {
-        var f = new AppFixture(overrides);
+        var f = new AppFixture(overrides, configure, prependConnector);
         await DemoSeeder.InitializeAsync(f.Services, seed: true);
         return f;
     }

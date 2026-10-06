@@ -282,7 +282,7 @@ public class ContentFlowTests
     {
         await using var f = await AppFixture.CreateAsync();
         await using var scope = f.Scope();
-        var tiktok = await f.Get<ChannelService>(scope).CompleteConnectAsync(SocialPlatform.TikTok, null, null, CancellationToken.None);
+        var tiktok = (await f.Get<ChannelService>(scope).BeginConnectAsync(SocialPlatform.TikTok, "https://localhost/cb", CancellationToken.None)).Connected!;
         var db = f.Get<IAppDbContext>(scope);
         var post = new MasterPost { WorkspaceId = DemoSeeder.WorkspaceId, Title = "t", CoreMessage = "動画です" };
         db.MasterPosts.Add(post);

@@ -8,5 +8,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ReachForge.Application.Tests" />
+    <InternalsVisibleTo Include="ReachForge.Web.Tests" />
   </ItemGroup>
 </Project>

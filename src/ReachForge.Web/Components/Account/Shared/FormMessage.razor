@@ -1,0 +1,10 @@
+@* フォームのエラー・お知らせ（読み上げ：エラーは role="alert"） *@
+@if (!string.IsNullOrEmpty(Message))
+{
+    <div class="rf-auth-message @(IsError ? "rf-auth-error" : "rf-auth-info")" role="@(IsError ? "alert" : "status")">@Message</div>
+}
+
+@code {
+    [Parameter] public string? Message { get; set; }
+    [Parameter] public bool IsError { get; set; } = true;
+}

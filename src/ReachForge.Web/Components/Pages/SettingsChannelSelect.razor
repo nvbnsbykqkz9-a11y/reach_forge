@@ -1,0 +1,52 @@
+@page "/settings/channels/select/{Key}"
+@using ReachForge.Application.Social
+@inject ChannelService ChannelSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>アカウントを選ぶ｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">連携するアカウントを選ぶ</MudText>
+</div>
+
+@if (_selection is null)
+{
+    <RfEmptyState Icon="@Icons.Material.Rounded.TimerOff" Title="選択の有効期限が切れました" Message="もう一度「連携する」からやり直してください。"
+                  ActionText="SNS連携へ戻る" ActionHref="/settings/channels" />
+}
+else
+{
+    <MudText Typo="Typo.body2" Class="mb-3">
+        @PlatformCatalog.Get(_selection.Platform).DisplayName で管理しているアカウントが複数見つかりました。このワークスペースで使うものを1つ選んでください。
+        （同じアカウントは1つのワークスペースでのみ連携できます）
+    </MudText>
+    <MudList T="string">
+        @foreach (var a in _selection.Accounts)
+        {
+            <MudListItem T="string" OnClick="() => SelectAsync(a)" Icon="@Icons.Material.Rounded.AccountCircle">
+                <b>@a.DisplayName</b> <MudText Typo="Typo.caption" Inline="true">（ID: @a.ExternalAccountId）</MudText>
+            </MudListItem>
+        }
+    </MudList>
+}
+
+@code {
+    [Parameter] public string Key { get; set; } = "";
+    private PendingSelection? _selection;
+
+    protected override async Task OnInitializedAsync() => _selection = await ChannelSvc.GetSelectionAsync(Key, CancellationToken.None);
+
+    private async Task SelectAsync(ConnectedAccount account)
+    {
+        try
+        {
+            await ChannelSvc.SelectAccountAsync(Key, account.ExternalAccountId, CancellationToken.None);
+            Nav.NavigateTo($"/settings/channels?connected={account.Platform}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+}

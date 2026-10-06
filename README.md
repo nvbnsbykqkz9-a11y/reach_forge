@@ -19,9 +19,16 @@ Development 環境では次の状態で起動します。
 |---|---|
 | DB | SQLite（`reachforge.local.db`）。起動時に作成し、デモデータ（ほっこりカフェ渋谷店・連携済み4SNS・過去60日の指標）を投入 |
 | 生成AI | 決定的なスタブ（`local`）。API キーを設定すると Anthropic / OpenAI が優先され、障害時のみスタブへフォールバック |
-| SNS | モック（実際には投稿しない）。本文に `[[transient]]` / `[[fail]]` を含めると一時的／恒久的エラーを再現 |
-| 予約配信 | Web プロセス内で 15 秒ごとに実行（本番は `ReachForge.Worker`） |
-| 認証 | 未導入。デモテナントで動作し、右上メニューからロール（オーナー／編集者／承認者／閲覧者）を切り替えて権限を確認可能 |
+| SNS | 公式APIの設定がないSNSはデモ接続（モック、実際には投稿しない）。本文に `[[transient]]` / `[[fail]]` を含めると一時的／恒久的エラーを再現 |
+| 予約配信・トークン更新 | Web プロセス内で実行（本番は `ReachForge.Worker`） |
+| ログイン | 下記のデモ利用者（パスワード `ReachForge#2026`）。Development では管理者の MFA 必須を無効化 |
+
+| メール | ロール |
+|---|---|
+| owner@example.com | オーナー |
+| editor@example.com | 編集者 |
+| approver@example.com | 承認者 |
+| viewer@example.com | 閲覧者 |
 
 実際の生成AIを使う場合（User Secrets または環境変数）：
 
@@ -29,6 +36,33 @@ Development 環境では次の状態で起動します。
 dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:ApiKey" "<key>"
 # モデルは appsettings.json の AI:Providers / AI:Routes で設定（コードにハードコードしない）
 ```
+
+## 認証（RF-DES-001 9.1 / RF-UX-001 SCR-01・SCR-15）
+
+- ASP.NET Core Identity（Cookie）。5回失敗で15分ロック、エラー文はどちらが違うかを示さない、パスワード貼り付け可
+- 2段階認証（認証アプリの TOTP、回復コード）。**オーナー・管理者は必須**（`Auth:RequireMfaForAdmins`）
+- 新規登録でテナント・ワークスペース・オーナーを作成。メンバーは招待リンク（7日間有効、トークンはハッシュのみ保存）で参加
+- ロールは要求ごとに `WorkspaceMember` から解決するため、権限変更・メンバー削除は即時に反映される
+- 外部 ID（Google / Microsoft / Entra External ID）：`Auth:Oidc:<名前>` に Authority・ClientId・ClientSecret を設定すると有効。既存利用者（同じ確認済みメールアドレス）に紐づける
+- 監査ログ：ログイン・ログアウト・MFA 変更・招待・ロール変更・チャネル連携
+
+## SNS 公式 API 連携（初期リリース：X / Facebook / Instagram / Threads / LINE）
+
+各 SNS の開発者サイトでアプリを作成し、User Secrets・環境変数・Key Vault で設定します（リポジトリに置かない）。
+コールバック URL は `https://<ホスト>/api/v1/oauth/callback/<X|Facebook|Instagram|Threads>` を登録します。
+
+| SNS | 設定キー | 方式 |
+|---|---|---|
+| X | `Social:X:ClientId` / `ClientSecret` | OAuth 2.0 PKCE（S256）。約2時間で失効するため使用前にリフレッシュ |
+| Facebook / Instagram | `Social:Meta:AppId` / `AppSecret`（`GraphVersion`） | Facebook Login for Business → 長期トークン → ページ・IG ビジネスアカウントを選択。Instagram は画像必須（画像機能 F-04 で対応予定） |
+| Threads | `Social:Threads:AppId` / `AppSecret` | 長期トークン（60日）、期限7日前から自動更新 |
+| LINE 公式アカウント | （アプリ設定なし） | 画面でチャネル ID・シークレットを入力。ステートレストークンを都度発行。一斉配信は決定的な `X-Line-Retry-Key` で二重配信を防止 |
+
+- state（CSRF 対策）・PKCE は暗号化して10分保存し、1回限り・開始した利用者のみ有効（複数インスタンスでは `ConnectionStrings:Redis`）
+- トークンは `Secrets:KeyVaultUri` があれば Key Vault、なければ Data Protection で暗号化して DB に保存（DB には参照キーのみ）
+- エラー分類：401・Meta code 190 → 「要再接続」、429・5xx・通信断 → 指数バックオフで再試行、その他 4xx → 失敗。投稿の POST は HTTP 層では再試行しない
+- Webhook：`/api/v1/webhooks/meta`・`/threads`（`X-Hub-Signature-256`）、`/api/v1/webhooks/line/{channelId}`（`X-Line-Signature`）を署名検証。取り込み（受信箱）は F-09 で実装
+- 各社の API 仕様は変わるため、URL・バージョンは設定値。本番接続前に各社の公式ドキュメントで再確認すること（RF-DES-001 0.3）
 
 テスト：
 
@@ -50,6 +84,7 @@ src/
   ReachForge.Worker/          予約配信などのバックグラウンド処理
 tests/
   ReachForge.Domain.Tests / ReachForge.Application.Tests（SQLite＋スタブAI＋モックSNSのE2E）/ ReachForge.AI.Tests
+  ReachForge.Social.Tests（SNS アダプタの HTTP 検証）/ ReachForge.Web.Tests（認証・権限・Webhook の結合テスト）
 ```
 
 依存方向は Domain ← Application ← (AI / Social / Infrastructure) ← (Web / Worker)。外部 AI・SNS はすべてインタフェース越しに利用します。
@@ -58,7 +93,7 @@ tests/
 
 | 機能 | 状況 | 補足 |
 |---|---|---|
-| F-01 SNS連携 | △ | チャネル管理・プラン上限・重複接続防止・解除時の保留化。OAuth はデモ接続（各SNSの実接続は次段階） |
+| F-01 SNS連携 | ○ | X / Facebook / Instagram / Threads（OAuth）、LINE（チャネル資格情報）、アカウント選択、暗号化保存、自動更新・要再接続、Webhook 署名検証 |
 | F-02 ブランド | ○ | 口調・NGワード・必須表記・商品・版管理。ブランド診断（URL解析・RAG）は未着手 |
 | F-03 投稿文生成 | ○ | 構造化出力（失敗時1回再生成）・入出力ガードレール・PR表記自動挿入・ブランド適合度採点・クイック修正 |
 | F-04/F-05 画像・動画 | − | 未着手 |
@@ -72,9 +107,10 @@ tests/
 
 ## 次の段階（設計書との差分）
 
-1. 認証・認可：ASP.NET Core Identity ＋ Entra External ID、MFA、ワークスペース単位の権限
-2. SNS 公式 API アダプタ（X / Instagram・Facebook・Threads / LINE）と OAuth（state・PKCE）、Key Vault
-3. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
-4. PostgreSQL のマイグレーションと RLS、Redis（キャッシュ・分散ロック）
-5. 画像生成（F-04）・プロンプトのDB管理・AI Evals・SignalR による進捗通知
-6. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査
+1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
+2. 画像生成・メディア配信（F-04、Instagram 投稿・X の画像付き投稿に必要）、受信箱（F-09）
+3. パスワード再設定・メール送信（招待・ロック通知）、API キー認証（外部連携）、レート制限
+4. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
+5. PostgreSQL のマイグレーションと RLS
+6. プロンプトのDB管理・AI Evals・SignalR による進捗通知
+7. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

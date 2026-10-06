@@ -5,25 +5,28 @@ using ReachForge.Domain.Platforms;
 namespace ReachForge.Social.Mock;
 
 /// <summary>
-/// デモ接続（OAuth を行わずにモックのアカウントを連携する）。Local / Dev 環境専用。
-/// 本番の OAuth（state・PKCE を Redis に10分保存 → 認可 → コールバックで交換）は SNS 別コネクタで実装する（F-01）。
+/// デモ接続（OAuth を行わずにモックのアカウントを連携する）。Social:UseMock が true の環境で、
+/// 公式 API の設定がない SNS にだけ使われる（実コネクタが優先）。
 /// </summary>
 public sealed class DemoChannelConnector(TimeProvider clock) : IChannelConnector
 {
     public bool Supports(SocialPlatform platform) => true;
+    public ConnectMode Mode => ConnectMode.Demo;
 
-    public Task<string?> BeginAsync(SocialPlatform platform, Guid workspaceId, string callbackUrl, CancellationToken ct) =>
-        Task.FromResult<string?>(null);
-
-    public Task<ConnectedAccount> CompleteAsync(SocialPlatform platform, string? code, string? state, CancellationToken ct)
+    public Task<IReadOnlyList<ConnectedAccount>> ConnectAsync(SocialPlatform platform,
+        IReadOnlyDictionary<string, string> fields, CancellationToken ct)
     {
         var name = PlatformCatalog.Get(platform).DisplayName;
-        return Task.FromResult(new ConnectedAccount(
-            ExternalAccountId: $"demo-{platform.ToString().ToLowerInvariant()}",
-            DisplayName: $"@demo_{platform.ToString().ToLowerInvariant()}（{name}デモ）",
-            AvatarUrl: null,
-            AccessToken: $"demo-token-{Guid.NewGuid():N}",
-            ExpiresAt: clock.GetUtcNow().AddDays(60),
-            Scopes: ["publish", "read_insights"]));
+        IReadOnlyList<ConnectedAccount> accounts =
+        [
+            new ConnectedAccount(platform,
+                ExternalAccountId: $"demo-{platform.ToString().ToLowerInvariant()}",
+                DisplayName: $"@demo_{platform.ToString().ToLowerInvariant()}（{name}デモ）",
+                AvatarUrl: null,
+                Token: new StoredToken("demo-token", null, clock.GetUtcNow().AddDays(60)),
+                Scopes: ["publish", "read_insights"],
+                IsDemo: true),
+        ];
+        return Task.FromResult(accounts);
     }
 }

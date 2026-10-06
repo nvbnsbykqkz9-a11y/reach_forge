@@ -20,7 +20,7 @@ public sealed class PublishingService(
     IAppDbContext db,
     ITenantContext context,
     IPublisherFactory publishers,
-    ICredentialStore credentials,
+    ChannelTokenService tokens,
     TimeProvider clock,
     ILogger<PublishingService> log)
 {
@@ -87,14 +87,14 @@ public sealed class PublishingService(
                     $"{name}の再認証が必要です。チャネル設定から再接続してください。", isTransient: false);
             }
 
-            var publisher = publishers.Get(v.Platform);
+            var publisher = publishers.Get(v.Platform, channel.IsDemo);
             var validation = await publisher.ValidateAsync(v, ct);
             if (!validation.IsValid)
             {
                 throw new SocialApiException(ErrorCodes.PubFailed, string.Join(" / ", validation.Errors), isTransient: false);
             }
 
-            var credential = await credentials.GetAsync(channel, ct);
+            var credential = await tokens.GetCredentialAsync(channel, ct);
             var result = await publisher.PublishAsync(v, credential, ct);
             v.MarkPublished(result.ExternalPostId, result.Url, clock.GetUtcNow());
             Record(v, "variant.published", result.Url);
@@ -108,6 +108,7 @@ public sealed class PublishingService(
         }
         catch (SocialApiException ex)
         {
+            if (ex.RequiresReauth && channel is not null) await tokens.MarkReauthAsync(channel, ex.Message, ct);
             v.MarkFailed(ex.ErrorCode, $"{name}への投稿に失敗しました（{ex.Message}）。内容を確認して再実行してください。");
             Record(v, "variant.publish_failed", ex.Message);
             log.LogWarning(ex, "Publish failed for {VariantId}", v.Id);

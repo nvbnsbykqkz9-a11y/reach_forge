@@ -20,6 +20,7 @@ public enum Permission
     ViewAnalytics,
     ManageBilling,
     ViewBilling,
+    ManageMembers,
 }
 
 /// <summary>ロール別権限マトリクス（RF-DES-001 11.1）。</summary>
@@ -42,6 +43,7 @@ public static class RolePolicy
         Permission.ViewAnalytics => true,
         Permission.ManageBilling => role is Role.Owner,
         Permission.ViewBilling => role is Role.Owner or Role.Admin,
+        Permission.ManageMembers => role is Role.Owner or Role.Admin,
         _ => false,
     };
 

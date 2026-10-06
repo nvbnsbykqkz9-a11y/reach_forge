@@ -1,0 +1,87 @@
+@page "/account/login-2fa"
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@inject SignInManager<AppUser> SignIn
+@inject AccountService Accounts
+@inject NavigationManager Nav
+
+<PageTitle>2段階認証｜ReachForge</PageTitle>
+
+<h1>2段階認証</h1>
+<p class="rf-help">
+    @(UseRecovery ? "保存しておいた回復コードを1つ入力してください。" : "認証アプリに表示されている6桁のコードを入力してください。")
+</p>
+
+<FormMessage Message="@_error" />
+
+<EditForm Model="Input!" FormName="login-2fa" OnValidSubmit="VerifyAsync" method="post">
+    <DataAnnotationsValidator />
+    <div class="rf-field">
+        <label for="code">@(UseRecovery ? "回復コード" : "確認コード")<span class="rf-required">必須</span></label>
+        @* 6桁を1つの入力欄で受け、貼り付け可（RF-UX-001 SCR-01） *@
+        <InputText id="code" @bind-Value="Input!.Code" autocomplete="one-time-code" inputmode="@(UseRecovery ? "text" : "numeric")" />
+        <ValidationMessage For="() => Input!.Code" />
+    </div>
+    @if (!UseRecovery)
+    {
+        <label class="rf-check"><InputCheckbox @bind-Value="Input!.RememberMachine" /> このデバイスでは次回から確認しない</label>
+    }
+    <button type="submit" class="rf-btn rf-btn-primary">確認する</button>
+</EditForm>
+
+<div class="rf-auth-links">
+    @if (UseRecovery)
+    {
+        <a href="@($"/account/login-2fa?returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}&rememberMe={RememberMe}")">認証アプリのコードを使う</a>
+    }
+    else
+    {
+        <a href="@($"/account/login-2fa?recovery=true&returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}&rememberMe={RememberMe}")">回復コードを使う</a>
+    }
+    <a href="/account/login">ログイン画面へ戻る</a>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] private bool RememberMe { get; set; }
+    [SupplyParameterFromQuery(Name = "recovery")] private bool UseRecovery { get; set; }
+    [SupplyParameterFromForm] private InputModel? Input { get; set; }
+
+    protected override void OnParametersSet() => Input ??= new();
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (await SignIn.GetTwoFactorAuthenticationUserAsync() is null) Nav.NavigateTo("/account/login", forceLoad: true);
+    }
+
+    private async Task VerifyAsync()
+    {
+        var user = await SignIn.GetTwoFactorAuthenticationUserAsync();
+        if (user is null)
+        {
+            Nav.NavigateTo("/account/login", forceLoad: true);
+            return;
+        }
+        var code = Input!.Code.Replace(" ", "").Replace("-", "");
+        var result = UseRecovery
+            ? await SignIn.TwoFactorRecoveryCodeSignInAsync(code)
+            : await SignIn.TwoFactorAuthenticatorSignInAsync(code, RememberMe, Input!.RememberMachine);
+        if (result.Succeeded)
+        {
+            await Accounts.AuditAsync(user, "auth.login", UseRecovery ? "mfa-recovery" : "mfa", default);
+            Nav.NavigateTo(AccountEndpoints.SafeReturnUrl(ReturnUrl), forceLoad: true);
+            return;
+        }
+        _error = result.IsLockedOut
+            ? "確認に何度も失敗したため、15分間ログインできません。"
+            : "コードが正しくありません。認証アプリの最新のコードを入力してください。";
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "コードを入力してください。")]
+        public string Code { get; set; } = "";
+        public bool RememberMachine { get; set; }
+    }
+}

@@ -1,0 +1,174 @@
+@page "/settings/members"
+@inject MemberService Members
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>メンバー・権限｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">メンバー・権限</MudText>
+</div>
+
+@if (!CanManage)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">メンバーの招待・ロール変更はオーナーと管理者のみ操作できます。</MudAlert>
+}
+
+<MudGrid>
+    <MudItem xs="12" md="7">
+        <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+            <MudText Typo="Typo.h6" Class="mb-2">メンバー（@_members.Count）</MudText>
+            <MudSimpleTable Dense="true" Elevation="0">
+                <thead><tr><th>名前</th><th>メール</th><th>ロール</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var m in _members)
+                    {
+                        <tr>
+                            <td>@m.DisplayName @if (m.UserId == Tenant.UserId) { <MudChip T="string" Size="Size.Small">あなた</MudChip> }</td>
+                            <td>@m.Email</td>
+                            <td>
+                                <MudSelect T="Role" Value="m.Role" ValueChanged="r => ChangeRoleAsync(m, r)" Dense="true" Variant="Variant.Outlined"
+                                           Disabled="@(!CanManage || m.UserId == Tenant.UserId)" aria-label="@($"{m.DisplayName}のロール")">
+                                    @foreach (var r in Enum.GetValues<Role>())
+                                    {
+                                        <MudSelectItem T="Role" Value="r">@r.ToLabel()</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            </td>
+                            <td>
+                                @if (CanManage && m.UserId != Tenant.UserId)
+                                {
+                                    <MudButton Size="Size.Small" Color="Color.Error" Variant="Variant.Text" OnClick="() => RemoveAsync(m)">外す</MudButton>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+            <MudText Typo="Typo.h6" Class="mb-2">招待する</MudText>
+            <MudTextField @bind-Value="_email" Label="メールアドレス" Variant="Variant.Outlined" InputType="InputType.Email" Disabled="!CanManage" Immediate="true" />
+            <MudSelect T="Role" @bind-Value="_role" Label="ロール" Variant="Variant.Outlined" Class="mt-3" Disabled="!CanManage">
+                @foreach (var r in Enum.GetValues<Role>())
+                {
+                    <MudSelectItem T="Role" Value="r">@r.ToLabel()</MudSelectItem>
+                }
+            </MudSelect>
+            <MudText Typo="Typo.caption" Class="d-block mt-2">このロールでできること：@RoleDescription(_role)</MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" Disabled="@(!CanManage || string.IsNullOrWhiteSpace(_email))"
+                       OnClick="InviteAsync">招待リンクを作る</MudButton>
+            @if (_link is not null)
+            {
+                <MudAlert Severity="Severity.Success" Class="mt-3">
+                    招待リンクを作りました（7日間有効）。招待する人に共有してください。
+                    <code class="rf-code mt-2">@_link</code>
+                </MudAlert>
+            }
+
+            @if (_pending.Count > 0)
+            {
+                <MudText Typo="Typo.body2" Class="mt-4 mb-1"><b>招待中</b></MudText>
+                @foreach (var i in _pending)
+                {
+                    <div class="d-flex align-center gap-2">
+                        <MudText Typo="Typo.body2" Style="flex:1">@i.Email（@i.Role.ToLabel()）〜@Time.Short(i.ExpiresAt)</MudText>
+                        @if (CanManage)
+                        {
+                            <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => RevokeAsync(i)">取り消す</MudButton>
+                        }
+                    </div>
+                }
+            }
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private IReadOnlyList<WorkspaceMember> _members = [];
+    private IReadOnlyList<Invitation> _pending = [];
+    private string _email = "";
+    private Role _role = Role.Editor;
+    private string? _link;
+
+    private bool CanManage => RolePolicy.Can(Tenant.Role, Permission.ManageMembers);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _members = await Members.ListAsync(CancellationToken.None);
+        _pending = await Members.PendingInvitationsAsync(CancellationToken.None);
+    }
+
+    private async Task InviteAsync()
+    {
+        try
+        {
+            var link = await Members.InviteAsync(_email, _role, CancellationToken.None);
+            _link = Nav.ToAbsoluteUri($"/account/invite/{link.Token}").ToString();
+            _email = "";
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task ChangeRoleAsync(WorkspaceMember m, Role role)
+    {
+        try
+        {
+            await Members.ChangeRoleAsync(m.Id, role, CancellationToken.None);
+            Snackbar.Add($"{m.DisplayName}さんのロールを「{role.ToLabel()}」に変更しました", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+        await LoadAsync();
+    }
+
+    private async Task RemoveAsync(WorkspaceMember m)
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync($"{m.DisplayName}さんをワークスペースから外しますか？", "外すと、この人はこのワークスペースを見られなくなります。",
+            yesText: "メンバーから外す", cancelText: "やめる");
+        if (ok != true) return;
+        try
+        {
+            await Members.RemoveAsync(m.Id, CancellationToken.None);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task RevokeAsync(Invitation i)
+    {
+        await Members.RevokeInvitationAsync(i.Id, CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private static string RoleDescription(Role r) => r switch
+    {
+        Role.Owner => "すべての操作（契約・課金、例外承認を含む）",
+        Role.Admin => "SNS連携・ブランド設定・メンバー管理・投稿の作成と承認",
+        Role.Editor => "投稿の作成・承認の依頼・予約（承認が必要なワークスペースでは承認済みのみ）",
+        Role.Approver => "投稿の承認・差し戻し・予約",
+        Role.Responder => "受信箱でのコメント・DMへの返信",
+        Role.Viewer => "ダッシュボード・分析・予定の閲覧",
+        _ => "",
+    };
+}

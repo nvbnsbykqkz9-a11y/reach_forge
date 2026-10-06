@@ -12,7 +12,10 @@ namespace ReachForge.Web.Api;
 /// </summary>
 public static class ApiEndpoints
 {
-    public sealed record ConnectResponse(string? AuthorizationUrl, Guid? ChannelId);
+    public sealed record ConnectResponse(string Mode, string? AuthorizationUrl, Guid? ChannelId, string[] CredentialFields);
+
+    public static string CallbackUrl(HttpContext http, SocialPlatform platform) =>
+        $"{http.Request.Scheme}://{http.Request.Host}/api/v1/oauth/callback/{platform}";
     public sealed record SavePostRequest(string Title, PostObjective Objective, string CoreMessage, string? Cta,
         string[]? Hashtags, Guid[]? ProductIds, Guid? CampaignId, Guid? AiGenerationId, string? Theme);
     public sealed record GenerateVariantsRequest(Guid[] ChannelIds, string? LinkUrl, bool IncludeUrlForX);
@@ -24,24 +27,38 @@ public static class ApiEndpoints
 
     public static void MapReachForgeApi(this IEndpointRouteBuilder app)
     {
-        var api = app.MapGroup("/api/v1").WithTags("ReachForge");
+        var api = app.MapGroup("/api/v1").WithTags("ReachForge").RequireAuthorization();
 
         // F-01 チャネル連携
         api.MapGet("/channels", (ChannelService s, CancellationToken ct) => s.ListAsync(ct));
         api.MapPost("/channels/{platform}/connect", async (SocialPlatform platform, HttpContext http, ChannelService s,
             CancellationToken ct) =>
         {
-            var callback = $"{http.Request.Scheme}://{http.Request.Host}/api/v1/oauth/callback/{platform}";
-            var url = await s.BeginConnectAsync(platform, callback, ct);
-            if (url is not null) return new ConnectResponse(url, null);
-            var channel = await s.CompleteConnectAsync(platform, null, null, ct);
-            return new ConnectResponse(null, channel.Id);
+            var start = await s.BeginConnectAsync(platform, CallbackUrl(http, platform), ct);
+            return new ConnectResponse(start.Mode.ToString(), start.AuthorizationUrl, start.Connected?.Id,
+                start.Fields.Select(f => f.Key).ToArray());
         });
-        api.MapGet("/oauth/callback/{platform}", async (SocialPlatform platform, string? code, string? state,
+        api.MapPost("/channels/{platform}/credentials", async (SocialPlatform platform, Dictionary<string, string> fields,
             ChannelService s, CancellationToken ct) =>
         {
-            await s.CompleteConnectAsync(platform, code, state, ct);
-            return Results.Redirect("/settings/channels");
+            var outcome = await s.ConnectWithCredentialsAsync(platform, fields, ct);
+            return new { channelId = outcome.Channel?.Id, selectionKey = outcome.SelectionKey };
+        });
+        // OAuth コールバック（各 SNS アプリに「https://<ホスト>/api/v1/oauth/callback/<SNS>」を登録する）
+        api.MapGet("/oauth/callback/{platform}", async (SocialPlatform platform, string? code, string? state, string? error,
+            ChannelService s, CancellationToken ct) =>
+        {
+            try
+            {
+                var outcome = await s.CompleteOAuthAsync(platform, code, state, error, ct);
+                return outcome.SelectionKey is { } key
+                    ? Results.LocalRedirect($"/settings/channels/select/{Uri.EscapeDataString(key)}")
+                    : Results.LocalRedirect($"/settings/channels?connected={platform}");
+            }
+            catch (ReachForge.Domain.Common.DomainException ex)
+            {
+                return Results.LocalRedirect($"/settings/channels?error={Uri.EscapeDataString(ex.Message)}");
+            }
         });
         api.MapDelete("/channels/{id:guid}", async (Guid id, ChannelService s, CancellationToken ct) =>
             Results.Ok(new { heldPosts = await s.DisconnectAsync(id, ct) }));

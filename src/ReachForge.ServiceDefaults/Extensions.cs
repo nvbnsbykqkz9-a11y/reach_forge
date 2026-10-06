@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -19,7 +20,9 @@ public static class Extensions
     {
         builder.ConfigureOpenTelemetry();
         builder.Services.AddHealthChecks().AddCheck("self", () => HealthCheckResult.Healthy(), ["live"]);
-        builder.Services.ConfigureHttpClientDefaults(http => http.AddStandardResilienceHandler());
+        // POST 等の unsafe メソッドは再試行しない（SNS への二重投稿防止。投稿の再試行は PublishingService が分類して行う）
+        builder.Services.ConfigureHttpClientDefaults(http =>
+            http.AddStandardResilienceHandler(o => o.Retry.DisableForUnsafeHttpMethods()));
         return builder;
     }
 

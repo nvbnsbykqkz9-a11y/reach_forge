@@ -5,12 +5,42 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 @inject NavigationManager Nav
+@using ReachForge.Application.Social
 
 <PageTitle>SNS連携｜ReachForge</PageTitle>
 
 <div class="rf-page-header">
     <MudText Typo="Typo.h4" tabindex="-1">SNS連携</MudText>
 </div>
+
+@if (Welcome)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">ようこそ！まずはSNSを1つだけ連携しましょう（あとから追加できます）。Instagramはビジネスまたはクリエイターアカウントが必要です。</MudAlert>
+}
+@if (!string.IsNullOrEmpty(ErrorQuery))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4">@ErrorQuery</MudAlert>
+}
+@if (_credentialPlatform is { } cp)
+{
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6">@PlatformCatalog.Get(cp).DisplayName を連携する</MudText>
+        @foreach (var f in _credentialFields)
+        {
+            <MudTextField T="string" Label="@f.Label" Variant="Variant.Outlined" Class="mt-3" Required="f.Required"
+                          InputType="@(f.Secret ? InputType.Password : InputType.Text)" HelperText="@f.Help"
+                          Value="@_credentialValues.GetValueOrDefault(f.Key)" ValueChanged="v => _credentialValues[f.Key] = v" />
+        }
+        @if (cp == SocialPlatform.Line)
+        {
+            <MudText Typo="Typo.caption" Class="d-block mt-2">連携後、LINE Developers の Webhook URL に、チャネルカードに表示される URL を設定してください。</MudText>
+        }
+        <div class="d-flex gap-2 mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitCredentialsAsync">連携する</MudButton>
+            <MudButton Variant="Variant.Text" OnClick="() => _credentialPlatform = null">やめる</MudButton>
+        </div>
+    </MudPaper>
+}
 
 @if (!CanManage)
 {
@@ -41,6 +71,14 @@
                     {
                         <MudText Typo="Typo.body2"><b>@connected.DisplayName</b></MudText>
                         <MudText Typo="Typo.caption" Class="d-block">最終確認：@(connected.LastCheckedAt is { } t ? Time.Short(t) : "—")</MudText>
+                        @if (connected.IsDemo)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">デモ接続（実際には投稿しません）</MudChip>
+                        }
+                        @if (connected.Platform == SocialPlatform.Line && !connected.IsDemo)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block">Webhook URL：<code>@Nav.BaseUri@($"api/v1/webhooks/line/{connected.Id}")</code></MudText>
+                        }
                         @if (connected.IsTokenExpiringSoon(Time.Now))
                         {
                             <MudText Typo="Typo.body2" Color="Color.Error">まもなく再接続が必要です（@(connected.TokenExpiresAt is { } e ? Time.Short(e) : "")まで）</MudText>
@@ -68,11 +106,18 @@
     }
 </MudGrid>
 <MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">
-    開発環境ではSNSのモック（デモ接続）を使います。本番の OAuth 連携は各SNSのアプリ審査後に有効になります。
+    公式APIのアプリ設定（Social:X / Meta / Threads）がないSNSは、開発環境ではデモ接続になります。TikTok・YouTube・LinkedIn・Pinterest はアプリ審査後のフェーズ2で対応します。
 </MudText>
 
 @code {
     private IReadOnlyList<Channel> _channels = [];
+    private SocialPlatform? _credentialPlatform;
+    private IReadOnlyList<ReachForge.Application.Social.CredentialField> _credentialFields = [];
+    private readonly Dictionary<string, string> _credentialValues = [];
+
+    [SupplyParameterFromQuery(Name = "welcome")] public bool Welcome { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string? ErrorQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "connected")] public string? ConnectedQuery { get; set; }
 
     private bool CanManage => RolePolicy.Can(Tenant.Role, Permission.ManageChannels);
 
@@ -80,6 +125,7 @@
     {
         await Time.ZoneAsync();
         await LoadAsync();
+        if (Enum.TryParse<SocialPlatform>(ConnectedQuery, out var p)) Snackbar.Add($"{PlatformCatalog.Get(p).DisplayName}を連携しました", Severity.Success);
     }
 
     private async Task LoadAsync() => _channels = await ChannelSvc.ListAsync(CancellationToken.None);
@@ -95,14 +141,39 @@
     {
         try
         {
-            var url = await ChannelSvc.BeginConnectAsync(platform, Nav.ToAbsoluteUri($"/api/v1/oauth/callback/{platform}").ToString(), CancellationToken.None);
-            if (url is not null)
+            var start = await ChannelSvc.BeginConnectAsync(platform,
+                Nav.ToAbsoluteUri($"/api/v1/oauth/callback/{platform}").ToString(), CancellationToken.None);
+            switch (start.Mode)
             {
-                Nav.NavigateTo(url, forceLoad: true);
-                return;
+                case ConnectMode.OAuth:
+                    Nav.NavigateTo(start.AuthorizationUrl!, forceLoad: true); // SNS の認可画面へ
+                    return;
+                case ConnectMode.Credentials:
+                    _credentialPlatform = platform;
+                    _credentialFields = start.Fields;
+                    _credentialValues.Clear();
+                    return;
+                default:
+                    Snackbar.Add($"{PlatformCatalog.Get(platform).DisplayName}をデモ接続しました（実際には投稿しません）", Severity.Success);
+                    await LoadAsync();
+                    return;
             }
-            await ChannelSvc.CompleteConnectAsync(platform, null, null, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task SubmitCredentialsAsync()
+    {
+        try
+        {
+            var platform = _credentialPlatform!.Value;
+            await ChannelSvc.ConnectWithCredentialsAsync(platform, _credentialValues, CancellationToken.None);
             Snackbar.Add($"{PlatformCatalog.Get(platform).DisplayName}を連携しました", Severity.Success);
+            _credentialPlatform = null;
+            _credentialValues.Clear();
             await LoadAsync();
         }
         catch (Exception ex)

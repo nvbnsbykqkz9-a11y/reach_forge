@@ -6,13 +6,15 @@ using ReachForge.Domain.Enums;
 namespace ReachForge.Social.Mock;
 
 /// <summary>
-/// 開発・結合テスト用のモック投稿（RF-DES-001 3.5「SNS はモック」）。実際には投稿せず、成功を返す。
+/// デモ接続チャネル用のモック投稿（RF-DES-001 3.5「SNS はモック」）。実際には投稿せず、成功を返す。
 /// 本文に <c>[[transient]]</c> を含めると一時的エラー、<c>[[fail]]</c> を含めると恒久的エラーを再現できる。
 /// </summary>
 public sealed class MockPublisher(SocialPlatform platform, ILogger<MockPublisher> log) : PublisherBase(platform)
 {
     public const string TransientMarker = "[[transient]]";
     public const string FailMarker = "[[fail]]";
+
+    public override bool IsSimulation => true;
 
     public override Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential, CancellationToken ct)
     {
@@ -22,7 +24,7 @@ public sealed class MockPublisher(SocialPlatform platform, ILogger<MockPublisher
         }
         if (variant.Body.Contains(TransientMarker, StringComparison.Ordinal))
         {
-            throw new SocialApiException("E-PUB-503", "SNS側が一時的に混み合っています（モック）", isTransient: true);
+            throw new SocialApiException(SocialHttp.TransientCode, "SNS側が一時的に混み合っています（モック）", isTransient: true);
         }
 
         var id = $"mock-{Platform.ToString().ToLowerInvariant()}-{Guid.CreateVersion7():N}";

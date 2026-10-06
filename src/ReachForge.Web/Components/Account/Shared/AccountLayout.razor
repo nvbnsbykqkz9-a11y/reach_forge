@@ -1,0 +1,16 @@
+@inherits LayoutComponentBase
+@* ログイン・登録などの画面（静的 SSR）。中央1カラム 400px、PC では左にサービスの価値を1文で示す（RF-UX-001 SCR-01） *@
+
+<a class="rf-skip-link" href="#main">本文へスキップ</a>
+<div class="rf-auth">
+    <aside class="rf-auth-hero" aria-hidden="true">
+        <div class="rf-auth-logo">◆ ReachForge</div>
+        <p class="rf-auth-tagline">ひとりでも、チームのように集客できる。</p>
+        <p class="rf-auth-sub">AIが投稿の企画・文章・SNSごとの調整を手伝い、承認と予約までを1つの流れで進めます。</p>
+    </aside>
+    <main id="main" class="rf-auth-main" tabindex="-1">
+        <div class="rf-auth-card">
+            @Body
+        </div>
+    </main>
+</div>

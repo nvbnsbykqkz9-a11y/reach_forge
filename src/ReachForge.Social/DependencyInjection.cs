@@ -1,9 +1,14 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ReachForge.Application.Social;
 using ReachForge.Domain.Enums;
+using ReachForge.Social.Line;
+using ReachForge.Social.Meta;
 using ReachForge.Social.Mock;
+using ReachForge.Social.Threads;
+using ReachForge.Social.X;
 
 namespace ReachForge.Social;
 
@@ -11,8 +16,33 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddReachForgeSocial(this IServiceCollection services, IConfiguration configuration)
     {
+        services.Configure<SocialOptions>(configuration.GetSection(SocialOptions.SectionName));
         var options = configuration.GetSection(SocialOptions.SectionName).Get<SocialOptions>() ?? new SocialOptions();
         services.AddSingleton<IPublisherFactory, PublisherFactory>();
+
+        // 公式 API（初期リリース：X / Facebook / Instagram / Threads / LINE）。
+        // 再試行は ServiceDefaults の標準ハンドラ（unsafe メソッドは再試行しない）に任せ、投稿の再試行は PublishingService が分類して行う。
+        services.AddHttpClient(XConnector.HttpClientName, (sp, c) =>
+            c.BaseAddress = new Uri(sp.GetRequiredService<IOptions<SocialOptions>>().Value.X.ApiBaseUrl));
+        services.AddHttpClient(MetaConnector.HttpClientName, (sp, c) =>
+            c.BaseAddress = new Uri(sp.GetRequiredService<IOptions<SocialOptions>>().Value.Meta.GraphBaseUrl));
+        services.AddHttpClient(ThreadsConnector.HttpClientName, (sp, c) =>
+            c.BaseAddress = new Uri(sp.GetRequiredService<IOptions<SocialOptions>>().Value.Threads.GraphBaseUrl));
+        services.AddHttpClient(LineConnector.HttpClientName, (sp, c) =>
+            c.BaseAddress = new Uri(sp.GetRequiredService<IOptions<SocialOptions>>().Value.Line.ApiBaseUrl));
+
+        // コネクタは Supports() が設定の有無を見て判定する。デモ接続は最後に登録し、実コネクタを優先する。
+        services.AddSingleton<IChannelConnector, XConnector>();
+        services.AddSingleton<IChannelConnector, MetaConnector>();
+        services.AddSingleton<IChannelConnector, ThreadsConnector>();
+        services.AddSingleton<IChannelConnector, LineConnector>();
+
+        services.AddSingleton<ISocialPublisher, XPublisher>();
+        services.AddSingleton<ISocialPublisher, FacebookPublisher>();
+        services.AddSingleton<ISocialPublisher, InstagramPublisher>();
+        services.AddSingleton<ISocialPublisher, ThreadsPublisher>();
+        services.AddSingleton<ISocialPublisher, LinePublisher>();
+        // TODO(フェーズ2): TikTok / YouTube / LinkedIn / Pinterest（アプリ審査・パートナー承認後）
 
         if (options.UseMock)
         {
@@ -23,8 +53,6 @@ public static class DependencyInjection
             }
             services.AddSingleton<IChannelConnector, DemoChannelConnector>();
         }
-        // TODO(F-01/F-08): X / Meta(Instagram・Facebook・Threads) / LINE の公式 API アダプタを
-        //   AddHttpClient<T>().AddStandardResilienceHandler() で登録する（初期リリース対象）。
         return services;
     }
 }

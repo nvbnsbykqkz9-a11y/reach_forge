@@ -1,0 +1,119 @@
+@page "/account/mfa"
+@attribute [Authorize]
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@inject UserManager<AppUser> Users
+@inject SignInManager<AppUser> SignIn
+@inject AccountService Accounts
+@inject NavigationManager Nav
+
+<PageTitle>2段階認証の設定｜ReachForge</PageTitle>
+
+<h1>2段階認証（MFA）</h1>
+
+@if (Required)
+{
+    <FormMessage IsError="false" Message="オーナー・管理者は2段階認証の設定が必要です。設定が終わると、すべての画面を使えるようになります。" />
+}
+<FormMessage Message="@_error" />
+
+@if (_recoveryCodes is not null)
+{
+    <FormMessage IsError="false" Message="2段階認証を有効にしました。認証アプリが使えなくなったときのために、回復コードを安全な場所に保存してください（各コードは1回だけ使えます）。" />
+    <code class="rf-code">@string.Join("  ", _recoveryCodes)</code>
+    <a class="rf-btn rf-btn-primary" style="margin-top:16px" href="/">ホームへ進む</a>
+}
+else if (_enabled)
+{
+    <p class="rf-help">2段階認証は有効です。ログインのたびに認証アプリのコードを確認します。</p>
+    <form method="post" @formname="disable-mfa" @onsubmit="DisableAsync">
+        <AntiforgeryToken />
+        <button type="submit" class="rf-btn rf-btn-secondary">2段階認証を無効にする</button>
+    </form>
+    <a href="/" class="rf-btn rf-btn-primary">ホームへ戻る</a>
+}
+else
+{
+    <p class="rf-help">
+        1. 認証アプリ（Microsoft Authenticator、Google 認証システムなど）で「セットアップキーを入力」を選び、次のキーを入力します。
+    </p>
+    <code class="rf-code" aria-label="セットアップキー">@FormatKey(_key)</code>
+    <details style="margin:8px 0 16px;font-size:.8125rem">
+        <summary>QRコード用のURI（パスワードマネージャーに登録する場合）</summary>
+        <code class="rf-code">@_uri</code>
+    </details>
+    <p class="rf-help">2. アプリに表示された6桁のコードを入力して、設定を完了します。</p>
+    <EditForm Model="Input!" FormName="enable-mfa" OnValidSubmit="EnableAsync" method="post">
+        <DataAnnotationsValidator />
+        <div class="rf-field">
+            <label for="code">確認コード<span class="rf-required">必須</span></label>
+            <InputText id="code" @bind-Value="Input!.Code" autocomplete="one-time-code" inputmode="numeric" />
+            <ValidationMessage For="() => Input!.Code" />
+        </div>
+        <button type="submit" class="rf-btn rf-btn-primary">有効にする</button>
+    </EditForm>
+}
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+    [SupplyParameterFromQuery(Name = "required")] private bool Required { get; set; }
+    [SupplyParameterFromForm] private InputModel? Input { get; set; }
+
+    protected override void OnParametersSet() => Input ??= new();
+    private AppUser _user = default!;
+    private bool _enabled;
+    private string _key = "", _uri = "";
+    private string? _error;
+    private IEnumerable<string>? _recoveryCodes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Users.GetUserAsync(HttpContext.User) ?? throw new InvalidOperationException("not signed in");
+        _enabled = await Users.GetTwoFactorEnabledAsync(_user);
+        if (_enabled) return;
+        var key = await Users.GetAuthenticatorKeyAsync(_user);
+        if (string.IsNullOrEmpty(key))
+        {
+            await Users.ResetAuthenticatorKeyAsync(_user);
+            key = await Users.GetAuthenticatorKeyAsync(_user);
+        }
+        _key = key!;
+        _uri = $"otpauth://totp/{Uri.EscapeDataString("ReachForge:" + _user.Email)}?secret={_key}&issuer=ReachForge&digits=6";
+    }
+
+    private async Task EnableAsync()
+    {
+        var code = Input!.Code.Replace(" ", "").Replace("-", "");
+        if (!await Users.VerifyTwoFactorTokenAsync(_user, Users.Options.Tokens.AuthenticatorTokenProvider, code))
+        {
+            _error = "コードが正しくありません。認証アプリの最新のコードを入力してください。";
+            return;
+        }
+        await Users.SetTwoFactorEnabledAsync(_user, true);
+        _recoveryCodes = await Users.GenerateNewTwoFactorRecoveryCodesAsync(_user, 10);
+        await Accounts.AuditAsync(_user, "auth.mfa_enabled", null, default);
+        await SignIn.RefreshSignInAsync(_user);
+    }
+
+    private async Task DisableAsync()
+    {
+        await Users.SetTwoFactorEnabledAsync(_user, false);
+        await Users.ResetAuthenticatorKeyAsync(_user);
+        await Accounts.AuditAsync(_user, "auth.mfa_disabled", null, default);
+        await SignIn.RefreshSignInAsync(_user);
+        Nav.NavigateTo("/account/mfa", forceLoad: true);
+    }
+
+    private static string FormatKey(string key)
+    {
+        var sb = new StringBuilder();
+        for (var i = 0; i < key.Length; i += 4) sb.Append(key.AsSpan(i, Math.Min(4, key.Length - i))).Append(' ');
+        return sb.ToString().TrimEnd().ToLowerInvariant();
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "コードを入力してください。")]
+        public string Code { get; set; } = "";
+    }
+}

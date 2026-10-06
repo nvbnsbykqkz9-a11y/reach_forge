@@ -1,9 +1,11 @@
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
+using ReachForge.Infrastructure.Identity;
 
 namespace ReachForge.Infrastructure.Persistence;
 
@@ -14,6 +16,17 @@ public static class DemoSeeder
 {
     public static readonly Guid TenantId = Guid.Parse("01929f00-0000-7000-8000-000000000001");
     public static readonly Guid WorkspaceId = Guid.Parse("01929f00-0000-7000-8000-000000000002");
+
+    /// <summary>開発用ログイン（Development 環境でのみ作成）。本番では使わない。</summary>
+    public const string DemoPassword = "ReachForge#2026";
+
+    public static readonly (string Email, string Name, Role Role)[] DemoUsers =
+    [
+        ("owner@example.com", "田中", Role.Owner),
+        ("editor@example.com", "佐々木", Role.Editor),
+        ("approver@example.com", "高橋", Role.Approver),
+        ("viewer@example.com", "鈴木", Role.Viewer),
+    ];
 
     /// <summary>DB を作成し、空ならデモデータを投入する。</summary>
     public static async Task InitializeAsync(IServiceProvider services, bool seed, CancellationToken ct = default)
@@ -28,6 +41,26 @@ public static class DemoSeeder
         if (!seed || await db.Tenants.AnyAsync(ct)) return;
 
         await SeedAsync(db, clock.GetUtcNow(), ct);
+
+        // 認証基盤が登録されているホスト（Web）ではデモ用のログイン利用者も作る
+        if (scope.ServiceProvider.GetService<UserManager<AppUser>>() is { } users)
+        {
+            foreach (var (email, name, role) in DemoUsers)
+            {
+                var user = new AppUser
+                {
+                    UserName = email, Email = email, EmailConfirmed = true, DisplayName = name, TenantId = TenantId,
+                    LastWorkspaceId = WorkspaceId, CreatedAt = clock.GetUtcNow(),
+                };
+                var result = await users.CreateAsync(user, DemoPassword);
+                if (!result.Succeeded) continue;
+                db.WorkspaceMembers.Add(new WorkspaceMember
+                {
+                    TenantId = TenantId, WorkspaceId = WorkspaceId, UserId = user.Id, Email = email, DisplayName = name, Role = role,
+                });
+            }
+            await db.SaveChangesAsync(ct);
+        }
     }
 
     private static async Task SeedAsync(ReachForgeDbContext db, DateTimeOffset now, CancellationToken ct)
@@ -83,10 +116,11 @@ public static class DemoSeeder
                 Platform = p,
                 ExternalAccountId = $"demo-{p.ToString().ToLowerInvariant()}",
                 DisplayName = p == SocialPlatform.Line ? "ほっこりカフェ（LINE公式）" : "@hokkori_cafe",
-                CredentialSecretRef = "dev://seed",
+                CredentialSecretRef = "demo://",
                 TokenExpiresAt = p == SocialPlatform.Instagram ? now.AddDays(5) : now.AddDays(60),
                 Scopes = ["publish", "read_insights"],
                 LastCheckedAt = now,
+                IsDemo = true,
             })
             .ToList();
         db.Channels.AddRange(channels);

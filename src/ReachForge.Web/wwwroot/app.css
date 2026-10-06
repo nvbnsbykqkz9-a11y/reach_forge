@@ -132,3 +132,32 @@ body { font-variant-numeric: tabular-nums; }
 }
 
 .mud-tab { text-transform: none !important; }
+
+/* 認証画面（静的 SSR） */
+.rf-auth { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--rf-color-surface-subtle); color: var(--rf-color-text-primary); font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", Meiryo, sans-serif; }
+.rf-auth-hero { background: linear-gradient(160deg, var(--rf-color-primary), var(--rf-color-ai)); color: #fff; padding: 64px; display: flex; flex-direction: column; justify-content: center; }
+.rf-auth-logo { font-size: 1.5rem; font-weight: 700; margin-bottom: 32px; }
+.rf-auth-tagline { font-size: 2rem; font-weight: 700; line-height: 1.4; margin: 0 0 16px; }
+.rf-auth-sub { font-size: 1rem; line-height: 1.8; opacity: .92; max-width: 440px; }
+.rf-auth-main { display: flex; align-items: center; justify-content: center; padding: 32px 16px; }
+.rf-auth-card { width: 100%; max-width: 400px; background: var(--rf-color-surface); border: 1px solid var(--rf-color-border); border-radius: var(--rf-radius-lg); padding: 32px; box-shadow: var(--rf-elevation-1); }
+.rf-auth-card h1 { font-size: 1.5rem; margin: 0 0 8px; }
+.rf-auth-card p.rf-help { color: var(--rf-color-text-secondary); font-size: .875rem; margin: 0 0 16px; line-height: 1.7; }
+.rf-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px; }
+.rf-field label { font-size: .8125rem; font-weight: 500; }
+.rf-field .rf-required { color: var(--rf-color-danger-text); font-size: .75rem; margin-left: 4px; }
+.rf-field input, .rf-field select { height: 40px; border: 1px solid var(--rf-color-border-input); border-radius: var(--rf-radius-md); padding: 0 12px; font-size: 1rem; background: var(--rf-color-surface); color: inherit; }
+.rf-field .validation-message { color: var(--rf-color-danger-text); font-size: .8125rem; }
+.rf-check { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; font-size: .875rem; }
+.rf-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 48px; width: 100%; border-radius: var(--rf-radius-md); border: 1px solid transparent; font-size: .9375rem; font-weight: 500; cursor: pointer; text-decoration: none; }
+.rf-btn-primary { background: var(--rf-color-primary); color: #fff; }
+.rf-btn-secondary { background: var(--rf-color-surface); color: var(--rf-color-text-primary); border-color: var(--rf-color-border-input); margin-bottom: 8px; }
+.rf-auth-links { display: flex; justify-content: space-between; gap: 8px; margin-top: 16px; font-size: .875rem; flex-wrap: wrap; }
+.rf-auth-links a { color: var(--rf-color-primary); }
+.rf-auth-divider { display: flex; align-items: center; gap: 8px; color: var(--rf-color-text-tertiary); font-size: .75rem; margin: 16px 0; }
+.rf-auth-divider::before, .rf-auth-divider::after { content: ""; flex: 1; border-top: 1px solid var(--rf-color-border); }
+.rf-auth-message { border-radius: var(--rf-radius-md); padding: 10px 12px; margin-bottom: 16px; font-size: .875rem; border-left: 4px solid; }
+.rf-auth-error { background: var(--rf-color-danger-bg); color: var(--rf-color-danger-text); border-color: var(--rf-color-danger); }
+.rf-auth-info { background: var(--rf-color-info-bg); color: var(--rf-color-text-primary); border-color: var(--rf-color-primary); }
+.rf-code { font-family: "Noto Sans Mono", monospace; background: var(--rf-color-surface-subtle); border: 1px solid var(--rf-color-border); border-radius: var(--rf-radius-md); padding: 8px 12px; word-break: break-all; display: block; }
+@media (max-width: 959px) { .rf-auth { grid-template-columns: 1fr; } .rf-auth-hero { display: none; } }

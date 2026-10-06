@@ -1,0 +1,111 @@
+@page "/account/login"
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.Extensions.Options
+@inject SignInManager<AppUser> SignIn
+@inject UserManager<AppUser> Users
+@inject AccountService Accounts
+@inject NavigationManager Nav
+@inject IOptions<AuthOptions> Auth
+
+<PageTitle>ログイン｜ReachForge</PageTitle>
+
+<h1>ログイン</h1>
+<p class="rf-help">ReachForge のアカウントでログインしてください。</p>
+
+<FormMessage Message="@_error" />
+
+@if (_external.Count > 0)
+{
+    <form method="post" action="/account/external-login">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        @foreach (var p in _external)
+        {
+            <button type="submit" name="provider" value="@p.Name" class="rf-btn rf-btn-secondary">@(p.DisplayName ?? p.Name) でログイン</button>
+        }
+    </form>
+    <div class="rf-auth-divider">または</div>
+}
+
+<EditForm Model="Input!" FormName="login" OnValidSubmit="LoginAsync" method="post">
+    <DataAnnotationsValidator />
+    <div class="rf-field">
+        <label for="email">メールアドレス<span class="rf-required">必須</span></label>
+        <InputText id="email" @bind-Value="Input!.Email" autocomplete="username" type="email" inputmode="email" />
+        <ValidationMessage For="() => Input!.Email" />
+    </div>
+    <div class="rf-field">
+        <label for="password">パスワード<span class="rf-required">必須</span></label>
+        <InputText id="password" @bind-Value="Input!.Password" autocomplete="current-password" type="password" />
+        <ValidationMessage For="() => Input!.Password" />
+    </div>
+    <label class="rf-check"><InputCheckbox @bind-Value="Input!.RememberMe" /> ログインしたままにする</label>
+    <button type="submit" class="rf-btn rf-btn-primary">ログイン</button>
+</EditForm>
+
+<div class="rf-auth-links">
+    @if (Auth.Value.AllowRegistration)
+    {
+        <a href="/account/register">新規登録</a>
+    }
+    <span style="color:var(--rf-color-text-tertiary)">パスワードを忘れた場合は管理者にご連絡ください</span>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] private string? ErrorCode { get; set; }
+    [SupplyParameterFromForm] private InputModel? Input { get; set; }
+
+    protected override void OnParametersSet() => Input ??= new();
+
+    private string? _error;
+    private List<AuthenticationScheme> _external = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _external = [.. await SignIn.GetExternalAuthenticationSchemesAsync()];
+        _error = ErrorCode switch
+        {
+            "locked" => LockedMessage,
+            "unregistered" => "このアカウントは登録されていません。招待を受けるか、新規登録してください。",
+            "external" => "外部アカウントでのログインに失敗しました。もう一度お試しください。",
+            _ => null,
+        };
+    }
+
+    private const string LockedMessage =
+        "ログインに5回失敗したため、15分間ログインできません。しばらくしてからお試しください。";
+
+    private async Task LoginAsync()
+    {
+        // パスワードマネージャー・貼り付けを妨げない（WCAG 3.3.8）。どちらが違うかは示さない。
+        var result = await SignIn.PasswordSignInAsync(Input!.Email.Trim(), Input!.Password, Input!.RememberMe, lockoutOnFailure: true);
+        var returnUrl = AccountEndpoints.SafeReturnUrl(ReturnUrl);
+        if (result.Succeeded)
+        {
+            if (await Users.FindByEmailAsync(Input!.Email.Trim()) is { } user) await Accounts.AuditAsync(user, "auth.login", "password", default);
+            Nav.NavigateTo(returnUrl, forceLoad: true);
+            return;
+        }
+        if (result.RequiresTwoFactor)
+        {
+            Nav.NavigateTo($"/account/login-2fa?returnUrl={Uri.EscapeDataString(returnUrl)}&rememberMe={Input!.RememberMe}", forceLoad: true);
+            return;
+        }
+        _error = result.IsLockedOut ? LockedMessage : "メールアドレスまたはパスワードが違います。";
+        // TODO(SCR-01): ロック時のメール通知
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "メールアドレスを入力してください。"), EmailAddress(ErrorMessage = "メールアドレスの形式を確認してください。")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "パスワードを入力してください。")]
+        public string Password { get; set; } = "";
+
+        public bool RememberMe { get; set; }
+    }
+}

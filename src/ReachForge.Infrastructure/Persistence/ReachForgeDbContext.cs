@@ -1,6 +1,9 @@
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection.EntityFrameworkCore;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
@@ -9,6 +12,8 @@ using ReachForge.Domain.Common;
 using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Guardrails;
+using ReachForge.Infrastructure.Identity;
+using ReachForge.Infrastructure.Security;
 
 namespace ReachForge.Infrastructure.Persistence;
 
@@ -20,7 +25,8 @@ public sealed class ReachForgeDbContext(
     DbContextOptions<ReachForgeDbContext> options,
     ITenantContext tenant,
     IAiUsageSink? usage = null,
-    TimeProvider? clock = null) : DbContext(options), IAppDbContext
+    TimeProvider? clock = null)
+    : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>(options), IAppDbContext, IDataProtectionKeyContext
 {
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
@@ -40,6 +46,12 @@ public sealed class ReachForgeDbContext(
     public DbSet<PostMetric> PostMetrics => Set<PostMetric>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CreditAccount> CreditAccounts => Set<CreditAccount>();
+    public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
+    public DbSet<Invitation> Invitations => Set<Invitation>();
+    public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
+
+    /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
+    public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     // グローバルクエリフィルタから参照する（要求ごとに評価される）
     private Guid CurrentTenantId => tenant.TenantId;
@@ -57,6 +69,13 @@ public sealed class ReachForgeDbContext(
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        base.OnModelCreating(b); // Identity のテーブル
+        b.Entity<AppUser>().HasIndex(u => u.TenantId);
+        b.Entity<ChannelSecret>().HasIndex(x => x.ChannelId);
+        b.Entity<WorkspaceMember>().HasIndex(x => new { x.WorkspaceId, x.UserId }).IsUnique();
+        b.Entity<WorkspaceMember>().HasIndex(x => x.UserId);
+        b.Entity<Invitation>().HasIndex(x => x.TokenHash).IsUnique();
+
         foreach (var type in b.Model.GetEntityTypes().Where(t => typeof(Entity).IsAssignableFrom(t.ClrType)).ToList())
         {
             b.Entity(type.ClrType).Property(nameof(Entity.RowVersion)).IsConcurrencyToken();

@@ -22,6 +22,8 @@ public interface IAppDbContext
     DbSet<PostMetric> PostMetrics { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<CreditAccount> CreditAccounts { get; }
+    DbSet<WorkspaceMember> WorkspaceMembers { get; }
+    DbSet<Invitation> Invitations { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 }

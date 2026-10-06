@@ -1,0 +1,88 @@
+@page "/account/register"
+@attribute [AllowAnonymous]
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.Extensions.Options
+@using ReachForge.Domain.Common
+@inject AccountService Accounts
+@inject SignInManager<AppUser> SignIn
+@inject NavigationManager Nav
+@inject IOptions<AuthOptions> Auth
+
+<PageTitle>新規登録｜ReachForge</PageTitle>
+
+<h1>新規登録</h1>
+<p class="rf-help">入力は4項目だけです。ブランドやSNSの設定は、登録後に画面の案内に沿って進められます。</p>
+
+@if (!Auth.Value.AllowRegistration)
+{
+    <FormMessage Message="現在、新規登録を受け付けていません。招待リンクからご参加ください。" />
+}
+else
+{
+    <FormMessage Message="@_error" />
+    <EditForm Model="Input!" FormName="register" OnValidSubmit="RegisterAsync" method="post">
+        <DataAnnotationsValidator />
+        <div class="rf-field">
+            <label for="company">会社名・店舗名<span class="rf-required">必須</span></label>
+            <InputText id="company" @bind-Value="Input!.CompanyName" autocomplete="organization" />
+            <ValidationMessage For="() => Input!.CompanyName" />
+        </div>
+        <div class="rf-field">
+            <label for="name">お名前<span class="rf-required">必須</span></label>
+            <InputText id="name" @bind-Value="Input!.DisplayName" autocomplete="name" />
+            <ValidationMessage For="() => Input!.DisplayName" />
+        </div>
+        <div class="rf-field">
+            <label for="email">メールアドレス<span class="rf-required">必須</span></label>
+            <InputText id="email" @bind-Value="Input!.Email" type="email" autocomplete="username" inputmode="email" />
+            <ValidationMessage For="() => Input!.Email" />
+        </div>
+        <div class="rf-field">
+            <label for="password">パスワード（10文字以上）<span class="rf-required">必須</span></label>
+            <InputText id="password" @bind-Value="Input!.Password" type="password" autocomplete="new-password" />
+            <ValidationMessage For="() => Input!.Password" />
+        </div>
+        <button type="submit" class="rf-btn rf-btn-primary">登録してはじめる</button>
+    </EditForm>
+}
+
+<div class="rf-auth-links"><a href="/account/login">アカウントをお持ちの方はログイン</a></div>
+
+@code {
+    [SupplyParameterFromForm] private InputModel? Input { get; set; }
+
+    protected override void OnParametersSet() => Input ??= new();
+    private string? _error;
+
+    private async Task RegisterAsync()
+    {
+        if (!Auth.Value.AllowRegistration) return;
+        try
+        {
+            var user = await Accounts.RegisterAsync(new RegisterCommand(Input!.CompanyName, Input!.CompanyName, Input!.DisplayName,
+                Input!.Email, Input!.Password), default);
+            await SignIn.SignInAsync(user, isPersistent: false);
+            await Accounts.AuditAsync(user, "auth.login", "register", default);
+            Nav.NavigateTo("/settings/channels?welcome=true", forceLoad: true);
+        }
+        catch (DomainException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private sealed class InputModel
+    {
+        [Required(ErrorMessage = "会社名・店舗名を入力してください。"), MaxLength(100)]
+        public string CompanyName { get; set; } = "";
+
+        [Required(ErrorMessage = "お名前を入力してください。"), MaxLength(50)]
+        public string DisplayName { get; set; } = "";
+
+        [Required(ErrorMessage = "メールアドレスを入力してください。"), EmailAddress(ErrorMessage = "メールアドレスの形式を確認してください。")]
+        public string Email { get; set; } = "";
+
+        [Required(ErrorMessage = "パスワードを入力してください。"), MinLength(10, ErrorMessage = "パスワードは10文字以上にしてください。")]
+        public string Password { get; set; } = "";
+    }
+}

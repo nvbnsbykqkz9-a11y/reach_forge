@@ -6,6 +6,8 @@
 @inject NavigationManager Nav
 @inject SchedulingService Scheduling
 @inject ISnackbar Snackbar
+@inject ReachForge.Infrastructure.Identity.AccountService Accounts
+@inject Microsoft.Extensions.Options.IOptions<AuthOptions> Auth
 
 <MudThemeProvider Theme="Theme.RfTheme.Default" @bind-IsDarkMode="_dark" />
 <MudPopoverProvider />
@@ -35,20 +37,36 @@
         <MudTooltip Text="通知">
             <MudIconButton Icon="@Icons.Material.Rounded.NotificationsNone" Color="Color.Inherit" aria-label="通知" />
         </MudTooltip>
-        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" aria-label="アカウント">
-            <ActivatorContent>
-                <MudChip T="string" Icon="@Icons.Material.Rounded.AccountCircle" Variant="Variant.Text" aria-label="アカウント">
-                    @Tenant.UserName（@Tenant.Role.ToLabel()）
-                </MudChip>
-            </ActivatorContent>
+        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Variant="Variant.Text"
+                 StartIcon="@Icons.Material.Rounded.AccountCircle" Label="@($"{Tenant.UserName}（{Tenant.Role.ToLabel()}）")"
+                 AriaLabel="アカウント" Style="text-transform:none">
             <ChildContent>
-                <MudText Typo="Typo.caption" Class="px-4 pt-2">デモ用：ロールを切り替える</MudText>
-                @foreach (var (role, name) in DemoUsers)
+                <MudText Typo="Typo.caption" Class="px-4 pt-2 d-block">@Tenant.UserName（@Tenant.Role.ToLabel()）</MudText>
+                @if (_memberships.Count > 1)
                 {
-                    <MudMenuItem OnClick="() => SwitchRole(role, name)">@name（@role.ToLabel()）</MudMenuItem>
+                    <MudDivider Class="my-1" />
+                    <MudText Typo="Typo.caption" Class="px-4">ワークスペースを切り替える</MudText>
+                    @foreach (var m in _memberships)
+                    {
+                        <form method="post" action="/account/switch-workspace" class="px-2">
+                            <AntiforgeryToken />
+                            <input type="hidden" name="workspaceId" value="@m.WorkspaceId" />
+                            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" FullWidth="true" Class="justify-start"
+                                       Disabled="@(m.WorkspaceId == Tenant.WorkspaceId)">
+                                <span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:@m.BrandColor;margin-right:8px" aria-hidden="true"></span>
+                                @m.WorkspaceName（@m.Role.ToLabel()）
+                            </MudButton>
+                        </form>
+                    }
                 }
-                <MudDivider />
+                <MudDivider Class="my-1" />
+                <MudMenuItem Href="/account/mfa" ForceLoad="true">2段階認証の設定</MudMenuItem>
                 <MudMenuItem OnClick="() => _dark = !_dark">@(_dark ? "ライト表示にする" : "ダーク表示にする")</MudMenuItem>
+                <form method="post" action="/account/logout" class="px-2 pb-1">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" FullWidth="true" Class="justify-start"
+                               StartIcon="@Icons.Material.Rounded.Logout">ログアウト</MudButton>
+                </form>
             </ChildContent>
         </MudMenu>
     </MudAppBar>
@@ -95,28 +113,23 @@
     private bool _drawer = true;
     private bool _dark;
 
-    private static readonly (Role Role, string Name)[] DemoUsers =
-    [
-        (Role.Owner, "田中"), (Role.Editor, "佐々木"), (Role.Approver, "高橋"), (Role.Viewer, "鈴木"),
-    ];
+    private IReadOnlyList<ReachForge.Infrastructure.Identity.MembershipInfo> _memberships = [];
 
     protected override async Task OnInitializedAsync()
     {
+        // オーナー・管理者は MFA 必須（RF-DES-001 9.1）
+        if (Auth.Value.RequireMfaForAdmins && Tenant.Role is Role.Owner or Role.Admin && !Tenant.MfaEnabled)
+        {
+            Nav.NavigateTo("/account/mfa?required=true", forceLoad: true);
+            return;
+        }
         State.Changed += OnChanged;
-        Tenant.Changed += OnRoleChanged;
         await Time.ZoneAsync();
         await State.RefreshAsync();
+        _memberships = await Accounts.MembershipsAsync(Tenant.UserId, CancellationToken.None);
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
-
-    private void OnRoleChanged() => InvokeAsync(() => Nav.Refresh(forceReload: false));
-
-    private void SwitchRole(Role role, string name)
-    {
-        Tenant.SwitchRole(role, name);
-        Snackbar.Add($"{name}さん（{role.ToLabel()}）として表示しています", Severity.Info);
-    }
 
     private async Task ResumeAsync()
     {
@@ -135,6 +148,5 @@
     public void Dispose()
     {
         State.Changed -= OnChanged;
-        Tenant.Changed -= OnRoleChanged;
     }
 }
