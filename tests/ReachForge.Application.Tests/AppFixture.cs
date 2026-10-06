@@ -18,6 +18,9 @@ public sealed class AppFixture : IAsyncDisposable
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 10, 6, 0, 0, 0, TimeSpan.Zero));
     public ServiceProvider Services { get; }
 
+    /// <summary>テスト中に記録されたエラーログ。</summary>
+    public CapturingLoggerProvider Logs { get; } = new();
+
     private AppFixture(Dictionary<string, string?>? overrides, Action<IServiceCollection>? configure, bool prependConnector)
     {
         var settings = new Dictionary<string, string?>
@@ -33,7 +36,7 @@ public sealed class AppFixture : IAsyncDisposable
         var config = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
 
         var services = new ServiceCollection();
-        services.AddLogging(b => b.SetMinimumLevel(LogLevel.Warning));
+        services.AddLogging(b => b.SetMinimumLevel(LogLevel.Warning).AddProvider(Logs));
         if (prependConnector) configure?.Invoke(services); // 実コネクタ・デモより前に登録して優先させる
         services.AddReachForge(config);
         if (!prependConnector) configure?.Invoke(services);

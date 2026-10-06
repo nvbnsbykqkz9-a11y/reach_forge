@@ -110,6 +110,7 @@ if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
     builder.Services.AddHostedService<TokenRefreshScheduler>();
     builder.Services.AddHostedService<AiJobDispatcher>();
     builder.Services.AddHostedService<MetricsCollectScheduler>();
+    builder.Services.AddHostedService<ReportScheduler>();
 }
 
 var app = builder.Build();
@@ -133,6 +134,7 @@ app.MapStaticAssets();
 app.MapAccountEndpoints();
 app.MapReachForgeApi();
 app.MapMediaEndpoints();
+app.MapAnalyticsEndpoints();
 app.MapWebhookEndpoints();
 app.MapDefaultEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();

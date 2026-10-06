@@ -140,8 +140,11 @@ public sealed class SchedulingService(IAppDbContext db, ITenantContext tenant, T
     public async Task<TimeZoneInfo> TenantTimeZoneAsync(CancellationToken ct)
     {
         var id = await db.Tenants.Where(t => t.Id == tenant.TenantId).Select(t => t.TimeZoneId).FirstOrDefaultAsync(ct);
-        return TimeZoneInfo.TryFindSystemTimeZoneById(id ?? "Asia/Tokyo", out var tz) ? tz : TimeZoneInfo.Utc;
+        return FindTimeZone(id);
     }
+
+    public static TimeZoneInfo FindTimeZone(string? id) =>
+        TimeZoneInfo.TryFindSystemTimeZoneById(id ?? "Asia/Tokyo", out var tz) ? tz : TimeZoneInfo.Utc;
 
     /// <summary>SNS の日次上限に達する予約は確定時点で拒否する（F-08-6 / E-SNS-020）。</summary>
     private async Task EnsureDailyLimitAsync(PostVariant v, Channel channel, PlatformConstraint constraint,

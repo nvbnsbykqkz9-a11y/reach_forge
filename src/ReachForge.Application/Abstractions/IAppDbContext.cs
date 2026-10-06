@@ -26,6 +26,7 @@ public interface IAppDbContext
     DbSet<Invitation> Invitations { get; }
     DbSet<AiJob> AiJobs { get; }
     DbSet<ChannelMetric> ChannelMetrics { get; }
+    DbSet<Report> Reports { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

@@ -30,7 +30,11 @@ public sealed class MockInsightsReader(SocialPlatform platform, TimeProvider clo
     }
 
     public Task<AccountMetricSnapshot> GetAccountMetricsAsync(DateOnly date, ChannelCredential credential, CancellationToken ct) =>
-        Task.FromResult(new AccountMetricSnapshot(1200 + Seed(credential.ExternalAccountId) % 300 + date.DayNumber % 365 * 3, 0, 0));
+        Task.FromResult(new AccountMetricSnapshot(Followers(credential.ExternalAccountId, date), 0, 0));
+
+    /// <summary>デモのフォロワー数（1日に約3人ずつ増える）。デモデータの履歴もこの値で作る。</summary>
+    public static long Followers(string externalAccountId, DateOnly date) =>
+        1200 + Seed(externalAccountId) % 300 + date.DayNumber % 3650 * 3 + date.DayNumber * 7 % 5;
 
     /// <summary>"mock-x-{uuid v7}" の先頭48ビット（UNIX ミリ秒）。</summary>
     internal static DateTimeOffset? PublishedAt(string externalId)

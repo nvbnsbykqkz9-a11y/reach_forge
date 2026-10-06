@@ -176,3 +176,9 @@ body { font-variant-numeric: tabular-nums; }
 .rf-media-library .rf-media { aspect-ratio: 1 / 1; }
 .rf-preview-image { margin: 8px 0; border-radius: 12px; overflow: hidden; }
 .rf-preview-image img { width: 100%; display: block; }
+
+/* ---- 分析レポート（SCR-10） ---- */
+.rf-evidence { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: .75rem; line-height: 1.6;
+               background: var(--rf-color-surface, #fff); border: 1px solid color-mix(in srgb, var(--rf-color-ai) 35%, transparent); color: var(--rf-color-text-secondary); }
+.rf-scroll-table { max-height: 280px; overflow: auto; }
+.rf-thumb-sm { width: 40px; height: 40px; object-fit: cover; border-radius: 6px; }

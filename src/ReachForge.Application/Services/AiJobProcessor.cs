@@ -27,6 +27,7 @@ public sealed class AiJobProcessor(
     IImageSafetyChecker safety,
     IAltTextGenerator alt,
     ICreditService credits,
+    ReportService reports,
     TimeProvider clock,
     ILogger<AiJobProcessor> log)
 {
@@ -45,6 +46,12 @@ public sealed class AiJobProcessor(
         }
         catch (DbUpdateConcurrencyException)
         {
+            return;
+        }
+
+        if (job.TaskType == AiTaskType.Report)
+        {
+            await ProcessReportAsync(job, ct);
             return;
         }
 
@@ -78,6 +85,23 @@ public sealed class AiJobProcessor(
             await db.SaveChangesAsync(CancellationToken.None);
             await credits.ReleaseReservedAsync(job.CreditsHeld, CancellationToken.None);
         }
+    }
+
+    /// <summary>AI レポート（クレジットは消費しない）。失敗の内容はレポート側にも記録される。</summary>
+    private async Task ProcessReportAsync(AiJob job, CancellationToken ct)
+    {
+        try
+        {
+            await reports.ProcessAsync(job, ct);
+            job.Succeed([], 0, clock.GetUtcNow());
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            if (ex is not DomainException) log.LogError(ex, "Report job {JobId} failed", job.Id);
+            job.Fail(ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected,
+                ex is DomainException ? ex.Message : "レポートを作成できませんでした。もう一度お試しください。", clock.GetUtcNow());
+        }
+        await db.SaveChangesAsync(CancellationToken.None);
     }
 
     /// <summary>止まったジョブを失敗にしてクレジットを解放する。</summary>

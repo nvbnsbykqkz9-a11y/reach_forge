@@ -6,6 +6,7 @@ using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Identity;
+using ReachForge.Social.Mock;
 
 namespace ReachForge.Infrastructure.Persistence;
 
@@ -164,10 +165,9 @@ public static class DemoSeeder
         var today = DateOnly.FromDateTime(now.UtcDateTime);
         for (var c = 0; c < channels.Count; c++)
         {
-            var followers = 800 + c * 450;
             for (var d = 60; d >= 1; d--)
             {
-                followers += (d * 7 + c * 3) % 9;
+                var followers = MockInsightsReader.Followers(channels[c].ExternalAccountId, today.AddDays(-d));
                 db.ChannelMetrics.Add(new ChannelMetric
                 {
                     TenantId = TenantId, WorkspaceId = WorkspaceId, ChannelId = channels[c].Id, Platform = channels[c].Platform,
@@ -221,7 +221,7 @@ public static class DemoSeeder
                 PostVariantId = variant.Id,
                 Platform = channel.Platform,
                 PostedAt = postedAt,
-                CapturedAt = postedAt.AddDays(7),
+                CapturedAt = postedAt.AddDays(7) < now ? postedAt.AddDays(7) : now,
                 Impressions = impressions,
                 Reach = (long)(impressions * 0.8),
                 Likes = engagements * 7 / 10,

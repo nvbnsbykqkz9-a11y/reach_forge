@@ -9,9 +9,11 @@ using ReachForge.AI;
 using ReachForge.Application;
 using ReachForge.Application.Abstractions;
 using ReachForge.Application.Social;
+using ReachForge.Infrastructure.Email;
 using ReachForge.Infrastructure.Identity;
 using ReachForge.Infrastructure.Media;
 using ReachForge.Infrastructure.Persistence;
+using ReachForge.Infrastructure.Reporting;
 using ReachForge.Infrastructure.Security;
 using ReachForge.Social;
 
@@ -93,6 +95,19 @@ public static class DependencyInjection
         else
         {
             services.AddSingleton<IImageSafetyChecker, NotConfiguredImageSafetyChecker>();
+        }
+
+        // ---- レポート（F-10）・メール ----
+        services.Configure<ReportOptions>(configuration.GetSection(ReportOptions.SectionName));
+        services.AddSingleton<IReportPdfRenderer, QuestPdfReportRenderer>();
+        services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
+        if (configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>() is { IsConfigured: true })
+        {
+            services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        }
+        else
+        {
+            services.AddSingleton<IEmailSender, LoggingEmailSender>();
         }
         return services;
     }

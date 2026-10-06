@@ -14,3 +14,5 @@ public sealed record JudgeStubPayload(GeneratedCopy Copy, BrandProfile Brand);
 public sealed record DigestStubPayload(string Headline, string Body);
 
 public sealed record AltStubPayload(string Hint);
+
+public sealed record ReportStubPayload(ReportWriterInput Input);

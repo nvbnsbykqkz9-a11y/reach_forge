@@ -5,6 +5,7 @@ using Microsoft.Extensions.AI;
 using ReachForge.AI.Prompts;
 using ReachForge.AI.Routing;
 using ReachForge.Application.Ai;
+using ReachForge.Domain.Analytics;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
 
@@ -30,6 +31,7 @@ public sealed class StubChatClient : IChatClient
             VariantStubPayload p => Serialize(Variant(p)),
             JudgeStubPayload p => Serialize(Judge(p)),
             DigestStubPayload p => Serialize(new DigestResult(Digest(p))),
+            ReportStubPayload p => Serialize(Report(p.Input)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
                 : $"{PostText.Truncate(p.Hint, 40)}を表したイメージ",
@@ -156,6 +158,53 @@ public sealed class StubChatClient : IChatClient
         score += len is >= 40 and <= 200 ? 0.3 : -0.2;
         if (p.Brand.Tone.EmojiLevel == 0 && text.Any(char.IsSurrogate)) score -= 0.4;
         return new JudgeResult(Math.Round(Math.Clamp(score, 1, 5), 1), "ブランドの口調・必須表記・長さを評価しました");
+    }
+
+    /// <summary>根拠データの値をそのまま引用する決定的なレポート（検証を通る形）。</summary>
+    private static InsightDraft Report(ReportWriterInput input)
+    {
+        ReportFact? Find(string label) => input.Facts.FirstOrDefault(f => f.Label == label);
+        ClaimDraft Claim(string text, params ReportFact?[] facts) =>
+            new(text, facts.Where(f => f is not null).Select(f => f!.Id).ToArray());
+
+        var imp = Find("表示回数");
+        var impChange = Find("表示回数（比較期間比）");
+        var er = Find("反応の割合");
+        var top = input.Facts.FirstOrDefault(f => f.Label.StartsWith("上位1位", StringComparison.Ordinal));
+        var best = Find("反応が多い曜日・時刻");
+        var ai = Find("AI生成投稿の反応の割合");
+        var manual = Find("手動投稿の反応の割合");
+        var topPost = input.TopPosts.FirstOrDefault();
+        var bottom = input.BottomPosts.FirstOrDefault();
+
+        var summary = new List<ClaimDraft>
+        {
+            Claim($"表示回数は{imp?.Value ?? "—"}回{(impChange is null ? "" : $"（比較期間比{impChange.Value}）")}でした。", imp, impChange),
+            Claim($"反応の割合は{er?.Value ?? "—"}です。", er),
+        };
+        if (top is not null) summary.Add(Claim($"{top.Label.Split('の')[0]}の投稿が最も反応を集めました（{top.Value}）。", top));
+        var good = new List<ClaimDraft>();
+        if (topPost is not null && top is not null)
+        {
+            good.Add(Claim($"{topPost.Platform}の{(topPost.HasImage ? "画像付き" : "文章中心の")}投稿が好調でした（{top.Value}）。", top));
+        }
+        if (ai is not null && manual is not null)
+        {
+            good.Add(Claim($"AI生成の投稿は反応の割合{ai.Value}、手動の投稿は{manual.Value}でした。", ai, manual));
+        }
+        var issues = new List<ClaimDraft>();
+        if (bottom is not null)
+        {
+            issues.Add(Claim($"{bottom.Platform}の「{bottom.Title}」は反応が少なめでした。投稿の時間帯が合っていない可能性があります。",
+                input.Facts.FirstOrDefault(f => f.Label.StartsWith("最下位", StringComparison.Ordinal)) ?? er));
+        }
+        var actions = new List<ClaimDraft>
+        {
+            Claim(best is null ? "反応が多い時間帯に合わせて予約しましょう。" : $"{best.Value.Split('（')[0]}に合わせて予約しましょう。", best ?? er),
+            Claim("反応が良かった投稿の切り口で、画像付きの投稿を1本つくりましょう。", top ?? er),
+            Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
+        };
+        return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
     }
 
     private static string Digest(DigestStubPayload p) =>

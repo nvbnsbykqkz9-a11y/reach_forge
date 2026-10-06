@@ -21,6 +21,8 @@ public enum Permission
     ManageBilling,
     ViewBilling,
     ManageMembers,
+    /// <summary>レポートの定期配信・ロゴの設定。</summary>
+    ManageReports,
 }
 
 /// <summary>ロール別権限マトリクス（RF-DES-001 11.1）。</summary>
@@ -44,6 +46,7 @@ public static class RolePolicy
         Permission.ManageBilling => role is Role.Owner,
         Permission.ViewBilling => role is Role.Owner or Role.Admin,
         Permission.ManageMembers => role is Role.Owner or Role.Admin,
+        Permission.ManageReports => role is Role.Owner or Role.Admin or Role.Editor,
         _ => false,
     };
 

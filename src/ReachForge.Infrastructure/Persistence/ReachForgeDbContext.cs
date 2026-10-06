@@ -50,6 +50,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AiJob> AiJobs => Set<AiJob>();
     public DbSet<ChannelMetric> ChannelMetrics => Set<ChannelMetric>();
+    public DbSet<Report> Reports => Set<Report>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
@@ -133,6 +134,8 @@ public sealed class ReachForgeDbContext(
         b.Entity<AiGeneration>().HasIndex(x => new { x.TenantId, x.CreatedAt });
         b.Entity<CreditAccount>().HasIndex(x => x.TenantId).IsUnique();
         b.Entity<Workspace>().Ignore(x => x.RequiresApproval);
+        b.Entity<Workspace>().Property(x => x.Reports).HasConversion(Json<ReportSettings>(), JsonComparer<ReportSettings>());
+        b.Entity<Report>().HasIndex(x => new { x.WorkspaceId, x.CreatedAt });
     }
 
     private static readonly MethodInfo s_applyFilter =

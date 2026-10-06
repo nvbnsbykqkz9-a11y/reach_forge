@@ -7,20 +7,9 @@ using ReachForge.Domain.Platforms;
 
 namespace ReachForge.Application.Services;
 
-public sealed record KpiValue(string Label, double Value, double? Previous, string Format, string? Help = null)
-{
-    public double? Change => Previous is { } p ? MetricsCalculator.ChangeRatio(Value, p) : null;
-}
-
 public enum ActionSeverity { Error = 0, Deadline = 1, Urgent = 2, Other = 3 }
 
 public sealed record ActionItem(ActionSeverity Severity, string Message, string Href, string LinkText);
-
-public sealed record PostPerformance(Guid VariantId, string Title, SocialPlatform Platform, DateTimeOffset PostedAt,
-    long Impressions, double? EngagementRate, int LinkClicks, bool IsAiGenerated);
-
-public sealed record AnalyticsReport(IReadOnlyList<KpiValue> Kpis, IReadOnlyList<PostPerformance> Ranking,
-    IReadOnlyList<BestTimeSlot> BestTimes, DateTimeOffset? LastCapturedAt);
 
 public sealed record DashboardSummary(
     IReadOnlyList<KpiValue> Kpis,
@@ -35,6 +24,7 @@ public sealed class DashboardService(
     ITenantContext tenant,
     SchedulingService scheduling,
     ICreditService credits,
+    AnalyticsService analytics,
     TimeProvider clock)
 {
     public async Task<DashboardSummary> GetAsync(CancellationToken ct)
@@ -42,7 +32,7 @@ public sealed class DashboardService(
         var now = clock.GetUtcNow();
         var tz = await scheduling.TenantTimeZoneAsync(ct);
         // 直近7日間と、その前の7日間を比べる（週の始めでも比較が空にならないよう、暦週ではなく移動期間で集計する）
-        var kpis = await KpisAsync(now.AddDays(-7), now, now.AddDays(-14), ct);
+        var kpis = await analytics.KpisAsync(new AnalyticsFilter(now.AddDays(-7), now), ct);
         var actions = await ActionItemsAsync(now, ct);
         var upcoming = (await scheduling.CalendarAsync(now, now.AddDays(7), ct))
             .Where(e => e.Status is VariantStatus.Scheduled or VariantStatus.InReview)
@@ -50,92 +40,6 @@ public sealed class DashboardService(
             .ToList();
         var suggestions = await SuggestionsAsync(tz, ct);
         return new DashboardSummary(kpis, actions, upcoming, suggestions, await scheduling.IsPausedAsync(ct));
-    }
-
-    /// <summary>分析レポート（SCR-10）：期間の KPI（前期間比）、投稿ランキング、最適時刻。数値はすべてシステムが計算する。</summary>
-    public async Task<AnalyticsReport> AnalyticsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
-    {
-        var length = toUtc - fromUtc;
-        var kpis = await KpisAsync(fromUtc, toUtc, fromUtc - length, ct);
-
-        var variants = await db.PostVariants
-            .Where(v => v.WorkspaceId == tenant.WorkspaceId && v.Status == VariantStatus.Published)
-            .ToListAsync(ct);
-        var ids = variants.Select(v => v.Id).ToList();
-        var latest = (await db.PostMetrics
-                .Where(m => ids.Contains(m.PostVariantId) && m.PostedAt >= fromUtc && m.PostedAt < toUtc)
-                .ToListAsync(ct))
-            .GroupBy(m => m.PostVariantId)
-            .Select(g => g.MaxBy(m => m.CapturedAt)!)
-            .ToList();
-        var postIds = variants.Select(v => v.MasterPostId).Distinct().ToList();
-        var titles = await db.MasterPosts.Where(p => postIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Title, ct);
-        var byId = variants.ToDictionary(v => v.Id);
-
-        var ranking = latest
-            .Select(m => new PostPerformance(m.PostVariantId, titles.GetValueOrDefault(byId[m.PostVariantId].MasterPostId, ""),
-                m.Platform, m.PostedAt, m.Impressions, MetricsCalculator.EngagementRate(m), m.LinkClicks,
-                byId[m.PostVariantId].AiGenerationId is not null))
-            .OrderByDescending(p => p.EngagementRate ?? 0)
-            .ToList();
-
-        var best = await scheduling.BestTimesAsync(null, ct);
-        return new AnalyticsReport(kpis, ranking, best, latest.Count == 0 ? null : latest.Max(m => m.CapturedAt));
-    }
-
-    private async Task<IReadOnlyList<KpiValue>> KpisAsync(DateTimeOffset from, DateTimeOffset to, DateTimeOffset prevFrom,
-        CancellationToken ct)
-    {
-        var variantIds = db.PostVariants.Where(v => v.WorkspaceId == tenant.WorkspaceId).Select(v => v.Id);
-        var metrics = (await db.PostMetrics
-                .Where(m => variantIds.Contains(m.PostVariantId) && m.PostedAt >= prevFrom && m.PostedAt < to)
-                .ToListAsync(ct))
-            .GroupBy(m => m.PostVariantId)
-            .Select(g => g.MaxBy(m => m.CapturedAt)!)
-            .ToList();
-
-        var current = metrics.Where(m => m.PostedAt >= from).ToList();
-        var previous = metrics.Where(m => m.PostedAt < from).ToList();
-        var followers = await FollowerGrowthAsync(from, to, ct) ?? current.Sum(m => m.Follows);
-        var previousFollowers = await FollowerGrowthAsync(prevFrom, from, ct) ?? previous.Sum(m => m.Follows);
-
-        return
-        [
-            new("表示回数", current.Sum(m => m.Impressions), previous.Sum(m => m.Impressions), "N0"),
-            new("反応の割合", Rate(current), Rate(previous), "P1",
-                "（いいね＋コメント＋シェア＋保存）÷ 表示回数"),
-            new("リンクのクリック", current.Sum(m => m.LinkClicks), previous.Sum(m => m.LinkClicks), "N0"),
-            new("フォロワー増加", followers, previousFollowers, "+#,0;-#,0;0", "期間末のフォロワー数 − 期間初のフォロワー数"),
-        ];
-
-        static double Rate(List<PostMetric> ms)
-        {
-            var imp = ms.Sum(m => m.Impressions);
-            return imp == 0 ? 0 : (double)ms.Sum(MetricsCalculator.Engagements) / imp;
-        }
-    }
-
-    /// <summary>
-    /// フォロワー純増（F-10 指標定義）＝ 期間末 − 期間初 のフォロワー数（チャネル合計）。
-    /// 期間の前後に日次の記録がないチャネルは、期間内の最初と最後の記録で計算する。記録がなければ null。
-    /// </summary>
-    private async Task<double?> FollowerGrowthAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
-    {
-        var start = DateOnly.FromDateTime(from.UtcDateTime);
-        var end = DateOnly.FromDateTime(to.UtcDateTime);
-        var rows = await db.ChannelMetrics
-            .Where(m => m.WorkspaceId == tenant.WorkspaceId && m.Date >= start.AddDays(-1) && m.Date <= end)
-            .Select(m => new { m.ChannelId, m.Date, m.Followers })
-            .ToListAsync(ct);
-        if (rows.Count == 0) return null;
-        double total = 0;
-        foreach (var g in rows.GroupBy(r => r.ChannelId))
-        {
-            var ordered = g.OrderBy(r => r.Date).ToList();
-            if (ordered.Count < 2) continue;
-            total += ordered[^1].Followers - ordered[0].Followers;
-        }
-        return total;
     }
 
     /// <summary>要対応：重要度順（エラー → 期限が近い承認 → 急ぎ → その他）、最大5件。</summary>

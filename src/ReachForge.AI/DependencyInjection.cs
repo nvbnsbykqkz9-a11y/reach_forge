@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddSingleton<IImageGeneratorFactory, ImageGeneratorFactory>();
         services.AddScoped<IImageGenerationService, ImageGenerationService>();
         services.AddScoped<IAltTextGenerator, AltTextGenerator>();
+        services.AddScoped<IReportWriter, ReportWriter>();
         return services;
     }
 }
