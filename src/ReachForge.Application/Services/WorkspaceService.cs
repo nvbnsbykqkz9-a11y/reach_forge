@@ -47,6 +47,11 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
         profile.NgWords = Clean(input.NgWords);
         profile.MustPhrases = Clean(input.MustPhrases);
         profile.PreferredHashtags = Clean(input.PreferredHashtags);
+        // お手本（Few-shot）は A/B テストの勝ちパターンから登録される。画面では有効・無効と削除だけ行う
+        profile.FewShotExamples = [.. input.FewShotExamples
+            .Where(e => !string.IsNullOrWhiteSpace(e.Text))
+            .Select(e => new FewShotExample { Id = e.Id, Text = e.Text.Trim(), Reason = e.Reason, SourceAbTestId = e.SourceAbTestId, Enabled = e.Enabled })
+            .Take(20)];
         db.Record(tenant, "brand.updated", nameof(BrandProfile), profile.Id, $"v{profile.Version}");
         await db.SaveChangesAsync(ct);
         return profile;

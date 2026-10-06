@@ -54,6 +54,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
     public DbSet<KnowledgeEntry> KnowledgeEntries => Set<KnowledgeEntry>();
     public DbSet<InboxAlert> InboxAlerts => Set<InboxAlert>();
+    public DbSet<AbTest> AbTests => Set<AbTest>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
@@ -104,6 +105,7 @@ public sealed class ReachForgeDbContext(
             e.HasIndex(x => x.WorkspaceId).IsUnique();
             e.Property(x => x.Tone).HasConversion(Json<BrandTone>());
             e.Property(x => x.Personas).HasConversion(Json<List<Persona>>(), JsonComparer<List<Persona>>());
+            e.Property(x => x.FewShotExamples).HasConversion(Json<List<FewShotExample>>(), JsonComparer<List<FewShotExample>>());
         });
 
         b.Entity<PostVariant>(e =>
@@ -150,6 +152,8 @@ public sealed class ReachForgeDbContext(
         });
         b.Entity<KnowledgeEntry>().HasIndex(x => x.WorkspaceId);
         b.Entity<InboxAlert>().HasIndex(x => new { x.WorkspaceId, x.Status });
+        b.Entity<AbTest>().HasIndex(x => new { x.WorkspaceId, x.Status });
+        b.Entity<Campaign>().HasIndex(x => new { x.WorkspaceId, x.Code }).IsUnique();
     }
 
     private static readonly MethodInfo s_applyFilter =

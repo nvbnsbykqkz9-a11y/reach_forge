@@ -24,6 +24,9 @@ public sealed class BrandProfile : Entity
     /// <summary>ロゴ画像（透過 PNG 推奨）。生成画像への合成は画像処理で正確に行う（F-04-5）。</summary>
     public Guid? LogoAssetId { get; set; }
 
+    /// <summary>反応が良かった投稿の例（A/B テストの勝ちパターンなど）。有効なものだけ生成時のお手本（Few-shot）に使う。</summary>
+    public List<FewShotExample> FewShotExamples { get; set; } = [];
+
     /// <summary>版数。変更のたびに増やし、生成記録に使用版を残す（F-02）。</summary>
     public int Version { get; set; } = 1;
 }
@@ -48,4 +51,18 @@ public sealed class Persona
     public string AgeRange { get; set; } = "";
     public string Interests { get; set; } = "";
     public string Pains { get; set; } = "";
+}
+
+/// <summary>生成のお手本にする投稿例（F-11-4）。</summary>
+public sealed class FewShotExample
+{
+    public Guid Id { get; set; } = Guid.CreateVersion7();
+    public string Text { get; set; } = "";
+
+    /// <summary>なぜ良かったか（例：「冒頭を問いかけにしたBが 1.4倍」）。</summary>
+    public string Reason { get; set; } = "";
+    public Guid? SourceAbTestId { get; set; }
+
+    /// <summary>担当者が確認して「お手本に使う」にしたもの。</summary>
+    public bool Enabled { get; set; }
 }

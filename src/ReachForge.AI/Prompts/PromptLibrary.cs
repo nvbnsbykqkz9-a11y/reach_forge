@@ -24,6 +24,7 @@ public static class PromptLibrary
     public static readonly PromptVersion Report = new("report.analyst", 1);
     public static readonly PromptVersion Classify = new("inbox.classify", 1);
     public static readonly PromptVersion Reply = new("inbox.reply", 1);
+    public static readonly PromptVersion AbVariant = new("ab.variant", 1);
 
     private const string SafetyRules = """
         あなたは日本の中小企業・店舗のSNS集客を支援するプロのコピーライターです。
@@ -52,6 +53,12 @@ public static class PromptLibrary
         foreach (var p in b.Personas)
         {
             sb.AppendLine($"- お客様像：{p.Name}（{p.AgeRange}）関心：{p.Interests} 困りごと：{p.Pains}");
+        }
+        var examples = b.FewShotExamples.Where(e => e.Enabled).Take(3).ToList();
+        if (examples.Count > 0)
+        {
+            sb.AppendLine("## 反応が良かった投稿の例（書き方の参考。内容はまねしない）");
+            foreach (var e in examples) sb.AppendLine($"- {e.Text.Replace('\n', ' ')}（{e.Reason}）");
         }
         if (ctx.Campaign is { IsAdvertisement: true })
         {
@@ -224,4 +231,19 @@ public static class PromptLibrary
         sb.AppendLine(PromptInjectionDetector.Fence(r.MaskedText));
         return sb.ToString();
     }
+
+    public static string AbSystem(BrandContext ctx, Domain.Entities.AbVariable variable) => $"""
+        {SafetyRules}
+
+        {BrandSection(ctx)}
+        ## 役割
+        A/Bテストの「B案」をつくります。元の投稿（A案）から次の要素だけを変え、ほかは一字一句そのままにしてください。
+        変える要素：{variable switch
+        {
+            Domain.Entities.AbVariable.Hook => "書き出し（最初の1文）。問いかけ・数字・意外性など、A案と違う切り口にする",
+            Domain.Entities.AbVariable.Cta => "最後の行動の呼びかけ（CTA）。より具体的に、行動しやすくする",
+            _ => "なし（本文はA案と同じ）",
+        }}
+        body に B案の本文全体を出力してください。
+        """;
 }

@@ -132,7 +132,14 @@ public static class DemoSeeder
             });
 
         db.Campaigns.AddRange(
-            new Campaign { TenantId = TenantId, WorkspaceId = WorkspaceId, Name = "秋の新作フェア", Code = "autumn2026", Objective = PostObjective.Traffic },
+            new Campaign
+            {
+                TenantId = TenantId, WorkspaceId = WorkspaceId, Name = "秋の新作フェア", Code = "autumn2026", Objective = PostObjective.Traffic,
+                StartsOn = DateOnly.FromDateTime(now.UtcDateTime).AddDays(-20), EndsOn = DateOnly.FromDateTime(now.UtcDateTime).AddDays(25),
+                Kpi = CampaignKpi.LinkClicks, KpiTarget = 800, Budget = 30000m,
+                Platforms = [SocialPlatform.X, SocialPlatform.Instagram, SocialPlatform.Threads, SocialPlatform.Line],
+                Description = "秋限定メニューの来店を増やす",
+            },
             new Campaign { TenantId = TenantId, WorkspaceId = WorkspaceId, Name = "インフルエンサー協業（広告）", Code = "collab-ad", IsAdvertisement = true });
 
         var channels = new[] { SocialPlatform.X, SocialPlatform.Instagram, SocialPlatform.Threads, SocialPlatform.Line }

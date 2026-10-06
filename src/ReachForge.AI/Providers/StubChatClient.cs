@@ -33,6 +33,7 @@ public sealed class StubChatClient : IChatClient
             DigestStubPayload p => Serialize(new DigestResult(Digest(p))),
             ReportStubPayload p => Serialize(Report(p.Input)),
             ClassifyStubPayload p => Serialize(Classify(p.Text)),
+            AbStubPayload p => Serialize(new AbVariantDraft(AbVariant(p.Body, p.Variable))),
             ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
@@ -207,6 +208,19 @@ public sealed class StubChatClient : IChatClient
             Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
         };
         return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
+    }
+
+    /// <summary>書き出しを問いかけに、または最後の行を具体的な呼びかけに変える。</summary>
+    private static string AbVariant(string body, Domain.Entities.AbVariable variable)
+    {
+        var lines = body.Split('\n').ToList();
+        if (variable == Domain.Entities.AbVariable.Hook)
+        {
+            lines[0] = "知っていましたか？" + lines[0];
+            return string.Join('\n', lines);
+        }
+        lines[^1] = "今週末までに、ぜひお店で試してみてください！";
+        return string.Join('\n', lines);
     }
 
     private static ClassificationDraft Classify(string text)

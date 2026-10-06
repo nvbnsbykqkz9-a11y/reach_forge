@@ -115,6 +115,7 @@ if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
     builder.Services.AddHostedService<MetricsCollectScheduler>();
     builder.Services.AddHostedService<ReportScheduler>();
     builder.Services.AddHostedService<InboxPollScheduler>();
+    builder.Services.AddHostedService<AbTestScheduler>();
 }
 
 var app = builder.Build();
@@ -140,6 +141,7 @@ app.MapReachForgeApi();
 app.MapMediaEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapInboxEndpoints();
+app.MapCampaignEndpoints();
 app.MapWebhookEndpoints();
 app.MapDefaultEndpoints();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();

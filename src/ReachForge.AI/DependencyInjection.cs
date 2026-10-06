@@ -26,6 +26,7 @@ public static class DependencyInjection
         services.AddScoped<IReportWriter, ReportWriter>();
         services.AddScoped<IInboxClassifier, InboxClassifier>();
         services.AddScoped<IReplySuggester, ReplySuggester>();
+        services.AddScoped<IAbVariantGenerator, AbVariantGenerator>();
         return services;
     }
 }

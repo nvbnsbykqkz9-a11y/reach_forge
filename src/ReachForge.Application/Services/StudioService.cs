@@ -120,7 +120,8 @@ public sealed class StudioService(
             throw new DomainException(ErrorCodes.Validation, "投稿先のSNSを1つ以上選んでください。");
         }
 
-        var existing = await db.PostVariants.Where(v => v.MasterPostId == post.Id).ToListAsync(ct);
+        // A/B テストの B 案は SNS 別変換の対象外（A 案と同じチャネルに並ぶため）
+        var existing = await db.PostVariants.Where(v => v.MasterPostId == post.Id && v.AbGroup != "B").ToListAsync(ct);
         var targets = channels
             .Where(c => existing.FirstOrDefault(v => v.ChannelId == c.Id) is not { } v || v.Status == VariantStatus.Draft)
             .ToList();

@@ -20,3 +20,5 @@ public sealed record ReportStubPayload(ReportWriterInput Input);
 public sealed record ClassifyStubPayload(string Text);
 
 public sealed record ReplyStubPayload(ReplyRequest Request);
+
+public sealed record AbStubPayload(string Body, ReachForge.Domain.Entities.AbVariable Variable);

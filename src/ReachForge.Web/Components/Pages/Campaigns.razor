@@ -1,0 +1,200 @@
+@page "/campaigns"
+@inject CampaignService CampaignSvc
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>キャンペーン｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">キャンペーン</MudText>
+    <span class="rf-spacer"></span>
+    @if (CanEdit && !_wizard)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" OnClick="StartWizard">キャンペーンをつくる</MudButton>
+    }
+</div>
+
+@if (_wizard)
+{
+    @* 作成ウィザード：目的 → 期間 → 対象SNS → 目標（RF-UX-001 SCR-11） *@
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+        <ol class="rf-steps" aria-label="作成の手順">
+            @foreach (var (label, i) in s_steps.Select((l, i) => (l, i)))
+            {
+                <li class="@(i == _step ? "is-current" : i < _step ? "is-done" : "")" aria-current="@(i == _step ? "step" : null)">@(i + 1). @label</li>
+            }
+        </ol>
+        @switch (_step)
+        {
+            case 0:
+                <MudTextField T="string" @bind-Value="_form.Name" Label="キャンペーン名（必須）" Variant="Variant.Outlined" MaxLength="100" Immediate="true" />
+                <MudSelect T="PostObjective" @bind-Value="_form.Objective" Label="目的" Variant="Variant.Outlined" Class="mt-3">
+                    @foreach (var o in Enum.GetValues<PostObjective>()) { <MudSelectItem Value="o">@o.ToLabel()</MudSelectItem> }
+                </MudSelect>
+                <MudTextField T="string" @bind-Value="_form.Description" Label="ねらい（任意）" Variant="Variant.Outlined" Class="mt-3" Lines="2" />
+                <MudCheckBox T="bool" @bind-Value="_form.IsAdvertisement" Label="広告・PR案件（投稿に「#PR」を必ず入れます）" Class="mt-2" />
+                break;
+            case 1:
+                <div class="d-flex flex-wrap gap-3">
+                    <MudDatePicker @bind-Date="_starts" Label="開始日" Variant="Variant.Outlined" DateFormat="yyyy/MM/dd" />
+                    <MudDatePicker @bind-Date="_ends" Label="終了日" Variant="Variant.Outlined" DateFormat="yyyy/MM/dd" />
+                </div>
+                <MudNumericField T="decimal?" @bind-Value="_form.Budget" Label="予算（円・任意）" Variant="Variant.Outlined" Class="mt-3" Min="0" />
+                <MudTextField T="string" @bind-Value="_form.Code" Label="計測用のコード（UTM）" Variant="Variant.Outlined" Class="mt-3"
+                              HelperText="リンクの utm_campaign に入ります。半角英小文字・数字・ハイフン（例：autumn2026）" />
+                break;
+            case 2:
+                <MudText Typo="Typo.body2" Class="mb-2">このキャンペーンで投稿するSNS</MudText>
+                @foreach (var c in PlatformCatalog.InitialRelease)
+                {
+                    <MudCheckBox T="bool" Value="_platforms.Contains(c.Platform)" ValueChanged="v => { if (v) _platforms.Add(c.Platform); else _platforms.Remove(c.Platform); }" Label="@c.DisplayName" />
+                }
+                break;
+            default:
+                <MudSelect T="CampaignKpi" @bind-Value="_form.Kpi" Label="目標にする指標" Variant="Variant.Outlined">
+                    @foreach (var k in Enum.GetValues<CampaignKpi>()) { <MudSelectItem Value="k">@k.ToLabel()</MudSelectItem> }
+                </MudSelect>
+                <MudNumericField T="double?" @bind-Value="_target" Label="@(_form.Kpi == CampaignKpi.EngagementRate ? "目標（%）" : "目標")" Variant="Variant.Outlined" Class="mt-3" Min="0" />
+                <MudText Typo="Typo.caption" Class="d-block mt-2">A/Bテスト（書き出し・画像・CTA・時間帯）は、作成後にキャンペーンの画面から始められます。</MudText>
+                break;
+        }
+        <div class="d-flex gap-2 mt-4">
+            <MudButton Variant="Variant.Text" OnClick="() => _wizard = false">やめる</MudButton>
+            <MudSpacer />
+            @if (_step > 0) { <MudButton Variant="Variant.Outlined" OnClick="() => _step--">戻る</MudButton> }
+            @if (_step < s_steps.Length - 1)
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => _step++" Disabled="@(_step == 0 && string.IsNullOrWhiteSpace(_form.Name))">次へ</MudButton>
+            }
+            else
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync">作成する</MudButton>
+            }
+        </div>
+    </MudPaper>
+}
+
+@if (_items is null)
+{
+    <MudSkeleton Height="120px" />
+}
+else if (_items.Count == 0)
+{
+    <RfEmptyState Icon="@Icons.Material.Rounded.Campaign" Title="キャンペーンはまだありません" Message="期間・目的・目標をまとめて、投稿とA/Bテストを束ねられます。" />
+}
+else
+{
+    <MudGrid>
+        @foreach (var s in _items)
+        {
+            var c = s.Campaign;
+            <MudItem xs="12" md="6">
+                <MudCard Class="rf-card" Elevation="0" Outlined="true">
+                    <MudCardContent>
+                        <div class="d-flex align-center gap-2">
+                            <MudLink Href="@($"/campaigns/{c.Id}")" Typo="Typo.h6">@c.Name</MudLink>
+                            @if (c.IsAdvertisement) { <span class="rf-tag rf-tag-warn">PR</span> }
+                            <MudSpacer />
+                            <span class="rf-tag">@(c.IsActive(Today) ? "実施中" : c.StartsOn > Today ? "開始前" : "終了")</span>
+                        </div>
+                        <MudText Typo="Typo.caption" Class="d-block">@Period(c) ・ @c.Objective.ToLabel() ・ コード @c.Code</MudText>
+                        <MudText Typo="Typo.body2" Class="mt-2">@c.Kpi.ToLabel()：<b>@Format(c.Kpi, s.KpiActual)</b>@(c.KpiTarget is { } t ? $" ／ 目標 {Format(c.Kpi, t)}" : "")</MudText>
+                        @if (s.Progress is { } p)
+                        {
+                            <MudProgressLinear Value="@(Math.Min(100, p * 100))" Color="@(p >= 1 ? Color.Success : Color.Primary)" Class="mt-1" aria-label="@($"目標の {p:P0}")" />
+                            <MudText Typo="Typo.caption">目標の @p.ToString("P0")</MudText>
+                        }
+                        <MudText Typo="Typo.caption" Class="d-block mt-1">投稿 @s.Posts 件（公開 @s.Published 件）・ A/Bテスト @s.AbTests 件</MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private static readonly string[] s_steps = ["目的", "期間", "対象SNS", "目標"];
+    private IReadOnlyList<CampaignSummary>? _items;
+    private bool _wizard;
+    private int _step;
+    private Form _form = new();
+    private DateTime? _starts, _ends;
+    private double? _target;
+    private readonly HashSet<SocialPlatform> _platforms = [];
+
+    private sealed class Form
+    {
+        public string Name { get; set; } = "";
+        public string Code { get; set; } = "";
+        public PostObjective Objective { get; set; } = PostObjective.Awareness;
+        public bool IsAdvertisement { get; set; }
+        public string Description { get; set; } = "";
+        public decimal? Budget { get; set; }
+        public CampaignKpi Kpi { get; set; } = CampaignKpi.Impressions;
+    }
+
+    private bool CanEdit => RolePolicy.Can(Tenant.Role, Permission.Generate);
+    private DateOnly Today => DateOnly.FromDateTime(Time.ToLocal(Time.Now));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _items = await CampaignSvc.ListAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private void StartWizard()
+    {
+        _form = new Form { Code = $"cp{Time.ToLocal(Time.Now):yyMMdd}" };
+        _starts = Time.ToLocal(Time.Now).Date;
+        _ends = _starts.Value.AddDays(30);
+        _target = null;
+        _platforms.Clear();
+        foreach (var c in PlatformCatalog.InitialRelease) _platforms.Add(c.Platform);
+        _step = 0;
+        _wizard = true;
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            var created = await CampaignSvc.SaveAsync(new SaveCampaign
+            {
+                Name = _form.Name, Code = _form.Code, Objective = _form.Objective, IsAdvertisement = _form.IsAdvertisement,
+                Description = _form.Description, Budget = _form.Budget, Kpi = _form.Kpi,
+                KpiTarget = _form.Kpi == CampaignKpi.EngagementRate && _target is { } pct ? pct / 100 : _target,
+                StartsOn = _starts is { } s ? DateOnly.FromDateTime(s) : null, EndsOn = _ends is { } e ? DateOnly.FromDateTime(e) : null,
+                Platforms = _platforms.ToList(),
+            }, CancellationToken.None);
+            Snackbar.Add("キャンペーンを作成しました", Severity.Success);
+            Nav.NavigateTo($"/campaigns/{created.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private static string Period(Campaign c) => c.StartsOn is null && c.EndsOn is null ? "期間指定なし" : $"{c.StartsOn:yyyy/M/d}〜{c.EndsOn:M/d}";
+
+    public static string Format(CampaignKpi kpi, double value) => kpi switch
+    {
+        CampaignKpi.EngagementRate => value.ToString("P1"),
+        CampaignKpi.Followers => value.ToString("+#,0;-#,0;0"),
+        _ => value.ToString("N0"),
+    };
+}

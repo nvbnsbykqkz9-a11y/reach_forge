@@ -23,6 +23,8 @@ public static class DependencyInjection
         services.AddScoped<AnalyticsService>();
         services.AddScoped<ReportService>();
         services.AddScoped<InboxService>();
+        services.AddScoped<CampaignService>();
+        services.AddScoped<AbTestService>();
         services.AddScoped<MetricsCollectionService>();
         services.AddScoped<WorkspaceService>();
         return services;

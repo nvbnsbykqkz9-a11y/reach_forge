@@ -25,3 +25,5 @@ public sealed record ClassificationDraft(string Sentiment, string Intent, string
 public sealed record ReplyDraftItem(string Text, string[] Sources);
 
 public sealed record ReplyBatch(ReplyDraftItem[] Replies);
+
+public sealed record AbVariantDraft(string Body);

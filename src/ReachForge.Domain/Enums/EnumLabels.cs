@@ -125,4 +125,31 @@ public static class EnumLabels
         Entities.InboxStatus.Hidden => "非表示",
         _ => s.ToString(),
     };
+
+    public static string ToLabel(this Entities.AbVariable v) => v switch
+    {
+        Entities.AbVariable.Hook => "書き出し",
+        Entities.AbVariable.Image => "画像",
+        Entities.AbVariable.Cta => "行動の呼びかけ（CTA）",
+        Entities.AbVariable.TimeSlot => "投稿時間",
+        _ => v.ToString(),
+    };
+
+    public static string ToLabel(this Entities.CampaignKpi k) => k switch
+    {
+        Entities.CampaignKpi.Impressions => "表示回数",
+        Entities.CampaignKpi.EngagementRate => "反応の割合",
+        Entities.CampaignKpi.LinkClicks => "リンクのクリック",
+        Entities.CampaignKpi.Followers => "フォロワー増加",
+        _ => k.ToString(),
+    };
+
+    public static string ToLabel(this Entities.AbTestStatus s) => s switch
+    {
+        Entities.AbTestStatus.Draft => "準備中",
+        Entities.AbTestStatus.Running => "実施中",
+        Entities.AbTestStatus.Completed => "判定済み",
+        Entities.AbTestStatus.Canceled => "中止",
+        _ => s.ToString(),
+    };
 }

@@ -13,6 +13,18 @@ public static class AbTestEvaluator
     public const double Alpha = 0.05;
     public const long MinimumImpressions = 1000;
 
+    /// <summary>
+    /// 判定に足りない表示回数が集まるまでの目安（日）。これまでの1日あたりの表示回数から見積もる。見積もれなければ null。
+    /// </summary>
+    public static int? DaysUntilDecidable(long impressionsA, long impressionsB, double elapsedDays)
+    {
+        if (elapsedDays <= 0) return null;
+        var slower = Math.Min(impressionsA, impressionsB);
+        if (slower >= MinimumImpressions) return 0;
+        var perDay = slower / elapsedDays;
+        return perDay <= 0 ? null : (int)Math.Ceiling((MinimumImpressions - slower) / perDay);
+    }
+
     public static AbTestResult Evaluate(long impressionsA, long engagementsA, long impressionsB, long engagementsB)
     {
         var rateA = impressionsA > 0 ? (double)engagementsA / impressionsA : 0;

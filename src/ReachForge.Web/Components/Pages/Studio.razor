@@ -346,6 +346,7 @@
     private static readonly (int Step, string Label)[] Steps = [(1, "内容をつくる"), (2, "SNSごとに整える"), (3, "確認して予約")];
 
     [SupplyParameterFromQuery(Name = "theme")] public string? ThemeQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "campaign")] public Guid? CampaignQuery { get; set; }
 
     private sealed class VariantEdit
     {
@@ -404,6 +405,7 @@
         foreach (var c in _channels.Where(c => c.Status == ChannelStatus.Active)) _selectedChannels.Add(c.Id);
         _brand = await BrandContext.BuildAsync(Tenant.WorkspaceId, null, null, CancellationToken.None);
         if (!string.IsNullOrWhiteSpace(ThemeQuery)) _theme = ThemeQuery;
+        if (CampaignQuery is { } campaign && _campaigns.Any(c => c.Id == campaign)) _campaignId = campaign;
     }
 
     private string? GenerateDisabledReason =>

@@ -215,3 +215,11 @@ body { font-variant-numeric: tabular-nums; }
     .rf-inbox-back { display: inline-flex !important; }
     .rf-inbox-list { max-height: none; }
 }
+
+/* ---- キャンペーン・A/B（SCR-11） ---- */
+.rf-steps { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; padding: 0; margin: 0 0 16px; }
+.rf-steps li { padding: 4px 12px; border-radius: 999px; border: 1px solid var(--rf-color-border); color: var(--rf-color-text-secondary); font-size: .875rem; }
+.rf-steps li.is-current { border-color: var(--rf-color-primary); color: var(--rf-color-primary); font-weight: 700; }
+.rf-steps li.is-done { background: var(--rf-color-surface-subtle); }
+.rf-ab-card { background: var(--rf-color-surface-subtle) !important; border: 2px solid transparent; height: 100%; }
+.rf-ab-card.is-winner { border-color: var(--rf-color-success); }

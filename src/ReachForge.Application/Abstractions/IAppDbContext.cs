@@ -30,6 +30,7 @@ public interface IAppDbContext
     DbSet<InboxMessage> InboxMessages { get; }
     DbSet<KnowledgeEntry> KnowledgeEntries { get; }
     DbSet<InboxAlert> InboxAlerts { get; }
+    DbSet<AbTest> AbTests { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 
