@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\ReachForge.Application\ReachForge.Application.csproj" />
+    <ProjectReference Include="..\ReachForge.AI\ReachForge.AI.csproj" />
+    <ProjectReference Include="..\ReachForge.Social\ReachForge.Social.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+</Project>

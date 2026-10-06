@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- エンティティ・値オブジェクト・ドメインルール（外部依存なし） -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ReachForge.Domain.Tests" />
+  </ItemGroup>
+</Project>

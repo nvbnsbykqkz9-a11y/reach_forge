@@ -1,0 +1,35 @@
+using Microsoft.Extensions.Logging;
+using ReachForge.Application.Social;
+using ReachForge.Domain.Entities;
+using ReachForge.Domain.Enums;
+
+namespace ReachForge.Social.Mock;
+
+/// <summary>
+/// 開発・結合テスト用のモック投稿（RF-DES-001 3.5「SNS はモック」）。実際には投稿せず、成功を返す。
+/// 本文に <c>[[transient]]</c> を含めると一時的エラー、<c>[[fail]]</c> を含めると恒久的エラーを再現できる。
+/// </summary>
+public sealed class MockPublisher(SocialPlatform platform, ILogger<MockPublisher> log) : PublisherBase(platform)
+{
+    public const string TransientMarker = "[[transient]]";
+    public const string FailMarker = "[[fail]]";
+
+    public override Task<PublishResult> PublishAsync(PostVariant variant, ChannelCredential credential, CancellationToken ct)
+    {
+        if (variant.Body.Contains(FailMarker, StringComparison.Ordinal))
+        {
+            throw new SocialApiException("E-PUB-010", "メディア形式が不正です（モック）", isTransient: false);
+        }
+        if (variant.Body.Contains(TransientMarker, StringComparison.Ordinal))
+        {
+            throw new SocialApiException("E-PUB-503", "SNS側が一時的に混み合っています（モック）", isTransient: true);
+        }
+
+        var id = $"mock-{Platform.ToString().ToLowerInvariant()}-{Guid.CreateVersion7():N}";
+        log.LogInformation("[Mock] Published {Platform} post {ExternalId} for channel {ChannelId}", Platform, id, credential.ChannelId);
+        return Task.FromResult(new PublishResult(id, $"https://example.invalid/{Platform.ToString().ToLowerInvariant()}/{id}"));
+    }
+
+    public override Task DeleteAsync(string externalPostId, ChannelCredential credential, CancellationToken ct) =>
+        Task.CompletedTask;
+}

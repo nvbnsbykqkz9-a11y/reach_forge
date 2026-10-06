@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <ItemGroup>
+    <ProjectReference Include="..\ReachForge.Infrastructure\ReachForge.Infrastructure.csproj" />
+    <ProjectReference Include="..\ReachForge.ServiceDefaults\ReachForge.ServiceDefaults.csproj" />
+  </ItemGroup>
+</Project>
