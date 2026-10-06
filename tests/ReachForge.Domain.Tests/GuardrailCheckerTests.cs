@@ -108,3 +108,14 @@ public class GuardrailCheckerTests
         static int CountOf(string s, string token) => (s.Length - s.Replace(token, "").Length) / token.Length;
     }
 }
+
+public class GuardrailDedupTests
+{
+    [Fact]
+    public void Repeated_term_is_reported_once_and_fix_replaces_all()
+    {
+        const string text = "最安です。本当に最安です。";
+        var f = Assert.Single(GuardrailChecker.CheckContent(text, new GuardrailContext()).Findings);
+        Assert.DoesNotContain("最安", f.Apply(text));
+    }
+}

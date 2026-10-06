@@ -16,6 +16,12 @@ public enum ActionSeverity { Error = 0, Deadline = 1, Urgent = 2, Other = 3 }
 
 public sealed record ActionItem(ActionSeverity Severity, string Message, string Href, string LinkText);
 
+public sealed record PostPerformance(Guid VariantId, string Title, SocialPlatform Platform, DateTimeOffset PostedAt,
+    long Impressions, double? EngagementRate, int LinkClicks, bool IsAiGenerated);
+
+public sealed record AnalyticsReport(IReadOnlyList<KpiValue> Kpis, IReadOnlyList<PostPerformance> Ranking,
+    IReadOnlyList<BestTimeSlot> BestTimes, DateTimeOffset? LastCapturedAt);
+
 public sealed record DashboardSummary(
     IReadOnlyList<KpiValue> Kpis,
     IReadOnlyList<ActionItem> ActionItems,
@@ -35,9 +41,8 @@ public sealed class DashboardService(
     {
         var now = clock.GetUtcNow();
         var tz = await scheduling.TenantTimeZoneAsync(ct);
-        var weekStart = StartOfWeek(now, tz);
-
-        var kpis = await KpisAsync(weekStart, weekStart.AddDays(7), weekStart.AddDays(-7), ct);
+        // 直近7日間と、その前の7日間を比べる（週の始めでも比較が空にならないよう、暦週ではなく移動期間で集計する）
+        var kpis = await KpisAsync(now.AddDays(-7), now, now.AddDays(-14), ct);
         var actions = await ActionItemsAsync(now, ct);
         var upcoming = (await scheduling.CalendarAsync(now, now.AddDays(7), ct))
             .Where(e => e.Status is VariantStatus.Scheduled or VariantStatus.InReview)
@@ -45,6 +50,37 @@ public sealed class DashboardService(
             .ToList();
         var suggestions = await SuggestionsAsync(tz, ct);
         return new DashboardSummary(kpis, actions, upcoming, suggestions, await scheduling.IsPausedAsync(ct));
+    }
+
+    /// <summary>分析レポート（SCR-10）：期間の KPI（前期間比）、投稿ランキング、最適時刻。数値はすべてシステムが計算する。</summary>
+    public async Task<AnalyticsReport> AnalyticsAsync(DateTimeOffset fromUtc, DateTimeOffset toUtc, CancellationToken ct)
+    {
+        var length = toUtc - fromUtc;
+        var kpis = await KpisAsync(fromUtc, toUtc, fromUtc - length, ct);
+
+        var variants = await db.PostVariants
+            .Where(v => v.WorkspaceId == tenant.WorkspaceId && v.Status == VariantStatus.Published)
+            .ToListAsync(ct);
+        var ids = variants.Select(v => v.Id).ToList();
+        var latest = (await db.PostMetrics
+                .Where(m => ids.Contains(m.PostVariantId) && m.PostedAt >= fromUtc && m.PostedAt < toUtc)
+                .ToListAsync(ct))
+            .GroupBy(m => m.PostVariantId)
+            .Select(g => g.MaxBy(m => m.CapturedAt)!)
+            .ToList();
+        var postIds = variants.Select(v => v.MasterPostId).Distinct().ToList();
+        var titles = await db.MasterPosts.Where(p => postIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, p => p.Title, ct);
+        var byId = variants.ToDictionary(v => v.Id);
+
+        var ranking = latest
+            .Select(m => new PostPerformance(m.PostVariantId, titles.GetValueOrDefault(byId[m.PostVariantId].MasterPostId, ""),
+                m.Platform, m.PostedAt, m.Impressions, MetricsCalculator.EngagementRate(m), m.LinkClicks,
+                byId[m.PostVariantId].AiGenerationId is not null))
+            .OrderByDescending(p => p.EngagementRate ?? 0)
+            .ToList();
+
+        var best = await scheduling.BestTimesAsync(null, ct);
+        return new AnalyticsReport(kpis, ranking, best, latest.Count == 0 ? null : latest.Max(m => m.CapturedAt));
     }
 
     private async Task<IReadOnlyList<KpiValue>> KpisAsync(DateTimeOffset from, DateTimeOffset to, DateTimeOffset prevFrom,
@@ -139,13 +175,6 @@ public sealed class DashboardService(
     }
 
     public static string DayLabel(DayOfWeek d) => "日月火水木金土"[(int)d].ToString();
-
-    private static DateTimeOffset StartOfWeek(DateTimeOffset now, TimeZoneInfo tz)
-    {
-        var local = TimeZoneInfo.ConvertTime(now, tz).Date;
-        var monday = local.AddDays(-(((int)local.DayOfWeek + 6) % 7));
-        return new DateTimeOffset(monday, tz.GetUtcOffset(monday)).ToUniversalTime();
-    }
 }
 
 /// <summary>季節イベント・記念日辞書の初期値（F-12 イベント辞書の一部）。</summary>

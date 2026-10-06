@@ -1,0 +1,20 @@
+@* おすすめ投稿時刻3枠。根拠をツールチップで示す（RF-UX-001 5.4） *@
+@using ReachForge.Domain.Analytics
+@inject TimeDisplay Time
+<div class="d-flex flex-wrap gap-2" role="group" aria-label="おすすめの投稿時刻">
+    @foreach (var slot in Slots)
+    {
+        var at = BestTimeCalculator.NextOccurrence(slot, Time.Zone, Time.Now);
+        <MudTooltip Text="@slot.Rationale">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.AutoAwesome"
+                       OnClick="() => OnSelect.InvokeAsync(at)">
+                @Time.Short(at)
+            </MudButton>
+        </MudTooltip>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<BestTimeSlot> Slots { get; set; } = [];
+    [Parameter] public EventCallback<DateTimeOffset> OnSelect { get; set; }
+}

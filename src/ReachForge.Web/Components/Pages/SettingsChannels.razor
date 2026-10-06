@@ -1,0 +1,130 @@
+@page "/settings/channels"
+@inject ChannelService ChannelSvc
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+
+<PageTitle>SNS連携｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">SNS連携</MudText>
+</div>
+
+@if (!CanManage)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">SNSの連携・解除はオーナーと管理者のみ操作できます。</MudAlert>
+}
+
+<MudGrid>
+    @foreach (var c in PlatformCatalog.All.OrderBy(c => Order(c.Platform)))
+    {
+        var connected = _channels.FirstOrDefault(x => x.Platform == c.Platform);
+        var needsAttention = connected is not null && (connected.Status != ChannelStatus.Active || connected.IsTokenExpiringSoon(Time.Now));
+        <MudItem xs="12" sm="6" lg="4">
+            <MudCard Class="rf-card" Elevation="0" Outlined="true" Style="@(needsAttention ? "border:2px solid var(--rf-color-danger)" : "")">
+                <MudCardHeader>
+                    <CardHeaderContent>
+                        <MudText Typo="Typo.h6">@c.DisplayName</MudText>
+                        <MudText Typo="Typo.caption">@(c.Phase == ReleasePhase.Initial ? "初期リリース対象" : "フェーズ2（アプリ審査が必要）")</MudText>
+                    </CardHeaderContent>
+                    <CardHeaderActions>
+                        @if (connected is not null)
+                        {
+                            <MudChip T="string" Size="Size.Small" Color="@(connected.Status == ChannelStatus.Active ? Color.Success : Color.Error)">@connected.Status.ToLabel()</MudChip>
+                        }
+                    </CardHeaderActions>
+                </MudCardHeader>
+                <MudCardContent>
+                    @if (connected is not null)
+                    {
+                        <MudText Typo="Typo.body2"><b>@connected.DisplayName</b></MudText>
+                        <MudText Typo="Typo.caption" Class="d-block">最終確認：@(connected.LastCheckedAt is { } t ? Time.Short(t) : "—")</MudText>
+                        @if (connected.IsTokenExpiringSoon(Time.Now))
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Error">まもなく再接続が必要です（@(connected.TokenExpiresAt is { } e ? Time.Short(e) : "")まで）</MudText>
+                        }
+                    }
+                    else
+                    {
+                        <MudText Typo="Typo.body2">必要なもの：</MudText>
+                        <MudText Typo="Typo.caption">@(c.Note ?? $"{c.DisplayName}のアカウント")</MudText>
+                    }
+                </MudCardContent>
+                <MudCardActions>
+                    @if (connected is null)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanManage)" OnClick="() => ConnectAsync(c.Platform)">連携する</MudButton>
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Outlined" Disabled="@(!CanManage)" OnClick="() => ConnectAsync(c.Platform)">再接続</MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@(!CanManage)" OnClick="() => DisconnectAsync(connected)">連携を解除</MudButton>
+                    }
+                </MudCardActions>
+            </MudCard>
+        </MudItem>
+    }
+</MudGrid>
+<MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">
+    開発環境ではSNSのモック（デモ接続）を使います。本番の OAuth 連携は各SNSのアプリ審査後に有効になります。
+</MudText>
+
+@code {
+    private IReadOnlyList<Channel> _channels = [];
+
+    private bool CanManage => RolePolicy.Can(Tenant.Role, Permission.ManageChannels);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _channels = await ChannelSvc.ListAsync(CancellationToken.None);
+
+    // 再接続が必要なカードを最上部へ
+    private int Order(SocialPlatform p)
+    {
+        var c = _channels.FirstOrDefault(x => x.Platform == p);
+        return c is not null && (c.Status != ChannelStatus.Active || c.IsTokenExpiringSoon(Time.Now)) ? -1 : (int)p;
+    }
+
+    private async Task ConnectAsync(SocialPlatform platform)
+    {
+        try
+        {
+            var url = await ChannelSvc.BeginConnectAsync(platform, Nav.ToAbsoluteUri($"/api/v1/oauth/callback/{platform}").ToString(), CancellationToken.None);
+            if (url is not null)
+            {
+                Nav.NavigateTo(url, forceLoad: true);
+                return;
+            }
+            await ChannelSvc.CompleteConnectAsync(platform, null, null, CancellationToken.None);
+            Snackbar.Add($"{PlatformCatalog.Get(platform).DisplayName}を連携しました", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task DisconnectAsync(Channel channel)
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync($"{PlatformCatalog.Get(channel.Platform).DisplayName}の連携を解除しますか？",
+            "予約済みの投稿は「保留」になります。あとで再接続できます。", yesText: "連携を解除する", cancelText: "やめる");
+        if (ok != true) return;
+        try
+        {
+            var held = await ChannelSvc.DisconnectAsync(channel.Id, CancellationToken.None);
+            Snackbar.Add(held > 0 ? $"連携を解除しました。予約済みの{held}件を保留にしました" : "連携を解除しました", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+}

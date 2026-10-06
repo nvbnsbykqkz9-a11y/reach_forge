@@ -1,9 +1,140 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppState State
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject NavigationManager Nav
+@inject SchedulingService Scheduling
+@inject ISnackbar Snackbar
 
-@Body
+<MudThemeProvider Theme="Theme.RfTheme.Default" @bind-IsDarkMode="_dark" />
+<MudPopoverProvider />
+<MudDialogProvider CloseOnEscapeKey="true" />
+<MudSnackbarProvider />
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+<a class="rf-skip-link" href="#main">本文へスキップ</a>
+@if (State.Workspace is { } ws)
+{
+    <div class="rf-workspace-strip" style="background:@ws.BrandColor" aria-hidden="true"></div>
+}
+
+<MudLayout>
+    <MudAppBar Elevation="1" Dense="false" Fixed="true">
+        <MudIconButton Icon="@Icons.Material.Rounded.Menu" Color="Color.Inherit" Edge="Edge.Start"
+                       OnClick="() => _drawer = !_drawer" aria-label="メニューを開閉" />
+        <MudText Typo="Typo.h6" Class="ml-2 mr-4" Style="white-space:nowrap">◆ ReachForge</MudText>
+        <MudText Typo="Typo.body2" Class="d-none d-sm-flex" Style="color:var(--rf-color-text-secondary)">
+            @(State.Workspace?.Name ?? "")
+        </MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" Href="/studio"
+                   Class="mr-3 d-none d-sm-flex" Style="white-space:nowrap">新規投稿</MudButton>
+        <MudIconButton Icon="@Icons.Material.Rounded.Add" Variant="Variant.Filled" Color="Color.Primary" Href="/studio"
+                       Class="mr-1 d-flex d-sm-none" aria-label="新規投稿" />
+        <RfCreditMeter Account="State.Credits" />
+        <MudTooltip Text="通知">
+            <MudIconButton Icon="@Icons.Material.Rounded.NotificationsNone" Color="Color.Inherit" aria-label="通知" />
+        </MudTooltip>
+        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" aria-label="アカウント">
+            <ActivatorContent>
+                <MudChip T="string" Icon="@Icons.Material.Rounded.AccountCircle" Variant="Variant.Text" aria-label="アカウント">
+                    @Tenant.UserName（@Tenant.Role.ToLabel()）
+                </MudChip>
+            </ActivatorContent>
+            <ChildContent>
+                <MudText Typo="Typo.caption" Class="px-4 pt-2">デモ用：ロールを切り替える</MudText>
+                @foreach (var (role, name) in DemoUsers)
+                {
+                    <MudMenuItem OnClick="() => SwitchRole(role, name)">@name（@role.ToLabel()）</MudMenuItem>
+                }
+                <MudDivider />
+                <MudMenuItem OnClick="() => _dark = !_dark">@(_dark ? "ライト表示にする" : "ダーク表示にする")</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawer" ClipMode="DrawerClipMode.Always" Elevation="0" Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md" Style="border-right:1px solid var(--rf-color-border)">
+        <nav aria-label="メインナビゲーション">
+            <MudNavMenu Class="pt-2">
+                <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Home">ホーム</MudNavLink>
+                <MudNavLink Href="/studio" Icon="@Icons.Material.Rounded.AutoAwesome" IconColor="Color.Secondary">つくる</MudNavLink>
+                <MudNavLink Href="/calendar" Icon="@Icons.Material.Rounded.CalendarMonth">予定</MudNavLink>
+                <MudNavLink Href="/approvals" Icon="@Icons.Material.Rounded.FactCheck">
+                    承認キュー
+                    @if (State.PendingApprovals > 0)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-2">@(State.PendingApprovals > 99 ? "99+" : State.PendingApprovals)</MudChip>
+                    }
+                </MudNavLink>
+                <MudNavLink Href="/inbox" Icon="@Icons.Material.Rounded.Inbox">受信箱</MudNavLink>
+                <MudNavLink Href="/analytics" Icon="@Icons.Material.Rounded.Insights">分析</MudNavLink>
+                <MudNavLink Href="/settings" Icon="@Icons.Material.Rounded.Settings">設定</MudNavLink>
+            </MudNavMenu>
+        </nav>
+    </MudDrawer>
+
+    <MudMainContent>
+        @if (State.PublishingPaused)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Square="true" Class="rf-paused-banner">
+                すべての予約投稿を一時停止しています。再開するまでSNSへの投稿は行われません。
+                @if (RolePolicy.Can(Tenant.Role, Permission.PauseAllPublishing))
+                {
+                    <MudButton Variant="Variant.Outlined" Color="Color.Inherit" Size="Size.Small" Class="ml-4" OnClick="ResumeAsync">再開する</MudButton>
+                }
+            </MudAlert>
+        }
+        <main id="main" class="rf-main" tabindex="-1">
+            @Body
+        </main>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawer = true;
+    private bool _dark;
+
+    private static readonly (Role Role, string Name)[] DemoUsers =
+    [
+        (Role.Owner, "田中"), (Role.Editor, "佐々木"), (Role.Approver, "高橋"), (Role.Viewer, "鈴木"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        State.Changed += OnChanged;
+        Tenant.Changed += OnRoleChanged;
+        await Time.ZoneAsync();
+        await State.RefreshAsync();
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnRoleChanged() => InvokeAsync(() => Nav.Refresh(forceReload: false));
+
+    private void SwitchRole(Role role, string name)
+    {
+        Tenant.SwitchRole(role, name);
+        Snackbar.Add($"{name}さん（{role.ToLabel()}）として表示しています", Severity.Info);
+    }
+
+    private async Task ResumeAsync()
+    {
+        try
+        {
+            await Scheduling.SetPausedAsync(false, CancellationToken.None);
+            await State.RefreshAsync();
+            Snackbar.Add("予約投稿を再開しました", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        Tenant.Changed -= OnRoleChanged;
+    }
+}

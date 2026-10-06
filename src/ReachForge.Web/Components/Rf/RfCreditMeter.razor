@@ -1,0 +1,19 @@
+@* 残クレジット（80% 消費で warning、95% で danger）。クリックで内訳（RF-UX-001 5.4） *@
+@using ReachForge.Domain.Credits
+<MudTooltip Text="@Tooltip">
+    <MudButton Variant="Variant.Text" Href="/settings/usage" StartIcon="@Icons.Material.Rounded.Toll" Color="@Color"
+               aria-label="@($"残りクレジット {Account?.Available ?? 0}。内訳を見る")">
+        @(Account?.Available.ToString("N0") ?? "—")
+    </MudButton>
+</MudTooltip>
+
+@code {
+    [Parameter] public CreditAccount? Account { get; set; }
+
+    private Color Color => Account is null ? Color.Default
+        : Account.RemainingRatio <= 0.05 ? Color.Error
+        : Account.RemainingRatio <= 0.20 ? Color.Warning
+        : Color.Default;
+
+    private string Tooltip => Account is null ? "" : $"今月の残り {Account.Available:N0} ／ {Account.MonthlyGrant:N0} クレジット";
+}

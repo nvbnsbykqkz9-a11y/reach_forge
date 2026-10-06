@@ -1,0 +1,36 @@
+@* 投稿ステータス（RF-UX-001 4.1）。色だけに頼らずアイコン＋文字で示す *@
+@inject TimeDisplay Time
+<span class="rf-status @CssClass">
+    <MudIcon Icon="@Icon" Size="Size.Small" aria-hidden="true" />
+    @Label
+</span>
+
+@code {
+    [Parameter, EditorRequired] public VariantStatus Status { get; set; }
+    [Parameter] public DateTimeOffset? At { get; set; }
+
+    private string CssClass => Status switch
+    {
+        VariantStatus.Draft or VariantStatus.Canceled => "rf-status-draft",
+        VariantStatus.InReview or VariantStatus.OnHold => "rf-status-review",
+        VariantStatus.Approved or VariantStatus.Scheduled or VariantStatus.Publishing => "rf-status-scheduled",
+        VariantStatus.Published => "rf-status-published",
+        VariantStatus.Failed => "rf-status-failed",
+        _ => "rf-status-draft",
+    };
+
+    private string Icon => Status switch
+    {
+        VariantStatus.Draft => Icons.Material.Rounded.Edit,
+        VariantStatus.InReview => Icons.Material.Rounded.HourglassTop,
+        VariantStatus.Approved => Icons.Material.Rounded.Verified,
+        VariantStatus.Scheduled => Icons.Material.Rounded.Schedule,
+        VariantStatus.Publishing => Icons.Material.Rounded.Send,
+        VariantStatus.Published => Icons.Material.Rounded.CheckCircle,
+        VariantStatus.Failed => Icons.Material.Rounded.Warning,
+        VariantStatus.OnHold => Icons.Material.Rounded.PauseCircle,
+        _ => Icons.Material.Rounded.Block,
+    };
+
+    private string Label => Status == VariantStatus.Scheduled && At is { } at ? $"予約 {Time.Short(at)}" : Status.ToLabel();
+}

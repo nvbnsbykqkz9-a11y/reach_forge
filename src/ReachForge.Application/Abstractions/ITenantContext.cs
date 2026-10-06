@@ -25,3 +25,12 @@ public sealed class MutableTenantContext : ITenantContext
     public Role Role { get; set; } = Role.Owner;
     public bool IsSystem { get; set; }
 }
+
+/// <summary>
+/// 要求スコープ内でテナントコンテキストを差し替える（バックグラウンドジョブをシステムコンテキストで動かすため）。
+/// ホストは ITenantContext を「Current があればそれ、なければ通常のコンテキスト」として登録する。
+/// </summary>
+public sealed class TenantContextOverride
+{
+    public ITenantContext? Current { get; set; }
+}

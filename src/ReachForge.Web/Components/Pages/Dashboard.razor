@@ -1,0 +1,156 @@
+@page "/"
+@inject DashboardService DashboardSvc
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject ISnackbar Snackbar
+
+<PageTitle>ホーム｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">@Greeting、@(Tenant.UserName)さん</MudText>
+    <span class="rf-spacer"></span>
+    <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.AutoAwesome" Href="/studio">今週の投稿案をつくる</MudButton>
+</div>
+
+@if (_summary is null)
+{
+    <MudGrid>
+        @for (var i = 0; i < 4; i++)
+        {
+            <MudItem xs="12" sm="6" md="3"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="120px" /></MudItem>
+        }
+    </MudGrid>
+}
+else
+{
+    <MudText Typo="Typo.h6" Class="mb-2">直近7日間のまとめ</MudText>
+    <MudGrid>
+        @foreach (var k in _summary.Kpis)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Class="rf-card" Elevation="0" Outlined="true">
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Style="color:var(--rf-color-text-secondary)">
+                            @k.Label
+                            @if (k.Help is not null)
+                            {
+                                <MudTooltip Text="@k.Help"><MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" aria-label="@($"{k.Label}の定義：{k.Help}")" /></MudTooltip>
+                            }
+                        </MudText>
+                        <div class="rf-kpi-value">@k.Value.ToString(k.Format)</div>
+                        @if (k.Change is { } change)
+                        {
+                            <MudText Typo="Typo.caption" Class="@(change >= 0 ? "rf-up" : "rf-down")">
+                                @(change >= 0 ? "▲" : "▼") @Math.Abs(change).ToString("P1") 前の7日間比
+                            </MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Style="color:var(--rf-color-text-tertiary)">前の7日間のデータなし</MudText>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+
+        <MudItem xs="12" md="6">
+            <MudCard Class="rf-card" Elevation="0" Outlined="true" Style="height:100%">
+                <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">要対応</MudText></CardHeaderContent></MudCardHeader>
+                <MudCardContent>
+                    @if (_summary.ActionItems.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2">対応が必要なものはありません</MudText>
+                    }
+                    <MudList T="string" Dense="true">
+                        @foreach (var a in _summary.ActionItems)
+                        {
+                            <MudListItem T="string" Icon="@SeverityIcon(a.Severity)" IconColor="@SeverityColor(a.Severity)" Href="@a.Href">
+                                <div class="d-flex align-center"><span style="flex:1">@a.Message</span><span class="ml-2" style="color:var(--rf-color-primary)">@a.LinkText ›</span></div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12" md="6">
+            <MudCard Class="rf-card" Elevation="0" Outlined="true" Style="height:100%">
+                <MudCardHeader><CardHeaderContent><MudText Typo="Typo.h6">今後の予約（7日間）</MudText></CardHeaderContent></MudCardHeader>
+                <MudCardContent>
+                    @if (_summary.Upcoming.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2">まだ予約がありません。</MudText>
+                        <MudButton Href="/studio" Variant="Variant.Text" Color="Color.Primary">投稿をつくる</MudButton>
+                    }
+                    <MudList T="string" Dense="true">
+                        @foreach (var e in _summary.Upcoming)
+                        {
+                            <MudListItem T="string" Href="/calendar">
+                                <div class="d-flex align-center gap-2">
+                                    <MudText Typo="Typo.body2" Style="min-width:110px">@Time.Short(e.At)</MudText>
+                                    <MudChip T="string" Size="Size.Small">@PlatformCatalog.Get(e.Platform).DisplayName</MudChip>
+                                    <span style="flex:1">@e.Title</span>
+                                    <RfStatusBadge Status="e.Status" />
+                                </div>
+                            </MudListItem>
+                        }
+                    </MudList>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+
+        <MudItem xs="12">
+            <MudPaper Class="pa-4 rf-ai-surface" Elevation="0">
+                <span class="rf-ai-badge"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" aria-hidden="true" />AIからの提案</span>
+                <ul class="mt-2 ml-5">
+                    @foreach (var s in _summary.Suggestions)
+                    {
+                        <li><MudText Typo="Typo.body2">@s</MudText></li>
+                    }
+                </ul>
+                <MudButton Class="mt-2" Variant="Variant.Text" Color="Color.Secondary" Href="/studio">案をつくる</MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private DashboardSummary? _summary;
+
+    private string Greeting
+    {
+        get
+        {
+            var hour = Time.ToLocal(Time.Now).Hour;
+            return hour switch { >= 18 => "こんばんは", >= 11 => "こんにちは", _ => "おはようございます" };
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Time.ZoneAsync();
+            _summary = await DashboardSvc.GetAsync(CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private static string SeverityIcon(ActionSeverity s) => s switch
+    {
+        ActionSeverity.Error => Icons.Material.Rounded.Warning,
+        ActionSeverity.Deadline => Icons.Material.Rounded.HourglassTop,
+        ActionSeverity.Urgent => Icons.Material.Rounded.Mail,
+        _ => Icons.Material.Rounded.Info,
+    };
+
+    private static Color SeverityColor(ActionSeverity s) => s switch
+    {
+        ActionSeverity.Error => Color.Error,
+        ActionSeverity.Deadline => Color.Warning,
+        _ => Color.Primary,
+    };
+}

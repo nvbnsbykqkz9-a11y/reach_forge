@@ -1,0 +1,13 @@
+@* 操作の推定費用（RF-UX-001 5.4）：X の URL 付き投稿など *@
+@if (Constraint.CostPerPostUsd is { } cost)
+{
+    var hasUrl = PostText.ContainsUrl(Text);
+    <MudText Typo="Typo.caption" Style="@(hasUrl ? "color:var(--rf-color-warning-text);font-weight:700" : "color:var(--rf-color-text-secondary)")">
+        @(hasUrl ? $"URLあり：推定 ${Constraint.CostPerPostWithUrlUsd:0.00}／件（通常の約13倍）" : $"URLなし：推定 ${cost:0.000}／件")
+    </MudText>
+}
+
+@code {
+    [Parameter, EditorRequired] public PlatformConstraint Constraint { get; set; } = default!;
+    [Parameter] public string Text { get; set; } = "";
+}

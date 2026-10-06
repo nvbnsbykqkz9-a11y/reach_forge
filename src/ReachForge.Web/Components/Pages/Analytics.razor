@@ -1,0 +1,138 @@
+@page "/analytics"
+@using ReachForge.Domain.Analytics
+@inject DashboardService DashboardSvc
+@inject TimeDisplay Time
+@inject ISnackbar Snackbar
+
+<PageTitle>分析レポート｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">分析レポート</MudText>
+    <span class="rf-spacer"></span>
+    <MudToggleGroup T="int" Value="_days" ValueChanged="ChangePeriodAsync" Size="Size.Small" Color="Color.Primary">
+        <MudToggleItem Value="7" Text="7日間" />
+        <MudToggleItem Value="30" Text="30日間" />
+        <MudToggleItem Value="90" Text="90日間" />
+    </MudToggleGroup>
+</div>
+
+@if (_report is null)
+{
+    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="300px" />
+}
+else
+{
+    <MudText Typo="Typo.caption" Class="d-block mb-3" Style="color:var(--rf-color-text-secondary)">
+        最終更新：@(_report.LastCapturedAt is { } t ? Time.Short(t) : "—")（SNSのデータは最大24時間遅れることがあります）
+    </MudText>
+
+    <MudPaper Class="pa-4 mb-4 rf-ai-surface" Elevation="0">
+        <span class="rf-ai-badge"><MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Size="Size.Small" aria-hidden="true" />3行まとめ</span>
+        <ul class="mt-2 ml-5">
+            @foreach (var line in Summary())
+            {
+                <li><MudText Typo="Typo.body2">@line</MudText></li>
+            }
+        </ul>
+        <MudText Typo="Typo.caption" Style="color:var(--rf-color-text-tertiary)">数値はシステムが計算した値です。AIによる考察（F-10）は今後のリリースで追加します。</MudText>
+    </MudPaper>
+
+    <MudGrid>
+        @foreach (var k in _report.Kpis)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudCard Class="rf-card" Elevation="0" Outlined="true">
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2" Style="color:var(--rf-color-text-secondary)">@k.Label @if (k.Help is not null) { <MudTooltip Text="@k.Help"><MudIcon Icon="@Icons.Material.Rounded.Info" Size="Size.Small" aria-label="@($"定義：{k.Help}")" /></MudTooltip> }</MudText>
+                        <div class="rf-kpi-value">@k.Value.ToString(k.Format)</div>
+                        @if (k.Change is { } c)
+                        {
+                            <MudText Typo="Typo.caption" Class="@(c >= 0 ? "rf-up" : "rf-down")">@(c >= 0 ? "▲" : "▼") @Math.Abs(c).ToString("P1") 前期間比</MudText>
+                        }
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-2">投稿ランキング（反応の割合が高い順）</MudText>
+                <MudTable Items="_report.Ranking" Dense="true" Hover="true" Elevation="0" RowsPerPage="10">
+                    <HeaderContent>
+                        <MudTh>#</MudTh><MudTh>件名</MudTh><MudTh>SNS</MudTh><MudTh>公開</MudTh>
+                        <MudTh Style="text-align:right">表示回数</MudTh><MudTh Style="text-align:right">反応の割合</MudTh><MudTh Style="text-align:right">クリック</MudTh><MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd>@(_report.Ranking.ToList().IndexOf(context) + 1)</MudTd>
+                        <MudTd>@context.Title @if (context.IsAiGenerated) { <span class="rf-ai-badge">✦AI</span> }</MudTd>
+                        <MudTd>@PlatformCatalog.Get(context.Platform).DisplayName</MudTd>
+                        <MudTd>@Time.Short(context.PostedAt)</MudTd>
+                        <MudTd Style="text-align:right">@context.Impressions.ToString("N0")</MudTd>
+                        <MudTd Style="text-align:right">@(context.EngagementRate?.ToString("P1") ?? "—")</MudTd>
+                        <MudTd Style="text-align:right">@context.LinkClicks.ToString("N0")</MudTd>
+                        <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/studio?theme={Uri.EscapeDataString(context.Title)}")">この投稿をもとにつくる</MudButton></MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent><MudText Typo="Typo.body2">この期間に公開された投稿はありません。</MudText></NoRecordsContent>
+                    <PagerContent><MudTablePager InfoFormat="{first_item}-{last_item} / {all_items}件" RowsPerPageString="表示件数" /></PagerContent>
+                </MudTable>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-2">反応が多い時間帯</MudText>
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <thead><tr><th>曜日・時刻</th><th>根拠</th></tr></thead>
+                    <tbody>
+                        @foreach (var s in _report.BestTimes)
+                        {
+                            <tr><td>@DashboardService.DayLabel(s.Day)曜 @(s.Hour):00</td><td><MudText Typo="Typo.caption">@s.Rationale</MudText></td></tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private int _days = 30;
+    private AnalyticsReport? _report;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await LoadAsync();
+    }
+
+    private async Task ChangePeriodAsync(int days)
+    {
+        _days = days;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            var to = Time.Now;
+            _report = await DashboardSvc.AnalyticsAsync(to.AddDays(-_days), to, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    /// <summary>根拠となる数値付きの要約（数値はシステム計算値のみ）。</summary>
+    private IEnumerable<string> Summary()
+    {
+        var imp = _report!.Kpis[0];
+        var er = _report.Kpis[1];
+        yield return $"表示回数は {imp.Value:N0} 回{(imp.Change is { } c ? $"（前期間比 {(c >= 0 ? "+" : "")}{c:P1}）" : "")}でした。";
+        yield return $"反応の割合は {er.Value:P1}{(er.Change is { } e ? $"（前期間比 {(e >= 0 ? "+" : "")}{e:P1}）" : "")}です。";
+        if (_report.Ranking.FirstOrDefault() is { } top)
+        {
+            yield return $"最も反応が良かったのは「{top.Title}」（{PlatformCatalog.Get(top.Platform).DisplayName}、反応の割合 {top.EngagementRate:P1}）です。";
+        }
+    }
+}

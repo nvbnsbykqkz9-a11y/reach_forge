@@ -116,12 +116,16 @@ public static partial class GuardrailChecker
         {
             foreach (var (term, suggestion) in dict)
             {
+                var reported = false;
                 for (var idx = text.IndexOf(term, StringComparison.OrdinalIgnoreCase); idx >= 0;
                      idx = text.IndexOf(term, idx + term.Length, StringComparison.OrdinalIgnoreCase))
                 {
                     var end = idx + term.Length;
                     if (covered.Any(c => idx < c.End && end > c.Start)) continue; // 長い語で検出済み
                     covered.Add((idx, end));
+                    // 同じ語の2回目以降は範囲だけ記録する（修正案の適用はすべての出現箇所を置き換える）
+                    if (reported) continue;
+                    reported = true;
                     var excerpt = text.Substring(idx, term.Length);
                     findings.Add(new(GuardrailLevel.Warning, code,
                         $"「{excerpt}」{verb}（{law}）。「{suggestion}」に書き換えると安全です。",

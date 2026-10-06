@@ -48,6 +48,15 @@ public sealed class SchedulingService(IAppDbContext db, ITenantContext tenant, T
         return v;
     }
 
+    /// <summary>おすすめ時刻の第1候補で予約する（API で scheduledAt を省略した場合）。</summary>
+    public async Task<PostVariant> ScheduleAtBestTimeAsync(Guid variantId, CancellationToken ct)
+    {
+        var v = await db.PostVariants.FirstOrDefaultAsync(x => x.Id == variantId, ct) ?? throw new NotFoundException("投稿");
+        var slot = (await BestTimesAsync(v.ChannelId, ct))[0];
+        var at = BestTimeCalculator.NextOccurrence(slot, await TenantTimeZoneAsync(ct), clock.GetUtcNow());
+        return await ScheduleAsync(variantId, at, ct);
+    }
+
     public async Task UnscheduleAsync(Guid variantId, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Schedule);

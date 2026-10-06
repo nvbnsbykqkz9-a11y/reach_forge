@@ -1,0 +1,112 @@
+@page "/settings/brand"
+@inject WorkspaceService Workspaces
+@inject WebTenantContext Tenant
+@inject ISnackbar Snackbar
+
+<PageTitle>ブランド設定｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">ブランド設定</MudText>
+    @if (_brand is not null)
+    {
+        <MudChip T="string" Size="Size.Small">版 @_brand.Version</MudChip>
+    }
+    <span class="rf-spacer"></span>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanEdit || _brand is null)" OnClick="SaveAsync">保存する</MudButton>
+</div>
+
+@if (!CanEdit)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">ブランド設定の変更はオーナーと管理者のみ操作できます。</MudAlert>
+}
+
+@if (_brand is not null)
+{
+    <MudTabs Elevation="0" Rounded="true" TabPanelsClass="pt-4">
+        <MudTabPanel Text="基本">
+            <MudTextField @bind-Value="_brand.BrandName" Label="ブランド名（必須）" Variant="Variant.Outlined" ReadOnly="!CanEdit" />
+            <MudTextField @bind-Value="_brand.Industry" Label="業種" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit"
+                          HelperText="化粧品・健康食品・医療などの業種では、薬機法の表現チェックを自動で適用します" />
+            <MudTextField @bind-Value="_brand.WebsiteUrl" Label="WebサイトURL" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit" />
+        </MudTabPanel>
+        <MudTabPanel Text="話し方">
+            <MudText Typo="Typo.body2">丁寧 ←→ くだけた（@_brand.Tone.Casualness）</MudText>
+            <MudSlider T="int" @bind-Value="_brand.Tone.Casualness" Min="0" Max="100" Step="10" Disabled="!CanEdit" aria-label="口調の丁寧さ" />
+            <MudText Typo="Typo.body2" Class="mt-3">絵文字の量</MudText>
+            <MudRadioGroup T="int" @bind-Value="_brand.Tone.EmojiLevel" Disabled="!CanEdit">
+                <MudRadio T="int" Value="0">使わない</MudRadio>
+                <MudRadio T="int" Value="1">控えめ</MudRadio>
+                <MudRadio T="int" Value="2">ふつう</MudRadio>
+                <MudRadio T="int" Value="3">多め</MudRadio>
+            </MudRadioGroup>
+            <MudTextField @bind-Value="_brand.Tone.FirstPerson" Label="一人称" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit" />
+            <MudTextField @bind-Value="_brand.Tone.EndingRule" Label="語尾のルール" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit" />
+            <MudPaper Class="pa-3 mt-3 rf-ai-surface" Elevation="0">
+                <MudText Typo="Typo.caption" Class="rf-ai-hint">例文プレビュー</MudText>
+                <MudText Typo="Typo.body1">@Example</MudText>
+            </MudPaper>
+        </MudTabPanel>
+        <MudTabPanel Text="NGワード・必須表記">
+            <MudTextField @bind-Value="_ng" Label="使わない言葉（1行に1つ）" Variant="Variant.Outlined" Lines="5" ReadOnly="!CanEdit" />
+            <MudTextField @bind-Value="_must" Label="必ず入れる表記（1行に1つ）" Variant="Variant.Outlined" Lines="3" Class="mt-3" ReadOnly="!CanEdit" />
+            <MudTextField @bind-Value="_tags" Label="よく使うハッシュタグ（スペース区切り）" Variant="Variant.Outlined" Class="mt-3" ReadOnly="!CanEdit" />
+        </MudTabPanel>
+        <MudTabPanel Text="商品">
+            <MudSimpleTable Dense="true" Elevation="0">
+                <thead><tr><th>商品名</th><th style="text-align:right">価格</th><th>販売期間</th></tr></thead>
+                <tbody>
+                    @foreach (var p in _products)
+                    {
+                        <tr><td>@p.Name</td><td style="text-align:right">@(p.Price?.ToString("N0") ?? "—")円</td><td>@p.AvailableFrom 〜 @p.AvailableUntil</td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+            <MudText Typo="Typo.caption" Style="color:var(--rf-color-text-secondary)">価格・期間はAIの事実性チェック（生成文との突合）に使います。</MudText>
+        </MudTabPanel>
+    </MudTabs>
+}
+
+@code {
+    private BrandProfile? _brand;
+    private IReadOnlyList<Product> _products = [];
+    private string _ng = "", _must = "", _tags = "";
+
+    private bool CanEdit => RolePolicy.Can(Tenant.Role, Permission.ManageBrand);
+
+    private string Example
+    {
+        get
+        {
+            var t = _brand!.Tone;
+            var emoji = t.EmojiLevel switch { 0 => "", 1 => "☕", 2 => "☕✨", _ => "☕✨🍂" };
+            return t.Casualness >= 50
+                ? $"{t.FirstPerson}の秋の新作、もう飲みましたか？ほっくり甘くておすすめです{emoji}"
+                : $"{t.FirstPerson}より、秋の新作のご案内です。ほっくりとした甘さをお楽しみください。{emoji}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _brand = await Workspaces.GetBrandAsync(CancellationToken.None);
+        _products = await Workspaces.ProductsAsync(CancellationToken.None);
+        _ng = string.Join("\n", _brand.NgWords);
+        _must = string.Join("\n", _brand.MustPhrases);
+        _tags = string.Join(" ", _brand.PreferredHashtags.Select(t => "#" + t));
+    }
+
+    private async Task SaveAsync()
+    {
+        try
+        {
+            _brand!.NgWords = [.. _ng.Split('\n')];
+            _brand.MustPhrases = [.. _must.Split('\n')];
+            _brand.PreferredHashtags = [.. _tags.Split([' ', '　'], StringSplitOptions.RemoveEmptyEntries).Select(PostText.Normalize)];
+            _brand = await Workspaces.SaveBrandAsync(_brand, CancellationToken.None);
+            Snackbar.Add($"保存しました（版 {_brand.Version}）", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+}

@@ -129,6 +129,7 @@ public sealed class PublishingService(
     {
         var expired = await db.PostVariants
             .Where(v => v.Status == VariantStatus.InReview && v.RequestedPublishAt != null && v.RequestedPublishAt <= now)
+            .OrderBy(v => v.RequestedPublishAt)
             .Take(BatchSize)
             .ToListAsync(ct);
         foreach (var v in expired)

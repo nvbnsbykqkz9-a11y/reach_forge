@@ -1,0 +1,65 @@
+@* ガードレール結果：重要度・該当箇所・理由・修正案（RF-UX-001 5.4 / 6.3） *@
+<div aria-live="polite">
+    @if (Findings.Count == 0)
+    {
+        <div class="rf-finding" style="border-left-color:var(--rf-color-success)">
+            <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Size="Size.Small" Style="color:var(--rf-color-success)" aria-hidden="true" />
+            確認事項はありません
+        </div>
+    }
+    @foreach (var f in Findings.OrderByDescending(f => f.Level))
+    {
+        <div class="rf-finding @Css(f.Level)">
+            <div class="d-flex align-start gap-2">
+                <MudIcon Icon="@Icon(f.Level)" Size="Size.Small" aria-hidden="true" Style="@IconStyle(f.Level)" />
+                <div style="flex:1">
+                    <span class="rf-visually-hidden">@LevelLabel(f.Level)：</span>
+                    <MudText Typo="Typo.body2">@f.Message</MudText>
+                    @if (f.Reason is not null)
+                    {
+                        <MudText Typo="Typo.caption" Style="color:var(--rf-color-text-secondary)">根拠：@f.Reason（@f.Code）</MudText>
+                    }
+                    @if (!ReadOnly && f.CanAutoFix && OnApply.HasDelegate)
+                    {
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary" Class="mt-1"
+                                   OnClick="() => OnApply.InvokeAsync(f)">修正案を適用する</MudButton>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<GuardrailFinding> Findings { get; set; } = [];
+    [Parameter] public EventCallback<GuardrailFinding> OnApply { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+
+    private static string Css(GuardrailLevel l) => l switch
+    {
+        GuardrailLevel.Error => "rf-finding-error",
+        GuardrailLevel.Warning => "rf-finding-warning",
+        _ => "rf-finding-info",
+    };
+
+    private static string Icon(GuardrailLevel l) => l switch
+    {
+        GuardrailLevel.Error => Icons.Material.Rounded.Error,
+        GuardrailLevel.Warning => Icons.Material.Rounded.PriorityHigh,
+        _ => Icons.Material.Rounded.Info,
+    };
+
+    private static string IconStyle(GuardrailLevel l) => l switch
+    {
+        GuardrailLevel.Error => "color:var(--rf-color-danger)",
+        GuardrailLevel.Warning => "color:var(--rf-color-warning)",
+        _ => "color:var(--rf-color-primary)",
+    };
+
+    private static string LevelLabel(GuardrailLevel l) => l switch
+    {
+        GuardrailLevel.Error => "エラー",
+        GuardrailLevel.Warning => "警告",
+        _ => "情報",
+    };
+}

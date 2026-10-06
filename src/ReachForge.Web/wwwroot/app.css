@@ -1,38 +1,134 @@
-h1:focus {
-    outline: none;
+/*
+ * ReachForge デザイントークン（RF-UX-001 4章）。画面のコードに色コードを直接書かず、ここで定義した変数を使う。
+ */
+:root {
+    --rf-color-primary: #0A5BD6;
+    --rf-color-ai: #5443D1;
+    --rf-color-ai-subtle: #F1EFFF;
+    --rf-color-success: #00775F;
+    --rf-color-warning: #B26A00;
+    --rf-color-warning-bg: #FFF1CC;
+    --rf-color-warning-text: #7A5600;
+    --rf-color-danger: #C0392B;
+    --rf-color-danger-bg: #FFE3DF;
+    --rf-color-danger-text: #A12B1D;
+    --rf-color-info-bg: #E8EEF9;
+    --rf-color-text-primary: #1B2333;
+    --rf-color-text-secondary: #4A5568;
+    --rf-color-text-tertiary: #6B7487;
+    --rf-color-border: #D7DDE8;
+    --rf-color-border-input: #8C96A8;
+    --rf-color-surface: #FFFFFF;
+    --rf-color-surface-subtle: #F3F6FB;
+    --rf-color-draft-bg: #EEF2F8;
+    --rf-radius-sm: 4px;
+    --rf-radius-md: 8px;
+    --rf-radius-lg: 12px;
+    --rf-space-2: 8px;
+    --rf-space-3: 12px;
+    --rf-space-4: 16px;
+    --rf-space-5: 24px;
+    --rf-elevation-1: 0 1px 2px rgba(15, 23, 38, .08);
+    --rf-elevation-2: 0 4px 12px rgba(15, 23, 38, .12);
+    --rf-motion: 200ms ease-out;
 }
 
-.valid.modified:not([type=checkbox]) {
-    outline: 1px solid #26b050;
-}
-
-.invalid {
-    outline: 1px solid #e50000;
-}
-
-.validation-message {
-    color: #e50000;
-}
-
-.blazor-error-boundary {
-    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
-    padding: 1rem 1rem 1rem 3.7rem;
-    color: white;
-}
-
-    .blazor-error-boundary::after {
-        content: "An error has occurred."
+@media (prefers-color-scheme: dark) {
+    :root {
+        --rf-color-ai-subtle: #251F4D;
+        --rf-color-text-primary: #E6EDF7;
+        --rf-color-text-secondary: #A9B4C6;
+        --rf-color-surface: #162033;
+        --rf-color-surface-subtle: #0F1726;
+        --rf-color-border: #2A3650;
+        --rf-color-draft-bg: #1E2A40;
     }
-
-.darker-border-checkbox.form-check-input {
-    border-color: #929292;
 }
 
-.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
-    color: var(--bs-secondary-color);
-    text-align: end;
+html { scroll-padding-top: 72px; scroll-padding-bottom: 72px; }
+body { font-variant-numeric: tabular-nums; }
+
+/* フォーカス表示：2px の primary 枠＋2px の白い隙間（outline: none だけの指定は禁止） */
+:focus-visible {
+    outline: 2px solid var(--rf-color-primary) !important;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px #fff;
 }
 
-.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
-    text-align: start;
+.rf-visually-hidden {
+    position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
+
+.rf-skip-link { position: absolute; left: -9999px; top: 8px; z-index: 1000; background: var(--rf-color-surface); padding: 8px 16px; border-radius: var(--rf-radius-md); }
+.rf-skip-link:focus { left: 8px; }
+
+.rf-main { max-width: 1440px; margin: 0 auto; padding: var(--rf-space-5); }
+.rf-page-header { display: flex; align-items: center; gap: var(--rf-space-3); flex-wrap: wrap; margin-bottom: var(--rf-space-5); }
+.rf-page-header .rf-spacer { flex: 1; }
+.rf-workspace-strip { height: 4px; width: 100%; position: fixed; top: 0; left: 0; z-index: 1300; }
+
+.rf-card { border-radius: var(--rf-radius-lg) !important; }
+.rf-kpi-value { font-size: 2rem; font-weight: 700; line-height: 1.3; }
+.rf-up { color: var(--rf-color-success); }
+.rf-down { color: var(--rf-color-danger); }
+
+/* AI サーフェス（RF-UX-001 6.1 原則1） */
+.rf-ai-surface { background: var(--rf-color-ai-subtle) !important; border: 1px solid color-mix(in srgb, var(--rf-color-ai) 25%, transparent); border-radius: var(--rf-radius-lg); }
+.rf-ai-badge { display: inline-flex; align-items: center; gap: 2px; color: var(--rf-color-ai); font-weight: 700; font-size: .75rem; }
+.rf-ai-hint { color: var(--rf-color-ai); }
+
+/* ステータスバッジ（RF-UX-001 4.1：色だけに頼らずアイコン＋文字） */
+.rf-status { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--rf-radius-sm); font-size: .75rem; font-weight: 500; white-space: nowrap; }
+.rf-status-draft { background: var(--rf-color-draft-bg); color: var(--rf-color-text-secondary); }
+.rf-status-review { background: var(--rf-color-warning-bg); color: var(--rf-color-warning-text); }
+.rf-status-scheduled { background: var(--rf-color-info-bg); color: var(--rf-color-primary); }
+.rf-status-published { background: #DDF3EC; color: var(--rf-color-success); }
+.rf-status-failed { background: var(--rf-color-danger-bg); color: var(--rf-color-danger-text); }
+
+/* ガードレール（RF-UX-001 6.3：左罫線＋アイコン） */
+.rf-finding { border-left: 4px solid var(--rf-color-border); padding: 8px 12px; border-radius: var(--rf-radius-sm); background: var(--rf-color-surface); margin-bottom: 8px; }
+.rf-finding-error { border-left-color: var(--rf-color-danger); background: var(--rf-color-danger-bg); }
+.rf-finding-warning { border-left-color: var(--rf-color-warning); background: var(--rf-color-warning-bg); color: var(--rf-color-text-primary); }
+.rf-finding-info { border-left-color: var(--rf-color-primary); background: var(--rf-color-info-bg); }
+
+/* 投稿本文エディタの文字数カウンタ */
+.rf-counter { font-size: .75rem; text-align: right; color: var(--rf-color-text-secondary); }
+.rf-counter-warn { color: var(--rf-color-warning-text); font-weight: 700; }
+.rf-counter-over { color: var(--rf-color-danger); font-weight: 700; text-decoration: underline; }
+
+/* SNS プレビュー（各 SNS の見た目に近いモック） */
+.rf-preview { border: 1px solid var(--rf-color-border); border-radius: var(--rf-radius-lg); background: #fff; color: #0F1419; padding: 12px; font-size: 15px; line-height: 1.5; max-width: 420px; }
+.rf-preview-dark { background: #000; color: #E7E9EA; border-color: #2F3336; }
+.rf-preview-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.rf-preview-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #F59E0B, #B45309); flex: none; }
+.rf-preview-name { font-weight: 700; font-size: 14px; }
+.rf-preview-sub { color: #536471; font-size: 13px; }
+.rf-preview-body { white-space: pre-wrap; word-break: break-word; }
+.rf-preview-body .rf-tag, .rf-preview-body .rf-url { color: #1D9BF0; }
+.rf-preview-media { margin: 8px 0; border-radius: 12px; background: repeating-linear-gradient(45deg, #F3F4F6, #F3F4F6 10px, #E5E7EB 10px, #E5E7EB 20px); display: flex; align-items: center; justify-content: center; color: #6B7280; font-size: 12px; }
+.rf-preview-fold { border-top: 1px dashed #9CA3AF; margin: 4px 0; font-size: 11px; color: #6B7280; }
+.rf-preview-line { background: #8CABD9; padding: 12px; border-radius: var(--rf-radius-lg); }
+.rf-preview-line .rf-bubble { background: #fff; border-radius: 16px; padding: 10px 12px; white-space: pre-wrap; }
+
+/* カレンダー */
+.rf-cal { display: grid; grid-template-columns: 64px repeat(7, minmax(110px, 1fr)); border: 1px solid var(--rf-color-border); border-radius: var(--rf-radius-lg); overflow: auto; background: var(--rf-color-surface); }
+.rf-cal-head { padding: 8px; font-weight: 700; border-bottom: 1px solid var(--rf-color-border); background: var(--rf-color-surface-subtle); text-align: center; position: sticky; top: 0; }
+.rf-cal-today { color: var(--rf-color-primary); }
+.rf-cal-hour { padding: 4px 8px; font-size: .75rem; color: var(--rf-color-text-tertiary); border-top: 1px solid var(--rf-color-border); }
+.rf-cal-cell { border-top: 1px solid var(--rf-color-border); border-left: 1px solid var(--rf-color-border); min-height: 44px; padding: 2px; }
+.rf-cal-entry { display: block; width: 100%; text-align: left; border: 1px solid var(--rf-color-border); border-radius: var(--rf-radius-md); background: var(--rf-color-surface); padding: 4px 6px; margin-bottom: 2px; font-size: .75rem; cursor: pointer; color: inherit; }
+.rf-cal-entry:hover { box-shadow: var(--rf-elevation-2); }
+.rf-cal-best { border: 2px dashed var(--rf-color-ai); color: var(--rf-color-ai); background: var(--rf-color-ai-subtle); }
+
+.rf-sticky-actions { position: sticky; bottom: 0; background: var(--rf-color-surface); border-top: 1px solid var(--rf-color-border); padding: 12px 0; display: flex; gap: 16px; justify-content: flex-end; z-index: 10; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+@media (max-width: 599px) {
+    .rf-main { padding: 16px; }
+}
+
+.mud-tab { text-transform: none !important; }

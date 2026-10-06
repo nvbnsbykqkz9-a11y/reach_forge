@@ -31,6 +31,7 @@ public static class DependencyInjection
         });
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<ReachForgeDbContext>());
         services.AddSingleton<ICredentialStore, DevCredentialStore>();
+        services.AddScoped<TenantContextOverride>();
         return services;
     }
 }
