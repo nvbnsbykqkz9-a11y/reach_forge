@@ -109,6 +109,7 @@ if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
     builder.Services.AddHostedService<PublishDispatcher>();
     builder.Services.AddHostedService<TokenRefreshScheduler>();
     builder.Services.AddHostedService<AiJobDispatcher>();
+    builder.Services.AddHostedService<MetricsCollectScheduler>();
 }
 
 var app = builder.Build();

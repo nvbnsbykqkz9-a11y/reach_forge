@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ReachForge.Application.Social;
 using ReachForge.Domain.Enums;
+using ReachForge.Social.Insights;
 using ReachForge.Social.Line;
 using ReachForge.Social.Meta;
 using ReachForge.Social.Mock;
@@ -42,6 +43,12 @@ public static class DependencyInjection
         services.AddSingleton<ISocialPublisher, InstagramPublisher>();
         services.AddSingleton<ISocialPublisher, ThreadsPublisher>();
         services.AddSingleton<ISocialPublisher, LinePublisher>();
+        services.AddSingleton<IInsightsReaderFactory, InsightsReaderFactory>();
+        services.AddSingleton<ISocialInsightsReader, XInsightsReader>();
+        services.AddSingleton<ISocialInsightsReader, FacebookInsightsReader>();
+        services.AddSingleton<ISocialInsightsReader, InstagramInsightsReader>();
+        services.AddSingleton<ISocialInsightsReader, ThreadsInsightsReader>();
+        services.AddSingleton<ISocialInsightsReader, LineInsightsReader>();
         // TODO(フェーズ2): TikTok / YouTube / LinkedIn / Pinterest（アプリ審査・パートナー承認後）
 
         if (options.UseMock)
@@ -49,7 +56,9 @@ public static class DependencyInjection
             foreach (var platform in Enum.GetValues<SocialPlatform>())
             {
                 services.AddSingleton<ISocialPublisher>(sp =>
-                    new MockPublisher(platform, sp.GetRequiredService<ILogger<MockPublisher>>()));
+                    new MockPublisher(platform, sp.GetRequiredService<ILogger<MockPublisher>>(), sp.GetService<TimeProvider>()));
+                services.AddSingleton<ISocialInsightsReader>(sp =>
+                    new MockInsightsReader(platform, sp.GetService<TimeProvider>() ?? TimeProvider.System));
             }
             services.AddSingleton<IChannelConnector, DemoChannelConnector>();
         }

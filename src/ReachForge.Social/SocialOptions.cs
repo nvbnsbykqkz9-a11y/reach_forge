@@ -35,9 +35,16 @@ public sealed class MetaOptions
     public string GraphVersion { get; set; } = "v24.0";
     public string DialogBaseUrl { get; set; } = "https://www.facebook.com/";
     public string GraphBaseUrl { get; set; } = "https://graph.facebook.com/";
-    public string FacebookScopes { get; set; } = "pages_show_list,pages_read_engagement,pages_manage_posts,business_management";
+    public string FacebookScopes { get; set; } =
+        "pages_show_list,pages_read_engagement,pages_manage_posts,pages_manage_engagement,pages_messaging,read_insights,business_management";
     public string InstagramScopes { get; set; } =
-        "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,business_management";
+        "instagram_basic,instagram_content_publish,instagram_manage_insights,instagram_manage_comments,pages_show_list,pages_read_engagement,business_management";
+
+    /// <summary>Facebook 投稿の insights 指標（Meta は指標名を随時廃止・追加するため設定値）。</summary>
+    public string FacebookPostMetrics { get; set; } = "post_impressions,post_impressions_unique,post_clicks";
+
+    /// <summary>Instagram メディアの insights 指標。</summary>
+    public string InstagramMediaMetrics { get; set; } = "views,reach,likes,comments,shares,saved,profile_visits,follows";
     /// <summary>Webhook 購読確認（hub.verify_token）。</summary>
     public string? WebhookVerifyToken { get; set; }
     public bool IsConfigured => !string.IsNullOrWhiteSpace(AppId) && !string.IsNullOrWhiteSpace(AppSecret);
@@ -50,7 +57,11 @@ public sealed class ThreadsOptions
     public string ApiVersion { get; set; } = "v1.0";
     public string AuthorizeUrl { get; set; } = "https://threads.net/oauth/authorize";
     public string GraphBaseUrl { get; set; } = "https://graph.threads.net/";
-    public string Scopes { get; set; } = "threads_basic,threads_content_publish";
+    public string Scopes { get; set; } =
+        "threads_basic,threads_content_publish,threads_manage_insights,threads_read_replies,threads_manage_replies";
+
+    /// <summary>Threads メディアの insights 指標。</summary>
+    public string MediaMetrics { get; set; } = "views,likes,replies,reposts,quotes,shares";
     public string? WebhookVerifyToken { get; set; }
     public bool IsConfigured => !string.IsNullOrWhiteSpace(AppId) && !string.IsNullOrWhiteSpace(AppSecret);
 }

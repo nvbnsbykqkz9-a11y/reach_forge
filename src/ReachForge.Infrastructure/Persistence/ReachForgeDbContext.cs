@@ -49,6 +49,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AiJob> AiJobs => Set<AiJob>();
+    public DbSet<ChannelMetric> ChannelMetrics => Set<ChannelMetric>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
@@ -116,6 +117,7 @@ public sealed class ReachForgeDbContext(
         });
 
         b.Entity<PostMetric>().HasIndex(x => new { x.PostVariantId, x.CapturedAt });
+        b.Entity<ChannelMetric>().HasIndex(x => new { x.ChannelId, x.Date }).IsUnique();
         b.Entity<MediaAsset>(e =>
         {
             e.HasIndex(x => new { x.WorkspaceId, x.DerivationKey });

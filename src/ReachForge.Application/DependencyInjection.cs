@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<MediaService>();
         services.AddScoped<AiJobProcessor>();
         services.AddScoped<DashboardService>();
+        services.AddScoped<MetricsCollectionService>();
         services.AddScoped<WorkspaceService>();
         return services;
     }

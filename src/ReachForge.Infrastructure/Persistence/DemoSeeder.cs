@@ -43,6 +43,7 @@ public static class DemoSeeder
             // 開発用 DB（デモデータ）のみ：スキーマが古ければ作り直す。本番はマイグレーションで更新する
             await db.Database.EnsureDeletedAsync(ct);
             await db.Database.EnsureCreatedAsync(ct);
+            await SchemaIsCurrentAsync(db, ct); // 新しいハッシュを記録する
         }
         if (!seed || await db.Tenants.AnyAsync(ct)) return;
 
@@ -69,21 +70,22 @@ public static class DemoSeeder
         }
     }
 
-    /// <summary>最新のテーブル・列があるか（開発用 DB の作り直し判定）。</summary>
+    /// <summary>
+    /// 開発用 DB のスキーマが現在のモデルと同じか。作成スクリプトのハッシュを専用テーブルに記録して比べる
+    /// （モデルを変えるたびに判定用のコードを足さなくてよいように）。
+    /// </summary>
     private static async Task<bool> SchemaIsCurrentAsync(ReachForgeDbContext db, CancellationToken ct)
     {
-        try
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(db.Database.GenerateCreateScript())));
+        await db.Database.ExecuteSqlRawAsync("CREATE TABLE IF NOT EXISTS rf_schema (hash VARCHAR(64) NOT NULL)", ct);
+        var stored = await db.Database.SqlQueryRaw<string>("SELECT hash AS \"Value\" FROM rf_schema").ToListAsync(ct);
+        if (stored.Count == 0 && !await db.Tenants.AnyAsync(ct))
         {
-            _ = await db.AiJobs.AnyAsync(ct);
-            _ = await db.MediaAssets.Select(m => m.DerivationKey).FirstOrDefaultAsync(ct);
-            _ = await db.BrandProfiles.Select(b => b.LogoAssetId).FirstOrDefaultAsync(ct);
-            _ = await db.PostVariants.Select(v => v.AspectMethod).FirstOrDefaultAsync(ct);
+            await db.Database.ExecuteSqlRawAsync("INSERT INTO rf_schema (hash) VALUES ({0})", [hash], ct);
             return true;
         }
-        catch (Exception ex) when (ex is Microsoft.Data.Sqlite.SqliteException or Npgsql.PostgresException)
-        {
-            return false;
-        }
+        return stored.Count == 1 && stored[0] == hash;
     }
 
     private static async Task SeedAsync(ReachForgeDbContext db, DateTimeOffset now, CancellationToken ct)
@@ -152,7 +154,27 @@ public static class DemoSeeder
         db.CreditAccounts.Add(CreditAccount.Open(TenantId, 1500, new DateOnly(today.Year, today.Month, 1)));
 
         SeedHistory(db, channels, now);
+        SeedFollowers(db, channels, now);
         await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>過去60日のフォロワー数（日次）。</summary>
+    private static void SeedFollowers(ReachForgeDbContext db, IReadOnlyList<Channel> channels, DateTimeOffset now)
+    {
+        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        for (var c = 0; c < channels.Count; c++)
+        {
+            var followers = 800 + c * 450;
+            for (var d = 60; d >= 1; d--)
+            {
+                followers += (d * 7 + c * 3) % 9;
+                db.ChannelMetrics.Add(new ChannelMetric
+                {
+                    TenantId = TenantId, WorkspaceId = WorkspaceId, ChannelId = channels[c].Id, Platform = channels[c].Platform,
+                    Date = today.AddDays(-d), Followers = followers,
+                });
+            }
+        }
     }
 
     /// <summary>過去60日の公開済み投稿と指標（ダッシュボード・最適時刻提案の計算用）。木曜19時・水曜12時が強い傾向にする。</summary>

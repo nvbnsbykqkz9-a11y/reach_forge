@@ -79,18 +79,34 @@ public interface ISocialPublisher
     Task DeleteAsync(string externalPostId, ChannelCredential credential, CancellationToken ct);
 }
 
+/// <summary>
+/// 投稿1件の指標。SNS が提供しない値は 0（表示回数を提供しない SNS はリーチ・再生数で代替：MetricsCalculator）。
+/// </summary>
 public sealed record PostMetricSnapshot(string ExternalPostId, long Impressions, long Reach, long Views, int Likes,
-    int Comments, int Shares, int Saves, int LinkClicks);
+    int Comments, int Shares, int Saves, int LinkClicks, int ProfileVisits = 0, int Follows = 0);
 
 public sealed record AccountMetricSnapshot(long Followers, long Impressions, long ProfileVisits);
 
+/// <summary>SNS の指標取得（F-10 MetricsCollectJob）。</summary>
 public interface ISocialInsightsReader
 {
     SocialPlatform Platform { get; }
-    Task<IReadOnlyList<PostMetricSnapshot>> GetPostMetricsAsync(IEnumerable<string> externalPostIds,
+
+    /// <summary>モック（デモ接続用の擬似値）か。</summary>
+    bool IsSimulation { get; }
+
+    /// <summary>投稿ごとの指標。取得できなかった投稿（削除済みなど）は結果に含めない。</summary>
+    Task<IReadOnlyList<PostMetricSnapshot>> GetPostMetricsAsync(IReadOnlyList<string> externalPostIds,
         ChannelCredential credential, CancellationToken ct);
-    Task<AccountMetricSnapshot> GetAccountMetricsAsync(DateOnly from, DateOnly to, ChannelCredential credential,
-        CancellationToken ct);
+
+    /// <summary>アカウントの指標（フォロワー数は取得時点の値）。</summary>
+    Task<AccountMetricSnapshot> GetAccountMetricsAsync(DateOnly date, ChannelCredential credential, CancellationToken ct);
+}
+
+public interface IInsightsReaderFactory
+{
+    /// <summary>指標取得のアダプタ。SNS が指標 API を提供しない場合は null。</summary>
+    ISocialInsightsReader? Get(SocialPlatform platform, bool demo);
 }
 
 public sealed record InboxItem(string ExternalId, SocialPlatform Platform, string Author, string Text,

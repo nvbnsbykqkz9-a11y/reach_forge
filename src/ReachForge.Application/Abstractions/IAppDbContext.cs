@@ -25,6 +25,7 @@ public interface IAppDbContext
     DbSet<WorkspaceMember> WorkspaceMembers { get; }
     DbSet<Invitation> Invitations { get; }
     DbSet<AiJob> AiJobs { get; }
+    DbSet<ChannelMetric> ChannelMetrics { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

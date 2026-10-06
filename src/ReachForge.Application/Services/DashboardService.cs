@@ -96,6 +96,8 @@ public sealed class DashboardService(
 
         var current = metrics.Where(m => m.PostedAt >= from).ToList();
         var previous = metrics.Where(m => m.PostedAt < from).ToList();
+        var followers = await FollowerGrowthAsync(from, to, ct) ?? current.Sum(m => m.Follows);
+        var previousFollowers = await FollowerGrowthAsync(prevFrom, from, ct) ?? previous.Sum(m => m.Follows);
 
         return
         [
@@ -103,7 +105,7 @@ public sealed class DashboardService(
             new("反応の割合", Rate(current), Rate(previous), "P1",
                 "（いいね＋コメント＋シェア＋保存）÷ 表示回数"),
             new("リンクのクリック", current.Sum(m => m.LinkClicks), previous.Sum(m => m.LinkClicks), "N0"),
-            new("フォロワー増加", current.Sum(m => m.Follows), previous.Sum(m => m.Follows), "+#,0;-#,0;0"),
+            new("フォロワー増加", followers, previousFollowers, "+#,0;-#,0;0", "期間末のフォロワー数 − 期間初のフォロワー数"),
         ];
 
         static double Rate(List<PostMetric> ms)
@@ -111,6 +113,29 @@ public sealed class DashboardService(
             var imp = ms.Sum(m => m.Impressions);
             return imp == 0 ? 0 : (double)ms.Sum(MetricsCalculator.Engagements) / imp;
         }
+    }
+
+    /// <summary>
+    /// フォロワー純増（F-10 指標定義）＝ 期間末 − 期間初 のフォロワー数（チャネル合計）。
+    /// 期間の前後に日次の記録がないチャネルは、期間内の最初と最後の記録で計算する。記録がなければ null。
+    /// </summary>
+    private async Task<double?> FollowerGrowthAsync(DateTimeOffset from, DateTimeOffset to, CancellationToken ct)
+    {
+        var start = DateOnly.FromDateTime(from.UtcDateTime);
+        var end = DateOnly.FromDateTime(to.UtcDateTime);
+        var rows = await db.ChannelMetrics
+            .Where(m => m.WorkspaceId == tenant.WorkspaceId && m.Date >= start.AddDays(-1) && m.Date <= end)
+            .Select(m => new { m.ChannelId, m.Date, m.Followers })
+            .ToListAsync(ct);
+        if (rows.Count == 0) return null;
+        double total = 0;
+        foreach (var g in rows.GroupBy(r => r.ChannelId))
+        {
+            var ordered = g.OrderBy(r => r.Date).ToList();
+            if (ordered.Count < 2) continue;
+            total += ordered[^1].Followers - ordered[0].Followers;
+        }
+        return total;
     }
 
     /// <summary>要対応：重要度順（エラー → 期限が近い承認 → 急ぎ → その他）、最大5件。</summary>
