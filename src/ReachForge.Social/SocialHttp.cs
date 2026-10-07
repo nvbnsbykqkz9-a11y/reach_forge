@@ -18,8 +18,9 @@ public static class SocialHttp
     public const string TransientCode = "E-PUB-503";
     public const string ConflictCode = "E-PUB-409";
 
+    /// <param name="onSuccess">成功した応答のヘッダーを読む（YouTube の再開可能アップロードの Location など）。</param>
     public static async Task<JsonNode> SendAsync(HttpClient http, HttpRequestMessage request, string platformName,
-        CancellationToken ct)
+        CancellationToken ct, Action<HttpResponseMessage>? onSuccess = null)
     {
         HttpResponseMessage response;
         try
@@ -47,7 +48,11 @@ public static class SocialHttp
             {
             }
 
-            if (response.IsSuccessStatusCode) return json ?? new JsonObject();
+            if (response.IsSuccessStatusCode)
+            {
+                onSuccess?.Invoke(response);
+                return json ?? new JsonObject();
+            }
 
             var detail = ErrorMessage(json) ?? $"HTTP {(int)response.StatusCode}";
             throw response.StatusCode switch
@@ -59,6 +64,8 @@ public static class SocialHttp
                     $"{platformName}のAPI利用上限に達しました。時間をおいて再試行します（{detail}）", isTransient: true),
                 >= HttpStatusCode.InternalServerError => new SocialApiException(TransientCode,
                     $"{platformName}側が一時的に利用できません（{detail}）", isTransient: true),
+                HttpStatusCode.Forbidden when IsGoogleQuotaError(json) => new SocialApiException(TransientCode,
+                    $"{platformName}のAPI利用上限（クォータ）に達しました。時間をおいて再試行します（{detail}）", isTransient: true),
                 _ when IsMetaTokenError(json) => new SocialApiException(ErrorCodes.SnsReauthRequired,
                     $"{platformName}の再認証が必要です（{detail}）", isTransient: false),
                 _ => new SocialApiException(ErrorCodes.PubFailed, detail, isTransient: false),
@@ -119,6 +126,11 @@ public static class SocialHttp
         StrOrNull(json, "error.message") ?? StrOrNull(json, "detail") ?? StrOrNull(json, "message")
         ?? StrOrNull(json, "error_description") ?? StrOrNull(json, "title")
         ?? (json?["error"] is JsonValue v ? v.ToString() : null);
+
+    /// <summary>Google API のクォータ超過（403 で reason が quotaExceeded など）。日付が変われば回復するため一時的エラーとして扱う。</summary>
+    private static bool IsGoogleQuotaError(JsonNode? json) =>
+        json?["error"]?["errors"] is JsonArray errors
+        && errors.Any(e => StrOrNull(e, "reason") is "quotaExceeded" or "rateLimitExceeded" or "userRateLimitExceeded");
 
     /// <summary>Meta Graph API のトークン失効（OAuthException code 190）。</summary>
     private static bool IsMetaTokenError(JsonNode? json) => StrOrNull(json, "error.code") == "190";

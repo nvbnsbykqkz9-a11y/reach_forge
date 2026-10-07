@@ -43,7 +43,7 @@ public sealed record PublishResult(string ExternalPostId, string? Url);
 
 /// <summary>
 /// 投稿に添付する画像（SNS 別の比率・形式に変換済み）。SNS が URL から取得する場合は公開 URL（短時間 SAS）、
-/// アップロードする場合（X）はバイト列を使う。
+/// アップロードする場合（X・TikTok・YouTube）はバイト列を使う。動画の字幕（SRT）は字幕トラックとして送れる SNS（YouTube）で使う。
 /// </summary>
 public sealed record PublishMedia(
     Guid AssetId,
@@ -52,7 +52,8 @@ public sealed record PublishMedia(
     bool IsAiGenerated,
     Func<CancellationToken, Task<byte[]>> ReadAsync,
     Func<CancellationToken, Task<string>> PublicUrlAsync,
-    Func<CancellationToken, Task<string>> PreviewUrlAsync)
+    Func<CancellationToken, Task<string>> PreviewUrlAsync,
+    string? SubtitlesSrt = null)
 {
     public bool IsVideo => Mime.StartsWith("video/", StringComparison.Ordinal);
 }

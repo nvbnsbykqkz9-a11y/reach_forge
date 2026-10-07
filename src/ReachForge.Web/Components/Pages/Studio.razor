@@ -7,6 +7,7 @@
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
 @inject ILogger<Studio> Log
+@inject Microsoft.Extensions.Options.IOptions<ReachForge.Social.SocialOptions> SocialOpts
 
 <PageTitle>AIコンテンツスタジオ｜ReachForge</PageTitle>
 
@@ -197,6 +198,39 @@
                                 {
                                     <MudTextField @bind-Value="edit.Title" Label="タイトル" Variant="Variant.Outlined" Immediate="true" />
                                     <RfCharCounter Text="@(edit.Title ?? "")" Max="maxTitle" />
+                                }
+                                @if (v.Platform == SocialPlatform.TikTok)
+                                {
+                                    <div class="d-flex align-center gap-3 mt-2 flex-wrap">
+                                        <MudSelect T="string" Label="公開範囲" Variant="Variant.Outlined" Dense="true" Style="max-width:220px"
+                                                   Value="@(v.PlatformOptions.GetValueOrDefault(PlatformOptionKeys.TikTokPrivacy) ?? "PUBLIC_TO_EVERYONE")"
+                                                   ValueChanged="@((string x) => SetOptionAsync(v, PlatformOptionKeys.TikTokPrivacy, x))">
+                                            @foreach (var (value, label) in PlatformOptionKeys.TikTokPrivacyChoices)
+                                            {
+                                                <MudSelectItem T="string" Value="@value">@label</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudCheckBox T="bool" Label="コメントを受け付けない" Dense="true"
+                                                     Value="@(v.PlatformOptions.GetValueOrDefault(PlatformOptionKeys.TikTokDisableComment) == "true")"
+                                                     ValueChanged="@((bool x) => SetOptionAsync(v, PlatformOptionKeys.TikTokDisableComment, x ? "true" : null))" />
+                                    </div>
+                                    @if (!SocialOpts.Value.TikTok.Audited)
+                                    {
+                                        <MudText Typo="Typo.caption" Class="d-block" Style="color:var(--rf-color-text-secondary)">
+                                            TikTok の審査が終わるまでは、選んだ公開範囲にかかわらず「自分のみ」で投稿されます。
+                                        </MudText>
+                                    }
+                                }
+                                else if (v.Platform == SocialPlatform.YouTube)
+                                {
+                                    <MudSelect T="string" Label="公開設定" Variant="Variant.Outlined" Dense="true" Class="mt-2" Style="max-width:220px"
+                                               Value="@(v.PlatformOptions.GetValueOrDefault(PlatformOptionKeys.YouTubePrivacy) ?? "public")"
+                                               ValueChanged="@((string x) => SetOptionAsync(v, PlatformOptionKeys.YouTubePrivacy, x))">
+                                        @foreach (var (value, label) in PlatformOptionKeys.YouTubePrivacyChoices)
+                                        {
+                                            <MudSelectItem T="string" Value="@value">@label</MudSelectItem>
+                                        }
+                                    </MudSelect>
                                 }
                                 <MudTextField @bind-Value="edit.Body" Label="本文" Variant="Variant.Outlined" Lines="8" Sizing="InputSizing.Auto" Immediate="true"
                                               Style="font-size:1rem;line-height:1.8" Class="mt-2" />
@@ -630,6 +664,20 @@
             _variants[index] = result.Variant;
             Snackbar.Add(result.ReapprovalRequired ? "承認後に内容が変更されたため、再承認が必要です。" : "保存しました",
                 result.ReapprovalRequired ? Severity.Warning : Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex, Log);
+        }
+    }
+
+    private async Task SetOptionAsync(PostVariant v, string key, string? value)
+    {
+        try
+        {
+            var result = await StudioSvc.SetPlatformOptionAsync(v.Id, key, value, CancellationToken.None);
+            _variants[_variants.FindIndex(x => x.Id == v.Id)] = result.Variant;
+            if (result.ReapprovalRequired) Snackbar.Add("承認後に設定が変更されたため、再承認が必要です。", Severity.Warning);
         }
         catch (Exception ex)
         {

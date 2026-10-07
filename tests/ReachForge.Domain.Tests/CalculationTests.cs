@@ -157,11 +157,12 @@ public class AnalyticsTests
 public class PlatformCatalogTests
 {
     [Fact]
-    public void Catalog_covers_all_nine_platforms_with_initial_release_of_five()
+    public void Catalog_covers_all_nine_platforms_with_seven_supported()
     {
         Assert.Equal(9, PlatformCatalog.All.Count());
         Assert.Equal(
-            [SocialPlatform.X, SocialPlatform.Instagram, SocialPlatform.Facebook, SocialPlatform.Threads, SocialPlatform.Line],
+            [SocialPlatform.X, SocialPlatform.Instagram, SocialPlatform.Facebook, SocialPlatform.Threads,
+             SocialPlatform.TikTok, SocialPlatform.YouTube, SocialPlatform.Line],
             PlatformCatalog.InitialRelease.Select(c => c.Platform));
     }
 }

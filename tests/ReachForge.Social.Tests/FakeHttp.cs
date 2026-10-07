@@ -10,12 +10,12 @@ public sealed record RecordedRequest(HttpMethod Method, Uri Uri, string? Body, D
 /// <summary>要求を記録し、登録した順に応答を返すテスト用 HTTP ハンドラ。</summary>
 public sealed class FakeHttp : HttpMessageHandler, IHttpClientFactory
 {
-    private readonly Queue<(string Contains, HttpStatusCode Status, string Body)> _responses = new();
+    private readonly Queue<(string Contains, HttpStatusCode Status, string Body, Uri? Location)> _responses = new();
     public List<RecordedRequest> Requests { get; } = [];
 
-    public FakeHttp Respond(string urlContains, string json, HttpStatusCode status = HttpStatusCode.OK)
+    public FakeHttp Respond(string urlContains, string json, HttpStatusCode status = HttpStatusCode.OK, Uri? location = null)
     {
-        _responses.Enqueue((urlContains, status, json));
+        _responses.Enqueue((urlContains, status, json, location));
         return this;
     }
 
@@ -27,6 +27,8 @@ public sealed class FakeHttp : HttpMessageHandler, IHttpClientFactory
             "sns-meta" => "https://graph.facebook.com/",
             "sns-threads" => "https://graph.threads.net/",
             "sns-line" => "https://api.line.me/",
+            "sns-tiktok" => "https://open.tiktokapis.com/",
+            "sns-youtube" => "https://www.googleapis.com/",
             _ => "https://example.invalid/",
         }),
     };
@@ -35,12 +37,18 @@ public sealed class FakeHttp : HttpMessageHandler, IHttpClientFactory
     {
         var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(ct);
         var headers = request.Headers.ToDictionary(h => h.Key, h => string.Join(",", h.Value));
+        if (request.Content is not null)
+        {
+            foreach (var h in request.Content.Headers) headers[h.Key] = string.Join(",", h.Value);
+        }
         Requests.Add(new RecordedRequest(request.Method, request.RequestUri!, body, headers));
 
         if (_responses.Count == 0) throw new InvalidOperationException($"Unexpected request {request.Method} {request.RequestUri}");
-        var (contains, status, json) = _responses.Dequeue();
+        var (contains, status, json, location) = _responses.Dequeue();
         Assert.Contains(contains, request.RequestUri!.ToString());
-        return new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        var response = new HttpResponseMessage(status) { Content = new StringContent(json, Encoding.UTF8, "application/json") };
+        response.Headers.Location = location;
+        return response;
     }
 
     public static IOptions<SocialOptions> Options(Action<SocialOptions>? configure = null)
@@ -50,6 +58,8 @@ public sealed class FakeHttp : HttpMessageHandler, IHttpClientFactory
             X = { ClientId = "x-client", ClientSecret = "x-secret" },
             Meta = { AppId = "meta-app", AppSecret = "meta-secret", GraphVersion = "v24.0" },
             Threads = { AppId = "th-app", AppSecret = "th-secret" },
+            TikTok = { ClientKey = "tt-key", ClientSecret = "tt-secret", Audited = true },
+            YouTube = { ClientId = "yt-client", ClientSecret = "yt-secret" },
         };
         configure?.Invoke(o);
         return Microsoft.Extensions.Options.Options.Create(o);

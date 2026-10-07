@@ -61,6 +61,9 @@ public sealed record PlatformConstraint
 
     /// <summary>1投稿に添付できる画像の数（現状の実装範囲。Instagram・Threads のカルーセルは今後対応）。</summary>
     public int MaxImages { get; init; } = 1;
+
+    /// <summary>動画しか投稿できない（YouTube）。</summary>
+    public bool VideoOnly { get; init; }
     public int? MaxVideoSeconds { get; init; }
 
     /// <summary>「続きを読む」で切れる位置（Instagram 冒頭約125字）。プレビューで点線表示に使う。</summary>

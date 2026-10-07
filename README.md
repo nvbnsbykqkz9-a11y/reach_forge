@@ -99,18 +99,21 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - 冪等性：POST に `Idempotency-Key` を付けると、同じキーの再送には最初の応答を返す（`Idempotent-Replayed: true`、24時間保持）。内容の違う再送は 422、処理中は 409、5xx は保存しない
 - パスワード再設定：ログイン画面の「パスワードを忘れた場合」からメールで再設定（1時間・1回限り、登録の有無は表示しない）。ロック時・パスワード変更時・招待時にメールで通知
 
-## SNS 公式 API 連携（初期リリース：X / Facebook / Instagram / Threads / LINE）
+## SNS 公式 API 連携（X / Facebook / Instagram / Threads / LINE / TikTok / YouTube）
 
 各 SNS の開発者サイトでアプリを作成し、User Secrets・環境変数・Key Vault で設定します（リポジトリに置かない）。
-コールバック URL は `https://<ホスト>/api/v1/oauth/callback/<X|Facebook|Instagram|Threads>` を登録します。
+コールバック URL は `https://<ホスト>/api/v1/oauth/callback/<X|Facebook|Instagram|Threads|TikTok|YouTube>` を登録します。
 
 | SNS | 設定キー | 方式 |
 |---|---|---|
 | X | `Social:X:ClientId` / `ClientSecret` | OAuth 2.0 PKCE（S256）。約2時間で失効するため使用前にリフレッシュ |
 | Facebook / Instagram | `Social:Meta:AppId` / `AppSecret`（`GraphVersion`） | Facebook Login for Business → 長期トークン → ページ・IG ビジネスアカウントを選択。Instagram は画像必須（画像の公開 URL を Meta が取得） |
 | Threads | `Social:Threads:AppId` / `AppSecret` | 長期トークン（60日）、期限7日前から自動更新 |
+| TikTok | `Social:TikTok:ClientKey` / `ClientSecret`（`Audited`・`Desktop`） | Login Kit v2（24時間トークン＋365日の更新用トークン）。Content Posting API の直接投稿：動画は分割アップロード、写真は公開 URL から取得（ドメイン確認が必要）。投稿前に creator_info で公開範囲の選択肢を確認し、公開完了まで status/fetch で確認。審査前（`Audited=false`）は「自分のみ」で投稿される。AI 生成の動画は `is_aigc` で申告。指標は video.list、フォロワー数は user.info.stats。コメント取得 API はないため受信箱は対象外。API から削除はできない |
+| YouTube | `Social:YouTube:ClientId` / `ClientSecret` | Google OAuth 2.0（PKCE、`access_type=offline`）。動画のみ（縦型・3分以内はショート）。再開可能アップロード、AI 生成の動画は `containsSyntheticMedia` で申告、字幕（SRT）は字幕トラックとして追加。タイトルはバリアントのタイトル（なければ本文の1行目）。指標は videos.list の statistics、受信箱は直近の動画のコメント（15分ごと、返信・確認待ちへの移動）。クォータ超過（403 quotaExceeded）は一時的エラーとして再試行。テスト中（未確認）のアプリはトークンが7日で失効し、アップロードした動画は非公開になる |
 | LINE 公式アカウント | （アプリ設定なし） | 画面でチャネル ID・シークレットを入力。ステートレストークンを都度発行。一斉配信は決定的な `X-Line-Retry-Key` で二重配信を防止 |
 
+- 投稿作成画面で TikTok の公開範囲・コメント可否、YouTube の公開設定（公開／限定公開／非公開）を選べる。承認後に変えると再承認が必要
 - state（CSRF 対策）・PKCE は暗号化して10分保存し、1回限り・開始した利用者のみ有効（複数インスタンスでは `ConnectionStrings:Redis`）
 - トークンは `Secrets:KeyVaultUri` があれば Key Vault、なければ Data Protection で暗号化して DB に保存（DB には参照キーのみ）
 - エラー分類：401・Meta code 190 → 「要再接続」、429・5xx・通信断 → 指数バックオフで再試行、その他 4xx → 失敗。投稿の POST は HTTP 層では再試行しない

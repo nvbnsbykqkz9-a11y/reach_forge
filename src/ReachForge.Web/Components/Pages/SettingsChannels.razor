@@ -57,7 +57,7 @@
                 <MudCardHeader>
                     <CardHeaderContent>
                         <MudText Typo="Typo.h6">@c.DisplayName</MudText>
-                        <MudText Typo="Typo.caption">@(c.Phase == ReleasePhase.Initial ? "初期リリース対象" : "フェーズ2（アプリ審査が必要）")</MudText>
+                        <MudText Typo="Typo.caption">@(c.Phase == ReleasePhase.Initial ? "対応済み" : "フェーズ2（パートナー承認が必要）")</MudText>
                     </CardHeaderContent>
                     <CardHeaderActions>
                         @if (connected is not null)
@@ -106,7 +106,7 @@
     }
 </MudGrid>
 <MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">
-    公式APIのアプリ設定（Social:X / Meta / Threads）がないSNSは、開発環境ではデモ接続になります。TikTok・YouTube・LinkedIn・Pinterest はアプリ審査後のフェーズ2で対応します。
+    公式APIのアプリ設定（Social:X / Meta / Threads / TikTok / YouTube）がないSNSは、開発環境ではデモ接続になります。LinkedIn・Pinterest はパートナー承認後のフェーズ2で対応します。
 </MudText>
 
 @code {

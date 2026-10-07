@@ -29,7 +29,9 @@ public abstract class PublisherBase(SocialPlatform platform) : ISocialPublisher
         }
         if (RequiresMedia && !IsSimulation && variant.MediaAssetIds.Count == 0)
         {
-            errors.Add($"{Capabilities.DisplayName}には画像または動画が必要です");
+            errors.Add(Capabilities.VideoOnly
+                ? $"{Capabilities.DisplayName}には動画が必要です"
+                : $"{Capabilities.DisplayName}には画像または動画が必要です");
         }
         return Task.FromResult(new PublishValidation(errors));
     }

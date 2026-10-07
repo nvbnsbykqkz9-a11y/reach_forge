@@ -3,6 +3,7 @@ using System.Text;
 using ReachForge.Domain.Common;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
+using ReachForge.Domain.Platforms;
 
 namespace ReachForge.Domain.Entities;
 
@@ -112,6 +113,24 @@ public sealed class PostVariant : Entity
         var ids = mediaAssetIds.ToList();
         if (ids.SequenceEqual(MediaAssetIds)) return false;
         MediaAssetIds = ids;
+        return AfterContentChange(requiresApproval);
+    }
+
+    /// <summary>
+    /// SNS 固有設定（TikTok・YouTube の公開範囲など）を変える。null で既定に戻す。公開範囲は承認の対象のため、承認後の変更は再承認が必要。
+    /// </summary>
+    public bool SetPlatformOption(string key, string? value, bool requiresApproval)
+    {
+        EnsureNot([VariantStatus.Publishing, VariantStatus.Published, VariantStatus.Canceled], "設定の変更");
+        if (value is not null && !PlatformOptionKeys.IsValid(key, value))
+        {
+            throw new DomainException(ErrorCodes.Validation, "設定の値が正しくありません。");
+        }
+        if (PlatformOptions.GetValueOrDefault(key) == value) return false;
+        var options = new Dictionary<string, string>(PlatformOptions);
+        if (value is null) options.Remove(key);
+        else options[key] = value;
+        PlatformOptions = options;
         return AfterContentChange(requiresApproval);
     }
 
@@ -305,6 +324,11 @@ public sealed class PostVariant : Entity
     public string ComputeContentHash()
     {
         var raw = string.Join('\u001f', [Body, Title ?? "", string.Join(',', Hashtags), string.Join(',', MediaAssetIds)]);
+        // SNS 固有設定は設定したときだけ含める（設定のないバリアントのハッシュは従来と同じ）
+        if (PlatformOptions.Count > 0)
+        {
+            raw += '\u001f' + string.Join(',', PlatformOptions.OrderBy(o => o.Key, StringComparer.Ordinal).Select(o => $"{o.Key}={o.Value}"));
+        }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(raw)));
     }
 

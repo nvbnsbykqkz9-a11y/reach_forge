@@ -206,6 +206,7 @@ public sealed class StudioService(
             ? ordered.FirstOrDefault(a => a.Kind == MediaKind.Video)
             : null;
         if (video is not null) return [video.Id];
+        if (c.VideoOnly) return [];
         var derived = new List<Guid>();
         foreach (var source in ordered.Where(a => a.Kind == MediaKind.Image).Take(c.MaxImages))
         {
@@ -237,6 +238,21 @@ public sealed class StudioService(
 
         var ctx = await brand.BuildAsync(post.WorkspaceId, post.ProductIds, post.CampaignId, ct);
         variant.ApplyGuardrail(CheckVariant(variant, ctx.ToGuardrailContext()));
+        if (reapproval)
+        {
+            db.Record(tenant, "variant.reapproval_required", nameof(PostVariant), variant.Id, ErrorCodes.AprReapprovalRequired);
+        }
+        await db.SaveChangesAsync(ct);
+        return new VariantEditResult(variant, reapproval);
+    }
+
+    /// <summary>SNS 固有設定（TikTok・YouTube の公開範囲など）を変える。null で既定に戻す。</summary>
+    public async Task<VariantEditResult> SetPlatformOptionAsync(Guid variantId, string key, string? value, CancellationToken ct)
+    {
+        RolePolicy.Demand(tenant.Role, Permission.Generate);
+        var variant = await db.PostVariants.FirstOrDefaultAsync(v => v.Id == variantId, ct) ?? throw new NotFoundException("投稿");
+        var workspace = await db.Workspaces.FirstAsync(w => w.Id == variant.WorkspaceId, ct);
+        var reapproval = variant.SetPlatformOption(key, value, workspace.RequiresApproval);
         if (reapproval)
         {
             db.Record(tenant, "variant.reapproval_required", nameof(PostVariant), variant.Id, ErrorCodes.AprReapprovalRequired);

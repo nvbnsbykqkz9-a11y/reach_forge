@@ -155,7 +155,8 @@ public sealed class PublishingService(
                     return ms.ToArray();
                 },
                 c => PublicUrlAsync(a.Id, v.Platform, c),
-                c => PublicUrlAsync(thumbs.TryGetValue(a.Id, out var t) ? t.Id : a.Id, v.Platform, c)))
+                c => PublicUrlAsync(thumbs.TryGetValue(a.Id, out var t) ? t.Id : a.Id, v.Platform, c),
+                a.SubtitlesSrt))
             .ToList();
     }
 

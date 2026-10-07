@@ -15,6 +15,8 @@ public sealed class SocialOptions
     public MetaOptions Meta { get; set; } = new();
     public ThreadsOptions Threads { get; set; } = new();
     public LineOptions Line { get; set; } = new();
+    public TikTokOptions TikTok { get; set; } = new();
+    public YouTubeOptions YouTube { get; set; } = new();
 }
 
 public sealed class XOptions
@@ -71,4 +73,47 @@ public sealed class LineOptions
 {
     public bool Enabled { get; set; } = true;
     public string ApiBaseUrl { get; set; } = "https://api.line.me/";
+}
+
+/// <summary>TikTok（Login Kit v2 ＋ Content Posting API の直接投稿）。</summary>
+public sealed class TikTokOptions
+{
+    public string? ClientKey { get; set; }
+    public string? ClientSecret { get; set; }
+    public string AuthorizeUrl { get; set; } = "https://www.tiktok.com/v2/auth/authorize/";
+    public string ApiBaseUrl { get; set; } = "https://open.tiktokapis.com/";
+    public string Scopes { get; set; } = "user.info.basic,user.info.profile,user.info.stats,video.publish,video.upload,video.list";
+
+    /// <summary>
+    /// TikTok の審査（Content Posting API の audit）を通過したか。未審査のアプリの投稿は「自分のみ」に強制される（W-SNS-003）。
+    /// </summary>
+    public bool Audited { get; set; }
+
+    /// <summary>
+    /// デスクトップアプリとして登録したか。デスクトップアプリは PKCE（code_challenge は SHA-256 の16進表記）が必須で、
+    /// リダイレクト先に http://127.0.0.1 を使える。Web アプリとして登録した場合は HTTPS のリダイレクト先が必要。
+    /// </summary>
+    public bool Desktop { get; set; }
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientKey) && !string.IsNullOrWhiteSpace(ClientSecret);
+}
+
+/// <summary>YouTube（Google OAuth 2.0 ＋ YouTube Data API v3）。</summary>
+public sealed class YouTubeOptions
+{
+    public string? ClientId { get; set; }
+    public string? ClientSecret { get; set; }
+    public string AuthorizeUrl { get; set; } = "https://accounts.google.com/o/oauth2/v2/auth";
+    public string TokenUrl { get; set; } = "https://oauth2.googleapis.com/token";
+    public string ApiBaseUrl { get; set; } = "https://www.googleapis.com/";
+    public string Scopes { get; set; } =
+        "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.force-ssl";
+
+    /// <summary>動画のカテゴリ（22 = People &amp; Blogs）。</summary>
+    public string CategoryId { get; set; } = "22";
+
+    /// <summary>字幕・メタデータの言語。</summary>
+    public string Language { get; set; } = "ja";
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ClientId) && !string.IsNullOrWhiteSpace(ClientSecret);
 }

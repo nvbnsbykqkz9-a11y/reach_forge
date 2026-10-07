@@ -58,20 +58,21 @@ public static class PlatformCatalog
         },
         new()
         {
-            Platform = SocialPlatform.TikTok, DisplayName = "TikTok", Phase = ReleasePhase.Phase2,
+            Platform = SocialPlatform.TikTok, DisplayName = "TikTok", Phase = ReleasePhase.Initial,
             MaxBodyLength = 2200, RecommendedHashtags = (3, 5),
             LinkPolicy = LinkPolicy.NotAllowed, DailyPostLimit = 15,
-            ImageAspect = new(9, 16), ImageSize = (1080, 1920), VideoAspect = new(9, 16),
+            ImageAspect = new(9, 16), ImageSize = (1080, 1920), VideoAspect = new(9, 16), MaxVideoSeconds = 600, MaxImages = 10,
             StyleGuide = "動画前提。冒頭2秒のフック文をテロップ用に用意する。ハッシュタグは3〜5個。リンクは入れない。",
-            Note = "未監査アプリの投稿は非公開に強制される",
+            Note = "動画または写真が必要。審査前のアプリの投稿は「自分のみ」に強制される",
         },
         new()
         {
-            Platform = SocialPlatform.YouTube, DisplayName = "YouTube", Phase = ReleasePhase.Phase2,
+            Platform = SocialPlatform.YouTube, DisplayName = "YouTube", Phase = ReleasePhase.Initial,
             MaxBodyLength = 5000, MaxTitleLength = 100, RecommendedHashtags = (3, 3),
-            LinkPolicy = LinkPolicy.Allowed, DailyPostLimit = 100,
-            ImageAspect = new(16, 9), ImageSize = (1280, 720), VideoAspect = new(9, 16), MaxVideoSeconds = 60,
+            LinkPolicy = LinkPolicy.Allowed, DailyPostLimit = 6, VideoOnly = true,
+            ImageAspect = new(16, 9), ImageSize = (1280, 720), VideoAspect = new(9, 16), MaxVideoSeconds = 180,
             StyleGuide = "タイトルは100字以内。説明欄に詳細とタイムスタンプ。ハッシュタグは #Shorts を含め3個。",
+            Note = "動画のみ。縦型・3分以内はショートとして公開。アップロードは API の1日の割り当てを多く使うため、既定の割り当てでは1日数本まで",
         },
         new()
         {

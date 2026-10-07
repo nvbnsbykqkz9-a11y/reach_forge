@@ -49,7 +49,9 @@ public sealed class InboxService(
     public static readonly TimeSpan RecentPostWindow = TimeSpan.FromDays(14);
 
     /// <summary>ポーリング間隔。X は読み取りが従量課金のため長めにする。</summary>
-    public static TimeSpan PollInterval(SocialPlatform p) => p == SocialPlatform.X ? TimeSpan.FromMinutes(15) : TimeSpan.FromMinutes(5);
+    /// <summary>取得間隔。X（従量課金）と YouTube（1日のクォータ）は長めにする。</summary>
+    public static TimeSpan PollInterval(SocialPlatform p) =>
+        p is SocialPlatform.X or SocialPlatform.YouTube ? TimeSpan.FromMinutes(15) : TimeSpan.FromMinutes(5);
 
     // ---------------- 取り込み ----------------
 
