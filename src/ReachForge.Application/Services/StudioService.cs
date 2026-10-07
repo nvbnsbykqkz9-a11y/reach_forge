@@ -201,8 +201,8 @@ public sealed class StudioService(
         var c = PlatformCatalog.Get(platform);
         var all = await db.MediaAssets.Where(m => post.MediaAssetIds.Contains(m.Id)).ToListAsync(ct);
         var ordered = post.MediaAssetIds.Select(id => all.FirstOrDefault(a => a.Id == id)).OfType<MediaAsset>().ToList();
-        // 動画は1本だけ（画像とは混ぜない）。動画に対応しない SNS（X は初期リリースで画像のみ、LINE を除く動画非対応）では画像を使う
-        var video = platform != SocialPlatform.X && (c.VideoAspect is not null || platform is SocialPlatform.Facebook or SocialPlatform.Line)
+        // 動画は1本だけ（画像とは混ぜない）。動画に対応しない SNS では画像を使う
+        var video = c.VideoAspect is not null || platform is SocialPlatform.Facebook or SocialPlatform.Line
             ? ordered.FirstOrDefault(a => a.Kind == MediaKind.Video)
             : null;
         if (video is not null) return [video.Id];

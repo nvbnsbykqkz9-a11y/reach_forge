@@ -34,6 +34,12 @@ public sealed class MediaAsset : Entity
     /// <summary>来歴（モデル・プロンプトのハッシュ・生成日時など）の JSON。C2PA マニフェスト付与は今後対応。</summary>
     public string? Provenance { get; set; }
 
+    /// <summary>C2PA のマニフェスト（JSON）。AI 生成・編集したメディアに付ける。</summary>
+    public string? C2paManifest { get; set; }
+
+    /// <summary>C2PA マニフェストを署名してファイルに埋め込んだか（署名の設定がない環境では XMP の IPTC 情報だけを埋め込む）。</summary>
+    public bool C2paSigned { get; set; }
+
     public string? AltText { get; set; }
     public bool AltTextIsAi { get; set; }
 

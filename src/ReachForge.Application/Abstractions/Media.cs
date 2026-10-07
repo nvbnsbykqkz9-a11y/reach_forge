@@ -14,6 +14,21 @@ public sealed record TextOverlay(string Headline, string? Sub, TextPosition Posi
     public const int MaxSub = 40;
 }
 
+/// <summary>画像内の範囲（左上を 0,0、右下を 1,1 とする割合）。</summary>
+public sealed record NormalizedRect(double X, double Y, double Width, double Height)
+{
+    public bool IsValid => Width > 0 && Height > 0 && X >= 0 && Y >= 0 && X + Width <= 1.0001 && Y + Height <= 1.0001;
+}
+
+/// <summary>切り抜き（背景を透明にした画像）。被写体の範囲と、背景をどれだけ確かに分けられたかを返す。</summary>
+public sealed record Cutout(ProcessedImage Image, NormalizedRect SubjectBounds, double Confidence)
+{
+    /// <summary>これ未満の確かさでは切り抜きを使わない（背景が複雑な写真）。</summary>
+    public const double MinConfidence = 0.6;
+}
+
+public enum ProductPlacement { Center = 1, Bottom = 2, Left = 3, Right = 4 }
+
 /// <summary>
 /// 画像処理（RF-DES-001 3.3 メディア処理）。実装は Infrastructure（ImageSharp）。
 /// ライセンスの都合で他ライブラリ（SkiaSharp など）へ差し替えられるよう、この抽象越しにのみ使う。
@@ -43,6 +58,22 @@ public interface IImageProcessor
     /// </summary>
     Task<ProcessedImage> RenderTextAsync(byte[] source, TextOverlay overlay, CancellationToken ct);
 
+    /// <summary>不要物除去用のキャンバス：指定範囲を透明にした PNG（生成 AI に透明部分だけを描き直させる）。</summary>
+    Task<ProcessedImage> PrepareEraseCanvasAsync(byte[] source, IReadOnlyList<NormalizedRect> regions, CancellationToken ct);
+
+    /// <summary>
+    /// 範囲外を元画像に戻す（AI が範囲外を変えても、元の画素を保つ）。<paramref name="keepMask"/> がある場合は、
+    /// その不透明部分（切り抜いた被写体）を元画像のまま重ねる。出力の大きさは元画像に合わせる。
+    /// </summary>
+    Task<ProcessedImage> RestoreAsync(byte[] original, byte[] edited, IReadOnlyList<NormalizedRect>? editableRegions, byte[]? keepMask,
+        CancellationToken ct);
+
+    /// <summary>背景の切り抜き（周囲から背景色を推定して透明にする。単色に近い背景の商品写真向け）。</summary>
+    Task<Cutout> CutoutAsync(byte[] source, CancellationToken ct);
+
+    /// <summary>切り抜いた商品を背景に配置する（商品の画素は変えない。接地の影を付ける）。</summary>
+    Task<ProcessedImage> CompositeAsync(byte[] background, byte[] cutout, ProductPlacement placement, double scale, CancellationToken ct);
+
     /// <summary>ローカル用スタブの画像（ブランド色のグラデーションと図形）。</summary>
     Task<ProcessedImage> RenderPlaceholderAsync(int width, int height, int seed, IReadOnlyList<string> colorsHex, CancellationToken ct);
 }
@@ -65,7 +96,25 @@ public sealed record ComposedVideo(byte[] Mp4, int DurationMs, int Width, int He
 /// </summary>
 public interface IVideoComposer
 {
-    Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct);
+    Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null);
+
+    /// <summary>生成 AI の動画クリップを 1080×1920・H.264/AAC・faststart に整え、BGM を重ねる（F-05 ①②）。</summary>
+    Task<ComposedVideo> FinishClipAsync(byte[] clip, VideoAudioOptions? audio, CancellationToken ct);
+
+    /// <summary>動画の1コマを JPEG で取り出す（サムネイル用）。</summary>
+    Task<byte[]> ExtractFrameAsync(byte[] mp4, double seconds, CancellationToken ct);
+}
+
+/// <summary>BGM（F-05 処理 4：ライセンス済み素材をナレーションの間だけ下げて（ダッキング）合成）。</summary>
+public sealed record VideoAudioOptions(string? BgmTrackId, double BgmVolume = 0.22);
+
+/// <summary>BGM の曲。<see cref="License"/> は利用条件（画面に表示する）。</summary>
+public sealed record BgmTrack(string Id, string Title, string License, bool BuiltIn);
+
+/// <summary>使える BGM（組み込みの合成音源と、運用者が置いたライセンス済みの曲）。</summary>
+public interface IBgmLibrary
+{
+    IReadOnlyList<BgmTrack> Tracks { get; }
 }
 
 public sealed record SafetyVerdict(bool Blocked, string Result)
@@ -77,4 +126,29 @@ public sealed record SafetyVerdict(bool Blocked, string Result)
 public interface IImageSafetyChecker
 {
     Task<SafetyVerdict> CheckAsync(byte[] image, string mime, CancellationToken ct);
+}
+
+/// <summary>IPTC の DigitalSourceType（AI 生成物の来歴。Meta などの AI ラベルの判定に使われる）。</summary>
+public enum DigitalSourceType
+{
+    /// <summary>生成 AI が作ったもの（trainedAlgorithmicMedia）。</summary>
+    TrainedAlgorithmicMedia,
+
+    /// <summary>撮影・制作物に生成 AI の結果を合成・編集したもの（compositeWithTrainedAlgorithmicMedia）。</summary>
+    CompositeWithTrainedAlgorithmicMedia,
+}
+
+/// <summary>来歴の情報（RF-DES-001 6章 c2pa_manifest、11章 AI ラベル）。</summary>
+public sealed record ProvenanceInfo(DigitalSourceType SourceType, string Action, string? Provider, string? Model, DateTimeOffset When, string Title);
+
+/// <summary>来歴を埋め込んだメディア。<see cref="Manifest"/> は C2PA のマニフェスト（JSON）、<see cref="Signed"/> は署名済みかどうか。</summary>
+public sealed record StampedMedia(byte[] Bytes, string Manifest, bool Signed);
+
+/// <summary>
+/// AI 生成物への来歴の付与（F-04 処理 4「C2PA 来歴を付与」）。画像には IPTC の DigitalSourceType を XMP で埋め込み、
+/// 署名の設定があれば C2PA マニフェストを署名して埋め込む。
+/// </summary>
+public interface IProvenanceStamper
+{
+    Task<StampedMedia> StampAsync(byte[] content, string mime, ProvenanceInfo info, CancellationToken ct);
 }

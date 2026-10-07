@@ -21,6 +21,34 @@ public sealed class MediaOptions
     public string? FontPath { get; set; }
 
     public string[] FontFamilies { get; set; } = ["Noto Sans JP", "Noto Sans CJK JP", "IPAexGothic", "IPAGothic", "Yu Gothic", "Meiryo"];
+
+    public C2paOptions C2pa { get; set; } = new();
+}
+
+/// <summary>
+/// C2PA の署名（任意）。c2patool（Content Authenticity Initiative の公式 CLI）と署名用の証明書・秘密鍵を設定すると、
+/// AI 生成・編集したメディアに署名付きのマニフェストを埋め込む。未設定でも IPTC の DigitalSourceType（XMP）は埋め込む。
+/// </summary>
+public sealed class C2paOptions
+{
+    public string? ToolPath { get; set; }
+
+    /// <summary>署名証明書チェーン（PEM）のファイル。</summary>
+    public string? SignCertPath { get; set; }
+
+    /// <summary>秘密鍵（PEM）のファイル。Key Vault から取り出してマウントするなど、リポジトリには置かない。</summary>
+    public string? PrivateKeyPath { get; set; }
+
+    /// <summary>署名アルゴリズム（es256 / ps256 など、証明書に合わせる）。</summary>
+    public string Algorithm { get; set; } = "es256";
+
+    /// <summary>タイムスタンプ局の URL（任意）。</summary>
+    public string? TimestampUrl { get; set; }
+
+    public int TimeoutSeconds { get; set; } = 60;
+
+    public bool IsConfigured => !string.IsNullOrWhiteSpace(ToolPath) && !string.IsNullOrWhiteSpace(SignCertPath)
+        && !string.IsNullOrWhiteSpace(PrivateKeyPath);
 }
 
 public sealed class ContentSafetyOptions

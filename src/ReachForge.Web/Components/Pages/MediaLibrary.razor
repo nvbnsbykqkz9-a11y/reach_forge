@@ -77,6 +77,13 @@
                 {
                     <MudText Typo="Typo.caption" Class="d-block rf-ai-hint">✦ 来歴：@_provenance</MudText>
                 }
+                @if (cur.C2paManifest is not null)
+                {
+                    <MudText Typo="Typo.caption" Class="d-block">
+                        AI生成の表示：ファイルに IPTC の「AI 生成」情報を埋め込み済み@(cur.C2paSigned ? "・C2PA 署名あり" : "（C2PA の署名は未設定）")。
+                        Instagram・Facebook などはこの情報で「AI 情報」ラベルを表示します。
+                    </MudText>
+                }
 
                 <MudTextField @bind-Value="_alt" Label="代替テキスト（ALT）" Variant="Variant.Outlined" Lines="2" Class="mt-3" Immediate="true"
                               HelperText="@(cur.AltTextIsAi ? "AIが作成しました。内容を確認してください" : "画面読み上げで使われます")" />
@@ -89,6 +96,9 @@
                 @if (cur.Kind == MediaKind.Image)
                 {
                 <MudExpansionPanels Elevation="0" Class="mt-4">
+                    <MudExpansionPanel Text="AIで編集する（背景差替・不要物除去・商品の配置）">
+                        <RfImageEditor AssetId="cur.Id" Alt="@cur.AltText" OnCreated="EditedAsync" />
+                    </MudExpansionPanel>
                     <MudExpansionPanel Text="文字を入れる">
                         <MudTextField T="string" @bind-Value="_textHeadline" Label="見出し（30字まで）" Variant="Variant.Outlined" MaxLength="30" Counter="30" />
                         <MudTextField T="string" @bind-Value="_textSub" Label="補足（任意・40字まで）" Variant="Variant.Outlined" MaxLength="40" Class="mt-2" />
@@ -145,6 +155,12 @@
     private TextPosition _textPosition = TextPosition.Bottom;
     private string _textBand = "#1B2333";
     private List<string> _bandColors = ["#1B2333", "#FFFFFF"];
+
+    private async Task EditedAsync(Guid id)
+    {
+        await LoadAsync();
+        if (_items.FirstOrDefault(i => i.Id == id) is { } m) await SelectAsync(m);
+    }
 
     private async Task AddTextAsync()
     {

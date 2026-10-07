@@ -237,3 +237,11 @@ body { font-variant-numeric: tabular-nums; }
 .rf-prompt-preview { white-space: pre-wrap; word-break: break-word; max-height: 560px; overflow: auto; margin: 8px 0 0; padding: 12px;
   border: 1px solid var(--rf-color-border); border-radius: 8px; background: var(--rf-color-surface-subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; line-height: 1.5; }
+
+/* 参照画像の編集：消す範囲のマス */
+.rf-region-picker { position: relative; }
+.rf-region-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(4, 1fr); }
+.rf-region-cell { border: 1px dashed rgba(255, 255, 255, .7); background: transparent; cursor: pointer; padding: 0; }
+.rf-region-cell:hover { background: rgba(0, 0, 0, .15); }
+.rf-region-cell:focus-visible { outline: 3px solid var(--rf-color-primary); outline-offset: -3px; }
+.rf-region-cell.is-selected { background: rgba(220, 38, 38, .35); border: 2px solid #DC2626; }

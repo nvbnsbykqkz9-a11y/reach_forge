@@ -27,7 +27,8 @@ public sealed class AiOptions
         : [];
 }
 
-public enum AiProviderType { Stub, OpenAI, Anthropic }
+/// <summary>Google は動画生成（Veo、Gemini API）に使う。</summary>
+public enum AiProviderType { Stub, OpenAI, Anthropic, Google }
 
 public sealed class AiProviderOptions
 {
@@ -50,8 +51,17 @@ public sealed class AiProviderOptions
     /// <summary>画像1枚あたりの単価（USD）。</summary>
     public decimal PricePerImage { get; set; }
 
+    /// <summary>動画1秒あたりの単価（USD）。</summary>
+    public decimal PricePerVideoSecond { get; set; }
+
+    /// <summary>API の接続先の上書き（検証環境・テスト用。通常は未設定）。</summary>
+    public string? BaseUrl { get; set; }
+
     /// <summary>画像生成に対応するプロバイダか（Anthropic は画像の理解のみ）。</summary>
     public bool SupportsImageGeneration => Type is AiProviderType.OpenAI or AiProviderType.Stub;
+
+    /// <summary>動画生成に対応するプロバイダか（OpenAI：Sora、Google：Veo）。</summary>
+    public bool SupportsVideoGeneration => Type is AiProviderType.OpenAI or AiProviderType.Google or AiProviderType.Stub;
 
     public bool IsConfigured => Type == AiProviderType.Stub || !string.IsNullOrWhiteSpace(ApiKey);
 

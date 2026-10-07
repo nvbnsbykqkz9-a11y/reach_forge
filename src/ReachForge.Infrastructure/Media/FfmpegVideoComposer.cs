@@ -18,6 +18,9 @@ public sealed class VideoOptions
 
     /// <summary>1本あたりの上限時間（F-05 例外：15分で失敗扱い）。</summary>
     public int TimeoutSeconds { get; set; } = 900;
+
+    /// <summary>ライセンス済みの BGM を置くフォルダ（tracks.json と曲のファイル）。未設定なら組み込みの曲だけ。</summary>
+    public string? BgmLibraryPath { get; set; }
 }
 
 /// <summary>
@@ -26,13 +29,13 @@ public sealed class VideoOptions
 /// 出力は 1080×1920・30fps・H.264（yuv420p）／AAC・moov 先頭（faststart）。
 /// 引数は配列で渡し（シェルを通さない）、作業フォルダは処理後に削除する。
 /// </summary>
-public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, ILogger<FfmpegVideoComposer> log) : IVideoComposer
+public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibrary bgm, ILogger<FfmpegVideoComposer> log) : IVideoComposer
 {
     public const int Width = 1080;
     public const int Height = 1920;
     public const int Fps = 30;
 
-    public async Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct)
+    public async Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null)
     {
         if (scenes.Count == 0) throw new ArgumentException("シーンがありません。", nameof(scenes));
         var dir = Directory.CreateTempSubdirectory("rf-video-");
@@ -72,7 +75,10 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, ILogger<
                     : $"anullsrc=r=44100:cl=stereo,atrim=0:{Sec(scenes[i].Seconds)},asetpts=N/SR/TB[a{i}]");
             }
             var concatInputs = string.Concat(Enumerable.Range(0, scenes.Count).Select(i => $"[v{i}][a{i}]"));
-            filters.Add($"{concatInputs}concat=n={scenes.Count}:v=1:a=1[v][a]");
+            filters.Add($"{concatInputs}concat=n={scenes.Count}:v=1:a=1[v][voice]");
+            var total = scenes.Sum(s => s.Seconds);
+            var nextInput = scenes.Count + audioInputs.Count(x => x >= 0);
+            AddBgm(args, filters, "voice", "a", total, nextInput, audio);
 
             var output = Path.Combine(dir.FullName, "out.mp4");
             args.AddRange(["-filter_complex", string.Join(';', filters), "-map", "[v]", "-map", "[a]",
@@ -94,6 +100,115 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, ILogger<
             {
                 log.LogWarning(ex, "Failed to delete temp video folder {Path}", dir.FullName);
             }
+        }
+    }
+
+    public async Task<ComposedVideo> FinishClipAsync(byte[] clip, VideoAudioOptions? audio, CancellationToken ct)
+    {
+        var dir = Directory.CreateTempSubdirectory("rf-clip-");
+        try
+        {
+            var input = Path.Combine(dir.FullName, "clip.mp4");
+            await File.WriteAllBytesAsync(input, clip, ct);
+            var (duration, hasAudio) = await ProbeAsync(input, ct);
+            if (duration <= 0) throw new InvalidOperationException("動画の長さを読み取れませんでした。");
+
+            var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y", "-i", input };
+            var filters = new List<string>
+            {
+                // 縦型 1080×1920 に収め（引き伸ばさない）、30fps・yuv420p にそろえる
+                $"[0:v]scale={Width}:{Height}:force_original_aspect_ratio=decrease,pad={Width}:{Height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,fps={Fps},format=yuv420p[v]",
+                hasAudio
+                    ? $"[0:a]aformat=sample_rates=44100:channel_layouts=stereo,atrim=0:{Sec(duration)},asetpts=N/SR/TB[base]"
+                    : $"anullsrc=r=44100:cl=stereo,atrim=0:{Sec(duration)},asetpts=N/SR/TB[base]",
+            };
+            AddBgm(args, filters, "base", "a", duration, 1, audio);
+            var output = Path.Combine(dir.FullName, "out.mp4");
+            args.AddRange(["-filter_complex", string.Join(';', filters), "-map", "[v]", "-map", "[a]", "-t", Sec(duration),
+                "-c:v", "libx264", "-preset", options.Value.Preset, "-crf", "23", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output]);
+            await RunAsync(args, ct);
+            return new ComposedVideo(await File.ReadAllBytesAsync(output, ct), (int)Math.Round(duration * 1000), Width, Height);
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    public async Task<byte[]> ExtractFrameAsync(byte[] mp4, double seconds, CancellationToken ct)
+    {
+        var dir = Directory.CreateTempSubdirectory("rf-frame-");
+        try
+        {
+            var input = Path.Combine(dir.FullName, "in.mp4");
+            var output = Path.Combine(dir.FullName, "frame.jpg");
+            await File.WriteAllBytesAsync(input, mp4, ct);
+            await RunAsync(["-hide_banner", "-loglevel", "error", "-y", "-ss", Sec(seconds), "-i", input, "-frames:v", "1", "-q:v", "3", output], ct);
+            return await File.ReadAllBytesAsync(output, ct);
+        }
+        finally
+        {
+            TryDelete(dir);
+        }
+    }
+
+    /// <summary>
+    /// BGM を重ねる：ナレーション（<paramref name="main"/>）の音量に合わせて BGM を下げ（サイドチェインのダッキング）、
+    /// 最初と最後はフェードする。BGM を使わない場合は <paramref name="main"/> をそのまま出力ラベルにする。
+    /// </summary>
+    private void AddBgm(List<string> args, List<string> filters, string main, string output, double seconds, int inputIndex,
+        VideoAudioOptions? audio)
+    {
+        var track = audio?.BgmTrackId is { Length: > 0 } id ? bgm.Resolve(id) : null;
+        if (track is null)
+        {
+            filters.Add($"[{main}]anull[{output}]");
+            return;
+        }
+        var volume = Math.Clamp(audio!.BgmVolume, 0.05, 0.6).ToString("0.##", CultureInfo.InvariantCulture);
+        var fadeOut = Sec(Math.Max(0, seconds - 1.5));
+        string source;
+        if (track.Value.Expression is { } expression)
+        {
+            source = $"aevalsrc='{expression}':s=44100:d={Sec(seconds)},aformat=sample_rates=44100:channel_layouts=stereo";
+        }
+        else
+        {
+            args.AddRange(["-stream_loop", "-1", "-i", track.Value.File!]);
+            source = $"[{inputIndex}:a]aformat=sample_rates=44100:channel_layouts=stereo";
+        }
+        filters.Add($"[{main}]asplit=2[{main}_mix][{main}_key]");
+        filters.Add($"{source},volume={volume},atrim=0:{Sec(seconds)},asetpts=N/SR/TB,afade=t=in:d=1,afade=t=out:st={fadeOut}:d=1.5[bgm]");
+        filters.Add($"[bgm][{main}_key]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[ducked]");
+        filters.Add($"[{main}_mix][ducked]amix=inputs=2:duration=first:normalize=0[{output}]");
+    }
+
+    /// <summary>長さ（秒）と音声の有無を調べる（ffmpeg -i の出力を読む）。</summary>
+    private async Task<(double Seconds, bool HasAudio)> ProbeAsync(string path, CancellationToken ct)
+    {
+        var psi = new ProcessStartInfo(options.Value.FfmpegPath) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
+        foreach (var a in new[] { "-hide_banner", "-i", path }) psi.ArgumentList.Add(a);
+        using var process = Process.Start(psi) ?? throw new InvalidOperationException("ffmpeg が見つかりません。");
+        var info = await process.StandardError.ReadToEndAsync(ct);
+        await process.WaitForExitAsync(ct);
+        var match = System.Text.RegularExpressions.Regex.Match(info, @"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)");
+        var seconds = match.Success
+            ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) * 3600 + int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) * 60
+              + double.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture)
+            : 0;
+        return (seconds, info.Contains("Audio:", StringComparison.Ordinal));
+    }
+
+    private void TryDelete(DirectoryInfo dir)
+    {
+        try
+        {
+            dir.Delete(recursive: true);
+        }
+        catch (IOException ex)
+        {
+            log.LogWarning(ex, "Failed to delete temp video folder {Path}", dir.FullName);
         }
     }
 

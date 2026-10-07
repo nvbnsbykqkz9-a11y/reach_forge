@@ -54,6 +54,9 @@ public enum AiTaskType : short
     Summarize = 12,
     /// <summary>画像・動画の理解（ALT テキスト生成・素材解析）。</summary>
     Vision = 13,
+
+    /// <summary>生成 AI による動画（テキスト→動画・画像→動画）。テンプレート合成（Video）とは別のルート。</summary>
+    VideoGeneration = 14,
 }
 
 public enum AiJobStatus : short { Queued = 1, Running = 2, Succeeded = 3, Failed = 4, Canceled = 5 }

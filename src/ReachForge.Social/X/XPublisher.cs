@@ -8,7 +8,8 @@ namespace ReachForge.Social.X;
 
 /// <summary>
 /// X API v2 への投稿（POST /2/tweets）。画像は POST /2/media/upload でアップロードし（media.write スコープ）、
-/// ALT テキストを付けてから media_ids で添付する（最大4枚）。URL 付き投稿は費用確認済みのものだけ許可する（PublisherBase）。
+/// ALT テキストを付けてから media_ids で添付する（最大4枚）。動画（1本）は分割アップロード
+/// （initialize → append → finalize → 処理完了の確認）で送る。URL 付き投稿は費用確認済みのものだけ許可する（PublisherBase）。
 /// </summary>
 public sealed class XPublisher(IHttpClientFactory http, ILogger<XPublisher>? log = null) : PublisherBase(SocialPlatform.X)
 {
@@ -16,15 +17,17 @@ public sealed class XPublisher(IHttpClientFactory http, ILogger<XPublisher>? log
         IReadOnlyList<PublishMedia> media, CancellationToken ct)
     {
         var client = http.CreateClient(XConnector.HttpClientName);
-        // 動画は分割アップロード（INIT／APPEND／FINALIZE）が必要なため、初期リリースでは画像のみ（変換時に動画は外す）
-        if (media.Any(m => m.IsVideo))
-        {
-            throw new SocialApiException(Domain.Common.ErrorCodes.PubFailed, "X への動画投稿は準備中です。画像で投稿してください。", isTransient: false);
-        }
         var mediaIds = new List<string>();
-        foreach (var item in media.Take(Capabilities.MaxImages))
+        if (media.FirstOrDefault(m => m.IsVideo) is { } video)
         {
-            mediaIds.Add(await UploadAsync(client, item, credential, ct));
+            mediaIds.Add(await UploadVideoAsync(client, video, credential, ct)); // 動画は1本だけ（画像と混ぜない）
+        }
+        else
+        {
+            foreach (var item in media.Take(Capabilities.MaxImages))
+            {
+                mediaIds.Add(await UploadAsync(client, item, credential, ct));
+            }
         }
 
         object body = mediaIds.Count == 0
@@ -42,6 +45,63 @@ public sealed class XPublisher(IHttpClientFactory http, ILogger<XPublisher>? log
             {
                 Headers = { Authorization = new("Bearer", credential.AccessToken) },
             }, "X", ct);
+
+    /// <summary>分割アップロードの1回分（X の上限 5MB より小さくする）。</summary>
+    public const int ChunkBytes = 4 * 1024 * 1024;
+
+    /// <summary>動画の処理の完了を待つ上限。</summary>
+    public static TimeSpan ProcessingTimeout { get; set; } = TimeSpan.FromMinutes(5);
+
+    private async Task<string> UploadVideoAsync(HttpClient client, PublishMedia item, ChannelCredential credential, CancellationToken ct)
+    {
+        var bytes = await item.ReadAsync(ct);
+        var init = await SocialHttp.SendAsync(client, SocialHttp.Json(HttpMethod.Post, "2/media/upload/initialize",
+            new { media_type = item.Mime, total_bytes = bytes.Length, media_category = "tweet_video" }, credential.AccessToken), "X", ct);
+        var mediaId = SocialHttp.Str(init, "data.id");
+
+        for (var (offset, segment) = (0, 0); offset < bytes.Length; offset += ChunkBytes, segment++)
+        {
+            using var form = new MultipartFormDataContent();
+            var chunk = new ByteArrayContent(bytes, offset, Math.Min(ChunkBytes, bytes.Length - offset));
+            chunk.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+            form.Add(chunk, "media", "chunk");
+            form.Add(new StringContent(segment.ToString(System.Globalization.CultureInfo.InvariantCulture)), "segment_index");
+            var append = new HttpRequestMessage(HttpMethod.Post, $"2/media/upload/{Uri.EscapeDataString(mediaId)}/append") { Content = form };
+            append.Headers.Authorization = new("Bearer", credential.AccessToken);
+            await SocialHttp.SendAsync(client, append, "X", ct);
+        }
+
+        var finalize = new HttpRequestMessage(HttpMethod.Post, $"2/media/upload/{Uri.EscapeDataString(mediaId)}/finalize");
+        finalize.Headers.Authorization = new("Bearer", credential.AccessToken);
+        var state = await SocialHttp.SendAsync(client, finalize, "X", ct);
+
+        // 動画は X 側でエンコードされる。処理が終わるまで待つ（状態は check_after_secs ごとに確認する）
+        var deadline = DateTimeOffset.UtcNow + ProcessingTimeout;
+        while (true)
+        {
+            var processing = state["data"]?["processing_info"];
+            var status = processing?["state"]?.GetValue<string>() ?? "succeeded";
+            if (status == "succeeded") break;
+            if (status == "failed")
+            {
+                var message = processing?["error"]?["message"]?.GetValue<string>();
+                throw new SocialApiException(Domain.Common.ErrorCodes.PubFailed, $"X が動画を処理できませんでした。{message}", isTransient: false);
+            }
+            if (DateTimeOffset.UtcNow > deadline)
+            {
+                throw new SocialApiException(Domain.Common.ErrorCodes.PubFailed, "X の動画の処理が終わりませんでした。時間をおいて再試行します。", isTransient: true);
+            }
+            var wait = processing?["check_after_secs"]?.GetValue<int>() ?? 2;
+            await Task.Delay(TimeSpan.FromSeconds(Math.Clamp(wait, 1, 10)) * PollScale, ct);
+            var check = new HttpRequestMessage(HttpMethod.Get, $"2/media/upload?command=STATUS&media_id={Uri.EscapeDataString(mediaId)}");
+            check.Headers.Authorization = new("Bearer", credential.AccessToken);
+            state = await SocialHttp.SendAsync(client, check, "X", ct);
+        }
+        return mediaId;
+    }
+
+    /// <summary>状態確認の待ち時間の倍率（テストで短くする）。</summary>
+    public static double PollScale { get; set; } = 1;
 
     private async Task<string> UploadAsync(HttpClient client, PublishMedia item, ChannelCredential credential, CancellationToken ct)
     {

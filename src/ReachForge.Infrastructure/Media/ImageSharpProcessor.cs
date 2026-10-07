@@ -17,7 +17,7 @@ namespace ReachForge.Infrastructure.Media;
 /// ImageSharp による画像処理（RF-DES-001 3.3）。比率変換は「引き伸ばし禁止」：
 /// 比率差 2% 以下は縮小のみ、それ以外は被写体を中心にしたスマートクロップ または 背景色の余白。
 /// </summary>
-public sealed class ImageSharpProcessor(IOptions<MediaOptions>? options = null) : IImageProcessor
+public sealed partial class ImageSharpProcessor(IOptions<MediaOptions>? options = null) : IImageProcessor
 {
     public const double AspectTolerance = 0.02;
 

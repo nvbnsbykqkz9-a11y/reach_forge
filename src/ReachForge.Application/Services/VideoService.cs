@@ -13,13 +13,29 @@ using ReachForge.Domain.Platforms;
 
 namespace ReachForge.Application.Services;
 
-/// <summary>ショート動画の依頼（F-05 ③ テンプレート合成）。</summary>
-public sealed record VideoJobRequest(string Theme, IReadOnlyList<Guid> ImageAssetIds, bool Narration = true, int TargetSeconds = 20)
+/// <summary>ショート動画の作り方（F-05）。</summary>
+public enum VideoMode
+{
+    /// <summary>③ テンプレート合成（複数画像＋テロップ＋ナレーション＋BGM）。</summary>
+    Template = 0,
+
+    /// <summary>① テキスト→動画（生成 AI）。</summary>
+    TextToVideo = 1,
+
+    /// <summary>② 画像→動画（静止画を起点に生成 AI が動きをつける）。</summary>
+    ImageToVideo = 2,
+}
+
+/// <summary>ショート動画の依頼（F-05）。生成 AI の場合、<see cref="Theme"/> は動画の説明（プロンプト）として使う。</summary>
+public sealed record VideoJobRequest(string Theme, IReadOnlyList<Guid> ImageAssetIds, bool Narration = true, int TargetSeconds = 20,
+    VideoMode Mode = VideoMode.Template, string? BgmTrackId = null)
 {
     public const int MinImages = 1;
     public const int MaxImages = 8;
     public const int MinSeconds = 10;
     public const int MaxSeconds = 30;
+
+    public bool IsGenerative => Mode is VideoMode.TextToVideo or VideoMode.ImageToVideo;
 }
 
 /// <summary>
@@ -38,15 +54,23 @@ public sealed class VideoService(
     IVideoComposer composer,
     IBrandContextProvider brand,
     ICreditService credits,
-    IWorkQueue queue)
+    IWorkQueue queue,
+    IVideoGenerationService generator,
+    IBgmLibrary bgm)
 {
     public static readonly (int Width, int Height) Size = (1080, 1920);
     public static readonly TimeSpan EstimatedDuration = TimeSpan.FromSeconds(60);
 
-    /// <summary>推定クレジット（テンプレート合成＋ナレーション 30秒ごと）。</summary>
-    public static int EstimateCredits(VideoJobRequest r) =>
-        CreditTable.Cost(CreditOperation.TemplateVideo)
-        + (r.Narration ? CreditTable.Cost(CreditOperation.Narration30s, (int)Math.Ceiling(Clamp(r.TargetSeconds) / 30.0)) : 0);
+    /// <summary>生成 AI の動画の所要時間の目安（数分〜10分。15分で失敗扱い）。</summary>
+    public static readonly TimeSpan EstimatedGenerativeDuration = TimeSpan.FromMinutes(5);
+
+    public IReadOnlyList<BgmTrack> BgmTracks => bgm.Tracks;
+
+    /// <summary>推定クレジット（テンプレート合成＋ナレーション 30秒ごと／生成 AI の動画は1本あたり）。</summary>
+    public static int EstimateCredits(VideoJobRequest r) => r.IsGenerative
+        ? CreditTable.Cost(CreditOperation.ShortVideo)
+        : CreditTable.Cost(CreditOperation.TemplateVideo)
+          + (r.Narration ? CreditTable.Cost(CreditOperation.Narration30s, (int)Math.Ceiling(Clamp(r.TargetSeconds) / 30.0)) : 0);
 
     public async Task<AiJob> EnqueueAsync(VideoJobRequest request, CancellationToken ct)
     {
@@ -54,17 +78,39 @@ public sealed class VideoService(
         if (string.IsNullOrWhiteSpace(request.Theme)) throw new DomainException(ErrorCodes.Validation, "動画のテーマを入力してください。");
         if (PostText.Length(request.Theme) > 300) throw new DomainException(ErrorCodes.Validation, "テーマは300字以内で入力してください。");
         if (Domain.Guardrails.PromptInjectionDetector.IsSuspicious(request.Theme)) throw new AiSafetyBlockedException("指示の書き換えの疑い");
-        var ids = request.ImageAssetIds.Distinct().ToList();
-        if (ids.Count is < VideoJobRequest.MinImages or > VideoJobRequest.MaxImages)
+        if (request.BgmTrackId is { Length: > 0 } track && bgm.Tracks.All(t => t.Id != track))
         {
-            throw new DomainException(ErrorCodes.Validation, $"画像を{VideoJobRequest.MinImages}〜{VideoJobRequest.MaxImages}枚選んでください。");
+            throw new DomainException(ErrorCodes.Validation, "選んだ BGM が見つかりません。");
+        }
+        var ids = request.ImageAssetIds.Distinct().ToList();
+        var (min, max) = request.Mode switch
+        {
+            VideoMode.TextToVideo => (0, 0),
+            VideoMode.ImageToVideo => (1, 1),
+            _ => (VideoJobRequest.MinImages, VideoJobRequest.MaxImages),
+        };
+        if (ids.Count < min || ids.Count > max)
+        {
+            throw new DomainException(ErrorCodes.Validation, request.Mode switch
+            {
+                VideoMode.TextToVideo => "テキストから作る動画では画像を選ばないでください。",
+                VideoMode.ImageToVideo => "動きをつける画像を1枚選んでください。",
+                _ => $"画像を{VideoJobRequest.MinImages}〜{VideoJobRequest.MaxImages}枚選んでください。",
+            });
         }
         foreach (var id in ids)
         {
             var asset = await media.GetAsync(id, ct);
             if (asset.Kind != MediaKind.Image) throw new DomainException(ErrorCodes.Validation, "動画の素材には画像を選んでください。");
         }
-        var normalized = request with { ImageAssetIds = ids, TargetSeconds = Clamp(request.TargetSeconds) };
+        var normalized = request with
+        {
+            ImageAssetIds = ids,
+            TargetSeconds = request.IsGenerative
+                ? Math.Clamp(request.TargetSeconds, VideoGenerationSpec.MinSeconds, VideoGenerationSpec.MaxSeconds)
+                : Clamp(request.TargetSeconds),
+            Narration = !request.IsGenerative && request.Narration,
+        };
         var amount = EstimateCredits(normalized);
         await credits.ReserveAsync(amount, ct);
         try
@@ -95,6 +141,7 @@ public sealed class VideoService(
     public async Task<(MediaAsset Video, int Credits)> ProcessAsync(AiJob job, CancellationToken ct)
     {
         var request = JsonSerializer.Deserialize<VideoJobRequest>(job.RequestJson)!;
+        if (request.IsGenerative) return await GenerateAsync(job, request, ct);
         var sources = new List<MediaAsset>();
         foreach (var id in request.ImageAssetIds) sources.Add(await media.GetAsync(id, ct));
         var ctx = await brand.BuildAsync(job.WorkspaceId, [], null, ct);
@@ -136,7 +183,7 @@ public sealed class VideoService(
         // ④⑤ 合成・書き出し
         job.MoveTo(AiJobStage.Checking);
         await db.SaveChangesAsync(ct);
-        var video = await composer.ComposeAsync(scenes, ct);
+        var video = await composer.ComposeAsync(scenes, ct, new VideoAudioOptions(request.BgmTrackId));
         var max = PlatformCatalog.All.Where(c => c.MaxVideoSeconds is not null).Min(c => c.MaxVideoSeconds!.Value);
         if (video.DurationMs > max * 1000) throw new DomainException(ErrorCodes.Validation, $"動画が長すぎます（{max}秒まで）。");
 
@@ -147,11 +194,55 @@ public sealed class VideoService(
         asset.Provenance = JsonSerializer.Serialize(new
         {
             kind = "template-video", theme = request.Theme, scenes = timeline.Count, narration = request.Narration,
-            sources = request.ImageAssetIds, createdAt = DateTimeOffset.UtcNow,
+            sources = request.ImageAssetIds, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
         var actual = CreditTable.Cost(CreditOperation.TemplateVideo)
                      + (request.Narration ? CreditTable.Cost(CreditOperation.Narration30s, (int)Math.Ceiling(video.DurationMs / 30_000.0)) : 0);
         return (asset, actual);
+    }
+
+    /// <summary>
+    /// ①② 生成 AI の動画：起点の画像（②）を 9:16 に整えて渡し、返ってきたクリップを 1080×1920・H.264/AAC に整えて BGM を重ねる。
+    /// </summary>
+    private async Task<(MediaAsset Video, int Credits)> GenerateAsync(AiJob job, VideoJobRequest request, CancellationToken ct)
+    {
+        byte[]? start = null;
+        if (request.Mode == VideoMode.ImageToVideo)
+        {
+            var source = await media.GetAsync(request.ImageAssetIds[0], ct);
+            var converted = await images.ConvertAspectAsync(await media.ReadAsync(source, ct), new AspectRatio(9, 16), Size,
+                AspectMethod.SmartCrop, "#000000", ct);
+            start = (await images.EncodeJpegAsync(converted.Bytes, 5_000_000, ct)).Bytes;
+        }
+        job.MoveTo(AiJobStage.Generating);
+        await db.SaveChangesAsync(ct);
+
+        var generated = await generator.GenerateAsync(new VideoGenerationSpec
+        {
+            Prompt = request.Theme + "。縦型のショート動画。実在の人物・他社のキャラクターやロゴは出さない。",
+            Seconds = request.TargetSeconds,
+            Size = Size,
+            StartImage = start,
+            StartImageMime = start is null ? null : "image/jpeg",
+        }, job.Id, ct);
+
+        job.MoveTo(AiJobStage.Checking);
+        await db.SaveChangesAsync(ct);
+        var video = await composer.FinishClipAsync(generated.Mp4, new VideoAudioOptions(request.BgmTrackId), ct);
+        var firstFrame = start ?? await composer.ExtractFrameAsync(video.Mp4, 0.5, ct);
+        var title = PostText.Truncate(request.Theme, 40);
+        var asset = await media.SaveVideoAsync(video, $"{title}.mp4", firstFrame, "", ct,
+            request.Mode == VideoMode.TextToVideo ? DigitalSourceType.TrainedAlgorithmicMedia : DigitalSourceType.CompositeWithTrainedAlgorithmicMedia);
+        asset.IsAiLabeled = true;
+        asset.AltText = $"{title}（AIで生成した{video.DurationMs / 1000}秒の動画）";
+        asset.AltTextIsAi = true;
+        asset.Provenance = JsonSerializer.Serialize(new
+        {
+            kind = request.Mode == VideoMode.TextToVideo ? "text-to-video" : "image-to-video",
+            provider = generated.Model.Provider, model = generated.Model.ModelId, fallbackUsed = generated.Model.FallbackUsed,
+            theme = request.Theme, sources = request.ImageAssetIds, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
+        });
+        return (asset, CreditTable.Cost(CreditOperation.ShortVideo));
     }
 
     /// <summary>字幕（SRT）：各シーンのナレーション（なければテロップ）を表示する。</summary>

@@ -252,6 +252,49 @@ public class AdapterTests
     }
 
     [Fact]
+    public async Task X_uploads_video_in_chunks_and_waits_for_processing()
+    {
+        XPublisher.PollScale = 0;
+        var size = XPublisher.ChunkBytes * 2 + 100;
+        var video = new PublishMedia(Guid.NewGuid(), "video/mp4", null, true, _ => Task.FromResult(new byte[size]),
+            _ => Task.FromResult("https://cdn.example/v.mp4"), _ => Task.FromResult("https://cdn.example/v.jpg"));
+        var http = new FakeHttp()
+            .Respond("2/media/upload/initialize", """{"data":{"id":"v1","media_key":"7_v1"}}""")
+            .Respond("2/media/upload/v1/append", "{}")
+            .Respond("2/media/upload/v1/append", "{}")
+            .Respond("2/media/upload/v1/append", "{}")
+            .Respond("2/media/upload/v1/finalize", """{"data":{"id":"v1","processing_info":{"state":"pending","check_after_secs":1}}}""")
+            .Respond("2/media/upload?command=STATUS&media_id=v1", """{"data":{"id":"v1","processing_info":{"state":"in_progress","check_after_secs":1}}}""")
+            .Respond("2/media/upload?command=STATUS&media_id=v1", """{"data":{"id":"v1","processing_info":{"state":"succeeded"}}}""")
+            .Respond("2/tweets", """{"data":{"id":"t2"}}""");
+        await new XPublisher(http).PublishAsync(Variant(SocialPlatform.X, "新作の動画"), Credential(SocialPlatform.X), [video, Image()],
+            CancellationToken.None);
+
+        var init = System.Text.Json.Nodes.JsonNode.Parse(http.Requests[0].Body!)!;
+        Assert.Equal(("video/mp4", size, "tweet_video"),
+            (init["media_type"]!.GetValue<string>(), init["total_bytes"]!.GetValue<int>(), init["media_category"]!.GetValue<string>()));
+        Assert.Contains("name=segment_index", http.Requests[3].Body);
+        var tweet = System.Text.Json.Nodes.JsonNode.Parse(http.Requests[^1].Body!)!;
+        Assert.Equal(["v1"], tweet["media"]!["media_ids"]!.AsArray().Select(x => x!.GetValue<string>())); // 画像は混ぜない
+    }
+
+    [Fact]
+    public async Task X_reports_failed_video_processing_as_permanent()
+    {
+        XPublisher.PollScale = 0;
+        var video = new PublishMedia(Guid.NewGuid(), "video/mp4", null, true, _ => Task.FromResult(new byte[10]),
+            _ => Task.FromResult("u"), _ => Task.FromResult("p"));
+        var http = new FakeHttp()
+            .Respond("initialize", """{"data":{"id":"v2"}}""")
+            .Respond("append", "{}")
+            .Respond("finalize", """{"data":{"id":"v2","processing_info":{"state":"failed","error":{"message":"InvalidMedia"}}}}""");
+        var ex = await Assert.ThrowsAsync<SocialApiException>(() => new XPublisher(http).PublishAsync(Variant(SocialPlatform.X, "動画"),
+            Credential(SocialPlatform.X), [video], CancellationToken.None));
+        Assert.False(ex.IsTransient);
+        Assert.Contains("InvalidMedia", ex.Message);
+    }
+
+    [Fact]
     public async Task Instagram_publishes_image_container_with_public_url()
     {
         var http = new FakeHttp()

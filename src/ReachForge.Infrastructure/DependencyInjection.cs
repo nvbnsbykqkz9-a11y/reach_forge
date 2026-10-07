@@ -94,6 +94,7 @@ public static class DependencyInjection
         services.Configure<MediaOptions>(configuration.GetSection(MediaOptions.SectionName));
         services.Configure<ContentSafetyOptions>(configuration.GetSection(ContentSafetyOptions.SectionName));
         services.AddSingleton<IImageProcessor, ImageSharpProcessor>();
+        services.AddSingleton<IProvenanceStamper, C2paProvenanceStamper>();
         var media = configuration.GetSection(MediaOptions.SectionName).Get<MediaOptions>() ?? new MediaOptions();
         if (!string.IsNullOrWhiteSpace(media.BlobServiceUri))
         {
@@ -120,6 +121,8 @@ public static class DependencyInjection
 
         // ---- ショート動画（F-05）：FFmpeg ----
         services.Configure<VideoOptions>(configuration.GetSection(VideoOptions.SectionName));
+        services.AddSingleton<BgmLibrary>();
+        services.AddSingleton<IBgmLibrary>(sp => sp.GetRequiredService<BgmLibrary>());
         services.AddSingleton<IVideoComposer, FfmpegVideoComposer>();
 
         // ---- ブランド診断（F-02）：外部サイトの取得。リダイレクトは自前で検査するため自動追従しない ----

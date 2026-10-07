@@ -27,6 +27,42 @@ public sealed record ImageJobRequest
 /// <summary>アウトペインティング（AI で広げる）ジョブの要求。完了するとバリアントの画像を差し替える。</summary>
 public sealed record OutpaintJobRequest(Guid SourceAssetId, SocialPlatform Platform, Guid? VariantId);
 
+/// <summary>参照画像の編集（F-04：背景差替・不要物除去・商品の配置）。</summary>
+public enum ImageEditKind
+{
+    /// <summary>背景を差し替える。被写体を切り抜ける写真では、被写体の画素を元のまま残す。</summary>
+    BackgroundReplace = 1,
+
+    /// <summary>指定した範囲の物を消す。範囲の外は元の画素のまま。</summary>
+    ObjectRemoval = 2,
+
+    /// <summary>商品写真を切り抜き、AI で作った背景に配置する（商品は生成しない：F-04 業務ルール）。</summary>
+    ProductPlacement = 3,
+}
+
+/// <summary>参照画像の編集ジョブの要求。</summary>
+public sealed record ReferenceEditJobRequest
+{
+    public required Guid SourceAssetId { get; init; }
+    public required ImageEditKind Kind { get; init; }
+
+    /// <summary>新しい背景の説明（背景差替・商品の配置）、または補足（不要物除去）。</summary>
+    public string Prompt { get; init; } = "";
+
+    /// <summary>消す範囲（不要物除去、最大5か所）。</summary>
+    public IReadOnlyList<NormalizedRect> Regions { get; init; } = [];
+
+    public ProductPlacement Placement { get; init; } = ProductPlacement.Bottom;
+
+    /// <summary>商品の大きさ（背景の高さに対する割合）。</summary>
+    public double Scale { get; init; } = 0.55;
+
+    /// <summary>商品の配置で作る背景の比率の基準にする SNS。</summary>
+    public SocialPlatform AspectFor { get; init; } = SocialPlatform.Instagram;
+
+    public const int MaxRegions = 5;
+}
+
 public enum MediaFilter { All, Uploaded, AiGenerated }
 
 /// <summary>メディアライブラリ（SCR-13）・取り込み・SNS 別の比率変換（F-04-6）・画像生成ジョブ（F-04）。</summary>
@@ -39,6 +75,7 @@ public sealed class MediaService(
     IAltTextGenerator alt,
     ICreditService credits,
     IWorkQueue queue,
+    IProvenanceStamper provenance,
     TimeProvider clock)
 {
     public const int MaxDimension = 4096;
@@ -124,7 +161,7 @@ public sealed class MediaService(
             throw new DomainException(ErrorCodes.SysUnexpected, ex.Message);
         }
         var name = Path.GetFileNameWithoutExtension(source.FileName);
-        var asset = await SaveAsync(rendered, MediaSource.Derived, $"{name}-文字入れ.jpg", source.Id, null, ct);
+        var asset = await SaveAsync(rendered, MediaSource.Derived, $"{name}-文字入れ.jpg", source.Id, null, ct, DerivedOrigin(source));
         asset.IsAiLabeled = source.IsAiLabeled;
         asset.Provenance = source.Provenance;
         asset.SafetyResult = source.SafetyResult;
@@ -136,11 +173,15 @@ public sealed class MediaService(
     }
 
     /// <summary>合成した動画を保存し、先頭のシーンからサムネイル（LINE のプレビュー等）を作る。</summary>
-    internal async Task<MediaAsset> SaveVideoAsync(ComposedVideo video, string fileName, byte[] firstFrame, string srt, CancellationToken ct)
+    internal async Task<MediaAsset> SaveVideoAsync(ComposedVideo video, string fileName, byte[] firstFrame, string srt, CancellationToken ct,
+        DigitalSourceType sourceType = DigitalSourceType.CompositeWithTrainedAlgorithmicMedia)
     {
         var id = Guid.CreateVersion7();
         var path = $"{tenant.TenantId:N}/{tenant.WorkspaceId:N}/{id:N}.mp4";
-        await storage.SaveAsync(path, video.Mp4, "video/mp4", ct);
+        // 台本・ナレーションを AI で作った動画（素材の画像は利用者のものを含む）。C2PA の署名は設定がある場合だけ埋め込む
+        var stamp = await provenance.StampAsync(video.Mp4, "video/mp4", new ProvenanceInfo(
+            sourceType, "c2pa.created", null, null, clock.GetUtcNow(), fileName), ct);
+        await storage.SaveAsync(path, stamp.Bytes, "video/mp4", ct);
         var asset = new MediaAsset
         {
             TenantId = tenant.TenantId,
@@ -153,9 +194,12 @@ public sealed class MediaService(
             Width = video.Width,
             Height = video.Height,
             DurationMs = video.DurationMs,
-            Bytes = video.Mp4.LongLength,
+            Bytes = stamp.Bytes.LongLength,
             SubtitlesSrt = srt,
             SafetyResult = "ok",
+            IsAiLabeled = true,
+            C2paManifest = stamp.Manifest,
+            C2paSigned = stamp.Signed,
         };
         typeof(MediaAsset).GetProperty(nameof(MediaAsset.Id))!.SetValue(asset, id);
         db.MediaAssets.Add(asset);
@@ -254,7 +298,7 @@ public sealed class MediaService(
         var converted = await images.ConvertAspectAsync(bytes, c.ImageAspect, c.ImageSize, method, pad, ct);
         var encoded = await images.EncodeJpegAsync(converted.Bytes, platform == SocialPlatform.Instagram ? InstagramMaxBytes : LineMaxBytes, ct);
 
-        var derived = await SaveAsync(encoded, MediaSource.Derived, source.FileName, source.Id, key, ct);
+        var derived = await SaveAsync(encoded, MediaSource.Derived, source.FileName, source.Id, key, ct, DerivedOrigin(source, "c2pa.resized"));
         derived.IsAiLabeled = source.IsAiLabeled;
         derived.AltText = source.AltText;
         derived.AltTextIsAi = source.AltTextIsAi;
@@ -279,7 +323,7 @@ public sealed class MediaService(
     {
         var thumb = await images.ThumbnailAsync(bytes, 480, ct);
         var asset = await SaveAsync(await images.EncodeJpegAsync(thumb.Bytes, 1_000_000, ct), MediaSource.Derived, source.FileName,
-            source.Id, ThumbnailKey, ct);
+            source.Id, ThumbnailKey, ct, DerivedOrigin(source, "c2pa.resized"));
         asset.IsAiLabeled = source.IsAiLabeled;
         return asset;
     }
@@ -313,6 +357,41 @@ public sealed class MediaService(
         return await EnqueueAsync(AiTaskType.ImageEdit, request, CreditTable.Cost(CreditOperation.ImageEditAi), ct);
     }
 
+    /// <summary>参照画像を AI で編集するジョブを登録する（5 クレジット）。</summary>
+    public async Task<AiJob> EnqueueEditAsync(ReferenceEditJobRequest request, CancellationToken ct)
+    {
+        RolePolicy.Demand(tenant.Role, Permission.Generate);
+        var source = await GetAsync(request.SourceAssetId, ct);
+        if (source.Kind != MediaKind.Image) throw new DomainException(ErrorCodes.Validation, "画像を選んでください。");
+        var prompt = request.Prompt.Trim();
+        if (request.Kind is ImageEditKind.BackgroundReplace or ImageEditKind.ProductPlacement && prompt.Length == 0)
+        {
+            throw new DomainException(ErrorCodes.Validation, "どんな背景にするかを入力してください。例：木のテーブルと朝の光");
+        }
+        if (PostText.Length(prompt) > ImageGenerationSpec.MaxPromptLength)
+        {
+            throw new DomainException(ErrorCodes.Validation, $"説明は{ImageGenerationSpec.MaxPromptLength}字以内で入力してください。");
+        }
+        if (prompt.Length > 0 && Domain.Guardrails.PromptInjectionDetector.IsSuspicious(prompt))
+        {
+            throw new AiSafetyBlockedException("指示の書き換えの疑い");
+        }
+        if (request.Kind == ImageEditKind.ObjectRemoval
+            && (request.Regions.Count is 0 or > ReferenceEditJobRequest.MaxRegions || request.Regions.Any(r => !r.IsValid)))
+        {
+            throw new DomainException(ErrorCodes.Validation, $"消したい範囲を1〜{ReferenceEditJobRequest.MaxRegions}か所選んでください。");
+        }
+        return await EnqueueAsync(AiTaskType.ImageEdit, request with { Prompt = prompt, Scale = Math.Clamp(request.Scale, 0.2, 0.9) },
+            CreditTable.Cost(CreditOperation.ImageEditAi), ct);
+    }
+
+    /// <summary>画像編集ジョブの種類（アウトペインティングは null）。</summary>
+    internal static ImageEditKind? EditKindOf(AiJob job)
+    {
+        using var doc = JsonDocument.Parse(job.RequestJson);
+        return doc.RootElement.TryGetProperty("kind", out var kind) && kind.TryGetInt32(out var value) ? (ImageEditKind)value : null;
+    }
+
     /// <summary>ジョブの状態（Worker が更新するため追跡せずに毎回読む）。</summary>
     public async Task<AiJob> GetJobAsync(Guid id, CancellationToken ct) =>
         await db.AiJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct) ?? throw new NotFoundException("処理");
@@ -336,13 +415,16 @@ public sealed class MediaService(
     }
 
     /// <summary>保存して MediaAsset を追加する（SaveChanges は呼び出し側）。</summary>
+    /// <param name="origin">AI 生成・編集の来歴。指定すると IPTC（XMP）と C2PA マニフェストを付ける（F-04 処理 4）。</param>
     internal async Task<MediaAsset> SaveAsync(ProcessedImage image, MediaSource source, string fileName, Guid? parentId,
-        string? derivationKey, CancellationToken ct)
+        string? derivationKey, CancellationToken ct, ProvenanceInfo? origin = null)
     {
         var id = Guid.CreateVersion7();
         var ext = image.Mime switch { "image/png" => "png", "image/webp" => "webp", _ => "jpg" };
         var path = $"{tenant.TenantId:N}/{tenant.WorkspaceId:N}/{id:N}.{ext}";
-        await storage.SaveAsync(path, image.Bytes, image.Mime, ct);
+        var stamp = origin is null ? null : await provenance.StampAsync(image.Bytes, image.Mime, origin, ct);
+        var content = stamp?.Bytes ?? image.Bytes;
+        await storage.SaveAsync(path, content, image.Mime, ct);
 
         var asset = new MediaAsset
         {
@@ -355,14 +437,27 @@ public sealed class MediaService(
             FileName = string.IsNullOrWhiteSpace(fileName) ? $"{id:N}.{ext}" : fileName,
             Width = image.Width,
             Height = image.Height,
-            Bytes = image.Bytes.LongLength,
+            Bytes = content.LongLength,
             ParentAssetId = parentId,
             DerivationKey = derivationKey,
+            C2paManifest = stamp?.Manifest,
+            C2paSigned = stamp?.Signed ?? false,
         };
         typeof(MediaAsset).GetProperty(nameof(MediaAsset.Id))!.SetValue(asset, id);
         db.MediaAssets.Add(asset);
         return asset;
     }
+
+    /// <summary>AI 生成物から作った画像（比率変換・文字入れ・サムネイル）にも、元の来歴を引き継ぐ。</summary>
+    internal ProvenanceInfo? DerivedOrigin(MediaAsset source, string action = "c2pa.edited") => source.IsAiLabeled
+        ? new ProvenanceInfo(SourceTypeOf(source), action, null, null, clock.GetUtcNow(), source.FileName)
+        : null;
+
+    internal static DigitalSourceType SourceTypeOf(MediaAsset asset) =>
+        asset.Source == MediaSource.AiGenerated && asset.Kind == MediaKind.Image
+        || asset.C2paManifest?.Contains("/trainedAlgorithmicMedia\"", StringComparison.Ordinal) == true
+            ? DigitalSourceType.TrainedAlgorithmicMedia
+            : DigitalSourceType.CompositeWithTrainedAlgorithmicMedia;
 
     internal async Task<string> PadColorAsync(CancellationToken ct)
     {

@@ -27,6 +27,10 @@ public static class DependencyInjection
         services.AddScoped<IApprovalSummaryService, ApprovalSummaryService>();
         services.AddSingleton<IImageGeneratorFactory, ImageGeneratorFactory>();
         services.AddScoped<IImageGenerationService, ImageGenerationService>();
+        // 動画生成（Sora / Veo）：依頼と状態の確認は短く、動画の取得は大きいため長めにする。再試行は代替プロバイダで行う
+        services.AddHttpClient(VideoGeneratorFactory.HttpClientName, c => c.Timeout = TimeSpan.FromMinutes(10));
+        services.AddSingleton<IVideoGeneratorFactory, VideoGeneratorFactory>();
+        services.AddScoped<IVideoGenerationService, VideoGenerationService>();
         services.AddScoped<IAltTextGenerator, AltTextGenerator>();
         services.AddScoped<IReportWriter, ReportWriter>();
         services.AddScoped<IInboxClassifier, InboxClassifier>();

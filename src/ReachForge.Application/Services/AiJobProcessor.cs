@@ -66,7 +66,7 @@ public sealed class AiJobProcessor(
             var assets = job.TaskType switch
             {
                 AiTaskType.Image => await GenerateAsync(job, ct),
-                AiTaskType.ImageEdit => await OutpaintAsync(job, ct),
+                AiTaskType.ImageEdit => MediaService.EditKindOf(job) is null ? await OutpaintAsync(job, ct) : await ReferenceEditAsync(job, ct),
                 _ => throw new DomainException(ErrorCodes.Validation, $"未対応のジョブ種別です（{job.TaskType}）"),
             };
             if (assets.Count == 0)
@@ -188,7 +188,9 @@ public sealed class AiJobProcessor(
             var normalized = await images.NormalizeAsync(input, MediaService.MaxDimension, ct);
             if (logo is not null) normalized = await images.OverlayLogoAsync(normalized.Bytes, logo, 0.18, ct);
 
-            var asset = await media.SaveAsync(normalized, MediaSource.AiGenerated, $"ai-{saved.Count + 1}.jpg", null, null, ct);
+            var asset = await media.SaveAsync(normalized, MediaSource.AiGenerated, $"ai-{saved.Count + 1}.jpg", null, null, ct,
+                new ProvenanceInfo(DigitalSourceType.TrainedAlgorithmicMedia, "c2pa.created", image.Model.Provider, image.Model.ModelId,
+                    clock.GetUtcNow(), $"ai-{saved.Count + 1}.jpg"));
             asset.IsAiLabeled = true;
             asset.SafetyResult = verdict.Result;
             asset.AiGenerationId = job.Id;
@@ -227,7 +229,9 @@ public sealed class AiJobProcessor(
         var encoded = await images.EncodeJpegAsync(fitted.Bytes,
             request.Platform == SocialPlatform.Instagram ? MediaService.InstagramMaxBytes : MediaService.LineMaxBytes, ct);
         var asset = await media.SaveAsync(encoded, MediaSource.AiEdited, source.FileName, source.Id,
-            $"{request.Platform}:{c.ImageSize.Width}x{c.ImageSize.Height}:{AspectMethod.Outpaint}:{job.Id:N}", ct);
+            $"{request.Platform}:{c.ImageSize.Width}x{c.ImageSize.Height}:{AspectMethod.Outpaint}:{job.Id:N}", ct,
+            new ProvenanceInfo(DigitalSourceType.CompositeWithTrainedAlgorithmicMedia, "c2pa.edited", image.Model.Provider, image.Model.ModelId,
+                clock.GetUtcNow(), source.FileName));
         asset.IsAiLabeled = true;
         asset.SafetyResult = verdict.Result;
         asset.AiGenerationId = job.Id;
@@ -242,6 +246,99 @@ public sealed class AiJobProcessor(
         }
         return [asset];
     }
+
+    /// <summary>
+    /// 参照画像の編集（F-04）。AI に描かせるのは背景・消した部分だけで、それ以外は元の画素を戻す。
+    /// 商品の配置では商品を切り抜いて重ねるため、商品は生成・改変しない。
+    /// </summary>
+    private async Task<List<MediaAsset>> ReferenceEditAsync(AiJob job, CancellationToken ct)
+    {
+        var request = MediaService.Request<ReferenceEditJobRequest>(job);
+        var source = await db.MediaAssets.FirstOrDefaultAsync(m => m.Id == request.SourceAssetId, ct) ?? throw new NotFoundException("元の画像");
+        var original = await media.ReadAsync(source, ct);
+        var aspect = new AspectRatio(source.Width ?? 1, source.Height ?? 1);
+        var size = (source.Width ?? 1024, source.Height ?? 1024);
+        byte[] result;
+        GeneratedImage generated;
+        var subjectPreserved = true;
+
+        switch (request.Kind)
+        {
+            case ImageEditKind.ObjectRemoval:
+            {
+                var canvas = await images.PrepareEraseCanvasAsync(original, request.Regions, ct);
+                generated = await GenerateOneAsync(new ImageGenerationSpec
+                {
+                    Prompt = "透明な部分を、周りの背景に自然につながるように描き直してください。そこにあった物は描かないでください。"
+                             + (request.Prompt.Length > 0 ? $"補足：{request.Prompt}" : ""),
+                    Aspect = aspect, Size = size, SourceImage = canvas.Bytes, SourceMime = canvas.Mime,
+                }, job, ct);
+                result = (await images.RestoreAsync(original, generated.Bytes, request.Regions, null, ct)).Bytes;
+                break;
+            }
+            case ImageEditKind.BackgroundReplace:
+            {
+                var cutout = await images.CutoutAsync(original, ct);
+                generated = await GenerateOneAsync(new ImageGenerationSpec
+                {
+                    Prompt = $"背景を「{request.Prompt}」に差し替えてください。被写体（商品・人物）の形・色・文字は変えないでください。",
+                    Aspect = aspect, Size = size, SourceImage = original, SourceMime = source.Mime,
+                }, job, ct);
+                subjectPreserved = cutout.Confidence >= Cutout.MinConfidence;
+                result = subjectPreserved
+                    ? (await images.RestoreAsync(original, generated.Bytes, null, cutout.Image.Bytes, ct)).Bytes
+                    : generated.Bytes; // 背景が複雑で切り抜けない写真は AI の結果をそのまま使う（来歴に記録）
+                break;
+            }
+            case ImageEditKind.ProductPlacement:
+            {
+                var cutout = await images.CutoutAsync(original, ct);
+                if (cutout.Confidence < Cutout.MinConfidence)
+                {
+                    throw new DomainException(ErrorCodes.Validation,
+                        "商品を背景から切り抜けませんでした。白や単色の背景で撮った商品写真、または背景を透明にした PNG を選んでください（クレジットは消費されていません）。");
+                }
+                var c = PlatformCatalog.Get(request.AspectFor);
+                generated = await GenerateOneAsync(new ImageGenerationSpec
+                {
+                    Prompt = $"{request.Prompt}。商品を置くための背景で、{(request.Placement == ProductPlacement.Center ? "中央" : "手前")}に何も置かれていない空間を残す。",
+                    Style = ImageStyle.Photo, Aspect = c.ImageAspect, Size = c.ImageSize,
+                }, job, ct);
+                result = (await images.CompositeAsync(generated.Bytes, cutout.Image.Bytes, request.Placement, request.Scale, ct)).Bytes;
+                break;
+            }
+            default:
+                throw new DomainException(ErrorCodes.Validation, "未対応の編集です。");
+        }
+        job.MoveTo(AiJobStage.Checking);
+
+        var verdict = await safety.CheckAsync(result, "image/png", ct);
+        if (verdict.Blocked) return [];
+        using var input = new MemoryStream(result);
+        var normalized = await images.NormalizeAsync(input, MediaService.MaxDimension, ct);
+        // 編集結果は利用者が選んで使う新しい画像（ライブラリに表示する）。SNS 用の派生画像のような DerivationKey は付けない
+        var name = Path.GetFileNameWithoutExtension(source.FileName);
+        var label = request.Kind switch
+        {
+            ImageEditKind.BackgroundReplace => "背景差替",
+            ImageEditKind.ObjectRemoval => "不要物除去",
+            _ => "商品配置",
+        };
+        var asset = await media.SaveAsync(normalized, MediaSource.AiEdited, $"{name}-{label}.jpg", source.Id, null, ct,
+            new ProvenanceInfo(DigitalSourceType.CompositeWithTrainedAlgorithmicMedia, "c2pa.edited", generated.Model.Provider,
+                generated.Model.ModelId, clock.GetUtcNow(), source.FileName));
+        asset.IsAiLabeled = true;
+        asset.SafetyResult = verdict.Result;
+        asset.AiGenerationId = job.Id;
+        asset.Provenance = Provenance(generated.Model, request.Prompt,
+            JsonSerializer.Serialize(new { edit = request.Kind.ToString(), source = source.Id, subjectPreserved }));
+        asset.AltText = request.Kind == ImageEditKind.ObjectRemoval ? source.AltText : await TryAltAsync(normalized, request.Prompt, ct);
+        asset.AltTextIsAi = asset.AltText is not null && request.Kind != ImageEditKind.ObjectRemoval;
+        return [asset];
+    }
+
+    private async Task<GeneratedImage> GenerateOneAsync(ImageGenerationSpec spec, AiJob job, CancellationToken ct) =>
+        (await generator.GenerateAsync(spec, job.Id, ct)).FirstOrDefault() ?? throw new AiUnavailableException("AIから画像を受け取れませんでした。");
 
     private async Task<string?> TryAltAsync(ProcessedImage image, string hint, CancellationToken ct)
     {
