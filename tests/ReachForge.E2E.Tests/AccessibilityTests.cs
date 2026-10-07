@@ -12,8 +12,8 @@ public class AccessibilityTests(E2EFixture app)
 {
     public static readonly string[] Pages =
     [
-        "/", "/studio", "/media", "/ideas", "/campaigns", "/calendar", "/approvals", "/inbox", "/analytics",
-        "/settings", "/settings/brand", "/settings/channels", "/settings/members", "/settings/usage", "/settings/api-keys", "/settings/sns-apps", "/settings/ai", "/ops", "/ops/prompts",
+        "/", "/create/instagram", "/create/x", "/create/youtube", "/create/line", "/create/instagram?tab=ad", "/inbox",
+        "/settings", "/settings/brand", "/settings/channels", "/settings/usage", "/settings/sns-apps", "/settings/ai", "/ops", "/ops/prompts",
     ];
 
     private static readonly AxeRunOptions s_wcag = new()

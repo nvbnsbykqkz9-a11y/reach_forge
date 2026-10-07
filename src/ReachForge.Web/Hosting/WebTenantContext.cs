@@ -48,19 +48,6 @@ public sealed class WebTenantContext(
             return;
         }
 
-        // API キー：ロールはキーに付けたもの（認証ハンドラが失効・期限を確認済み）
-        if (user.FindFirstValue(RfClaims.ApiKeyId) is not null)
-        {
-            if (!Enum.TryParse<Role>(user.FindFirstValue(RfClaims.Role), out var keyRole)) return;
-            _userId = userId;
-            _tenantId = tenantId;
-            _workspaceId = workspaceId;
-            _role = keyRole;
-            _userName = user.FindFirstValue(RfClaims.DisplayName) ?? "APIキー";
-            MfaEnabled = true;
-            return;
-        }
-
         using var db = new ReachForgeDbContext(dbOptions, new MutableTenantContext { IsSystem = true }, null, clock);
         var member = db.WorkspaceMembers.AsNoTracking()
             .FirstOrDefault(m => m.UserId == userId && m.WorkspaceId == workspaceId && m.TenantId == tenantId);

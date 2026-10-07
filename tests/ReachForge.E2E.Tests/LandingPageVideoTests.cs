@@ -12,11 +12,14 @@ public class LandingPageVideoTests(E2EFixture app)
         var errors = new List<string>();
         var page = await app.LoginAsync();
         page.PageError += (_, e) => errors.Add(e);
-        await page.GotoAsync("/media");
+        // つくる（Instagram）：伝えたいことと LP の URL → 画像・動画 →「AI で動画をつくる」は LP から作る形で開く
+        await page.GotoAsync("/create/instagram");
         await E2EFixture.WaitForInteractiveAsync(page);
-
-        await page.GetByRole(AriaRole.Button, new() { Name = "LP から集客動画をつくる" }).ClickAsync();
-        await page.GetByLabel("LP の URL（必須）").FillAsync(FakeLandingPageFetcher.Url);
+        await page.GetByLabel("伝えたいこと").FillAsync("秋限定のさつまいもラテ");
+        await page.GetByLabel("お店・商品のページの URL（任意）").FillAsync(FakeLandingPageFetcher.Url);
+        await page.GetByRole(AriaRole.Button, new() { Name = "次へ：画像・動画" }).ClickAsync();
+        await page.GetByRole(AriaRole.Button, new() { NameRegex = new("AI で動画をつくる") }).ClickAsync();
+        await Assertions.Expect(page.GetByLabel("LP の URL（必須）")).ToHaveValueAsync(FakeLandingPageFetcher.Url);
         await page.GetByRole(AriaRole.Button, new() { Name = "LP を読み込む" }).ClickAsync();
         await page.GetByText("秋限定さつまいもラテ | ほっこりカフェ").WaitForAsync(new() { Timeout = 15000 });
 

@@ -20,8 +20,8 @@ public class AuthTests
         await using var app = new WebFixture();
         var client = app.Browser();
 
-        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/channels")).StatusCode);
-        var page = await client.GetAsync("/calendar");
+        Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/v1/oauth/callback/X?code=a&state=b")).StatusCode);
+        var page = await client.GetAsync("/settings/channels");
         Assert.True(HttpAssert.IsRedirect(page));
         Assert.Contains("/account/login", HttpAssert.Location(page));
     }
@@ -35,8 +35,9 @@ public class AuthTests
         var login = await WebFixture.LoginAsync(client, "owner@example.com");
         Assert.True(HttpAssert.IsRedirect(login), $"status {(int)login.StatusCode}");
 
-        var channels = await client.GetFromJsonAsync<JsonElement>("/api/v1/channels");
-        Assert.Equal(4, channels.GetArrayLength());
+        var page = await client.GetAsync("/settings/channels");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        Assert.Contains("@hokkori_cafe", await TextAsync(page));
     }
 
     [Fact]
@@ -55,18 +56,19 @@ public class AuthTests
     }
 
     [Fact]
-    public async Task Role_is_enforced_on_the_api()
+    public async Task Viewer_cannot_complete_a_connection()
     {
         await using var app = new WebFixture();
         var client = app.Browser();
         await WebFixture.LoginAsync(client, "viewer@example.com");
 
-        var response = await client.PostAsJsonAsync("/api/v1/ai/copies", new
+        // 閲覧者は SNS・広告アカウントの連携を完了できない（連携は画面からしか始められず、state も一致しない）
+        foreach (var url in new[] { "/api/v1/oauth/callback/X?code=abc&state=forged", "/api/v1/oauth/ads/meta/callback?code=abc&state=forged" })
         {
-            workspaceId = "01929f00-0000-7000-8000-000000000002", objective = "Traffic", theme = "秋の新作",
-        });
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Equal("E-AUTH-403", (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("errorCode").GetString());
+            var response = await client.GetAsync(url);
+            Assert.True(HttpAssert.IsRedirect(response));
+            Assert.Contains("error=", HttpAssert.Location(response));
+        }
     }
 
     [Fact]
@@ -101,7 +103,7 @@ public class AuthTests
     {
         Assert.Equal("/", Api.AccountEndpoints.SafeReturnUrl("//evil.example/phish"));
         Assert.Equal("/", Api.AccountEndpoints.SafeReturnUrl("https://evil.example"));
-        Assert.Equal("/calendar", Api.AccountEndpoints.SafeReturnUrl("/calendar"));
+        Assert.Equal("/settings/channels", Api.AccountEndpoints.SafeReturnUrl("/settings/channels"));
     }
 
     [Fact]

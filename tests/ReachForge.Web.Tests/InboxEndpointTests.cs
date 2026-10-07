@@ -1,8 +1,12 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using ReachForge.Application.Abstractions;
+using ReachForge.Domain.Entities;
+using ReachForge.Domain.Enums;
+using ReachForge.Infrastructure.Persistence;
 
 namespace ReachForge.Web.Tests;
 
@@ -25,21 +29,16 @@ public class InboxEndpointTests
         Assert.Equal(HttpStatusCode.OK, (await client.PostAsync("/api/v1/webhooks/meta", signed)).StatusCode);
 
         // 取り込みは非同期（WebhookProcessor）
-        JsonElement? found = null;
+        InboxMessage? found = null;
         for (var i = 0; i < 50 && found is null; i++)
         {
-            var list = await client.GetFromJsonAsync<JsonElement>("/api/v1/inbox");
-            found = list.EnumerateArray().Cast<JsonElement?>().FirstOrDefault(m => m!.Value.GetProperty("externalId").GetString() == "wh-c1");
+            using var scope = app.Services.CreateScope();
+            scope.ServiceProvider.GetRequiredService<TenantContextOverride>().Current = new MutableTenantContext { IsSystem = true };
+            found = await scope.ServiceProvider.GetRequiredService<IAppDbContext>().InboxMessages.FirstOrDefaultAsync(m => m.ExternalId == "wh-c1");
             if (found is null) await Task.Delay(100);
         }
         Assert.NotNull(found);
-        Assert.Equal("@webhook_user", found.Value.GetProperty("authorName").GetString());
-        Assert.Equal("Question", found.Value.GetProperty("intent").GetString());
-
-        var id = found.Value.GetProperty("id").GetGuid();
-        var drafts = await (await client.PostAsync($"/api/v1/inbox/{id}/replies:suggest", null)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.True(drafts.GetArrayLength() > 0);
-        var reply = await client.PostAsJsonAsync($"/api/v1/inbox/{id}:reply", new { text = drafts[0].GetProperty("text").GetString() });
-        Assert.Equal(HttpStatusCode.NoContent, reply.StatusCode);
+        Assert.Equal("@webhook_user", found.AuthorName);
+        Assert.Equal(InboxIntent.Question, found.Intent);
     }
 }

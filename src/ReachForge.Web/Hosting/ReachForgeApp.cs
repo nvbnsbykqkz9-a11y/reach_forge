@@ -60,8 +60,6 @@ public static class ReachForgeApp
             o.DefaultSignInScheme = IdentityConstants.ExternalScheme;
         });
         authentication.AddIdentityCookies();
-        // 外部連携用の API キー（/api/v1 のみ有効）
-        authentication.AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, null);
 
         // 外部 ID プロバイダ（Google / Microsoft / Entra External ID 等）は設定がある場合のみ有効にする
         foreach (var (scheme, oidc) in authOptions.Oidc.Where(p => p.Value.IsConfigured))
@@ -115,10 +113,7 @@ public static class ReachForgeApp
         builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(5));
         // パスワード再設定などのトークンは1時間で失効させる
         builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = AccountService.ResetTokenLifetime);
-        // 既定の認可はログイン（Cookie）と API キーのどちらでもよい
-        builder.Services.AddAuthorization(o => o.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
-                IdentityConstants.ApplicationScheme, ApiKeyAuthenticationHandler.SchemeName)
-            .RequireAuthenticatedUser().Build());
+        builder.Services.AddAuthorization();
         builder.Services.AddReachForgeRateLimits(builder.Configuration);
         builder.Services.AddReachForgeOps(builder.Configuration);
 
@@ -174,9 +169,6 @@ public static class ReachForgeApp
         app.MapAccountEndpoints();
         app.MapReachForgeApi();
         app.MapMediaEndpoints();
-        app.MapAnalyticsEndpoints();
-        app.MapInboxEndpoints();
-        app.MapCampaignEndpoints();
         app.MapWebhookEndpoints();
         app.MapDefaultEndpoints();
         app.MapDesktopEndpoints();

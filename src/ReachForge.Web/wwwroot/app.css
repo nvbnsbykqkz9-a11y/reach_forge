@@ -108,7 +108,7 @@ body { font-variant-numeric: tabular-nums; }
 .rf-preview-body .rf-tag, .rf-preview-body .rf-url { color: #1D9BF0; }
 .rf-preview-media { margin: 8px 0; border-radius: 12px; background: repeating-linear-gradient(45deg, #F3F4F6, #F3F4F6 10px, #E5E7EB 10px, #E5E7EB 20px); display: flex; align-items: center; justify-content: center; color: #6B7280; font-size: 12px; }
 .rf-preview-fold { border-top: 1px dashed #9CA3AF; margin: 4px 0; font-size: 11px; color: #6B7280; }
-.rf-preview-line { background: #8CABD9; padding: 12px; border-radius: var(--rf-radius-lg); }
+.rf-preview-line { background: #4A6A99; padding: 12px; border-radius: var(--rf-radius-lg); }
 .rf-preview-line .rf-bubble { background: #fff; border-radius: 16px; padding: 10px 12px; white-space: pre-wrap; }
 
 /* カレンダー */
