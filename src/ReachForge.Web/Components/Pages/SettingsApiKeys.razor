@@ -1,0 +1,115 @@
+@page "/settings/api-keys"
+@inject ApiKeyService Keys
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>API キー｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">API キー</MudText>
+</div>
+
+@if (!CanManage)
+{
+    <MudAlert Severity="Severity.Info">API キーの管理はオーナーと管理者のみ操作できます。</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.body2" Class="mb-3">
+        外部システムから ReachForge の API（/api/v1）を使うためのキーです。リクエストに <code>Authorization: Bearer rfk_…</code> を付けてください。
+        キーはこのワークスペースだけで使え、付けた権限の範囲で操作できます。
+    </MudText>
+
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6">新しいキー</MudText>
+        <div class="d-flex flex-wrap gap-3 align-end">
+            <MudTextField T="string" @bind-Value="_name" Label="名前（用途）" Variant="Variant.Outlined" MaxLength="60" Immediate="true" Style="min-width:240px" />
+            <MudSelect T="Role" @bind-Value="_role" Label="権限" Variant="Variant.Outlined" Style="max-width:200px">
+                @foreach (var r in ApiKey.AllowedRoles) { <MudSelectItem Value="r">@r.ToLabel()</MudSelectItem> }
+            </MudSelect>
+            <MudSelect T="int" @bind-Value="_days" Label="有効期限" Variant="Variant.Outlined" Style="max-width:160px">
+                <MudSelectItem Value="30">30日</MudSelectItem>
+                <MudSelectItem Value="90">90日</MudSelectItem>
+                <MudSelectItem Value="365">1年</MudSelectItem>
+                <MudSelectItem Value="0">無期限</MudSelectItem>
+            </MudSelect>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CreateAsync" Disabled="@string.IsNullOrWhiteSpace(_name)">発行する</MudButton>
+        </div>
+        @if (_secret is not null)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                このキーは今だけ表示します。安全な場所に保管してください（再表示できません）。
+                <code class="rf-code mt-2" aria-label="API キー">@_secret</code>
+            </MudAlert>
+        }
+    </MudPaper>
+
+    <MudSimpleTable Dense="true" Elevation="0">
+        <thead><tr><th>名前</th><th>キー</th><th>権限</th><th>有効期限</th><th>最終利用</th><th>状態</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var k in _keys)
+            {
+                <tr>
+                    <td>@k.Name</td>
+                    <td><code>@k.Prefix…</code></td>
+                    <td>@k.Role.ToLabel()</td>
+                    <td>@(k.ExpiresAt is { } e ? Time.Short(e) : "無期限")</td>
+                    <td>@(k.LastUsedAt is { } u ? Time.Relative(u) : "—")</td>
+                    <td>@(k.RevokedAt is not null ? "失効" : k.IsUsable(Time.Now) ? "有効" : "期限切れ")</td>
+                    <td>@if (k.RevokedAt is null) { <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Error" OnClick="() => RevokeAsync(k)">失効させる</MudButton> }</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+}
+
+@code {
+    private IReadOnlyList<ApiKey> _keys = [];
+    private string? _name, _secret;
+    private Role _role = Role.Viewer;
+    private int _days = 90;
+
+    private bool CanManage => RolePolicy.Can(Tenant.Role, Permission.ManageMembers);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        if (CanManage) await LoadAsync();
+    }
+
+    private async Task LoadAsync() => _keys = await Keys.ListAsync(CancellationToken.None);
+
+    private async Task CreateAsync()
+    {
+        try
+        {
+            var created = await Keys.CreateAsync(_name!, _role, _days == 0 ? null : Time.Now.AddDays(_days), CancellationToken.None);
+            _secret = created.Secret;
+            _name = null;
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+
+    private async Task RevokeAsync(ApiKey key)
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync("キーを失効させますか？", $"「{key.Name}」を使っている連携は、すぐに使えなくなります。",
+            yesText: "失効させる", cancelText: "やめる");
+        if (ok != true) return;
+        try
+        {
+            await Keys.RevokeAsync(key.Id, CancellationToken.None);
+            Snackbar.Add("失効させました", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+    }
+}

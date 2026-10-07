@@ -21,4 +21,7 @@ public static class RfClaims
     public const string WorkspaceId = "rf:workspace";
     public const string Role = "rf:role";
     public const string DisplayName = "rf:name";
+
+    /// <summary>API キーで認証した要求（値はキーの ID）。ロールは rf:role に入る。</summary>
+    public const string ApiKeyId = "rf:apikey";
 }

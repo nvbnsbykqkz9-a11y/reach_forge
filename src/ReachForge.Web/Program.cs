@@ -43,6 +43,8 @@ var authentication = builder.Services.AddAuthentication(o =>
     o.DefaultSignInScheme = IdentityConstants.ExternalScheme;
 });
 authentication.AddIdentityCookies();
+// 外部連携用の API キー（/api/v1 のみ有効）
+authentication.AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, null);
 
 // 外部 ID プロバイダ（Google / Microsoft / Entra External ID 等）は設定がある場合のみ有効にする
 foreach (var (scheme, oidc) in authOptions.Oidc.Where(p => p.Value.IsConfigured))
@@ -96,7 +98,11 @@ builder.Services.ConfigureApplicationCookie(o =>
 builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(5));
 // パスワード再設定などのトークンは1時間で失効させる
 builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = AccountService.ResetTokenLifetime);
-builder.Services.AddAuthorization();
+// 既定の認可はログイン（Cookie）と API キーのどちらでもよい
+builder.Services.AddAuthorization(o => o.DefaultPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
+        IdentityConstants.ApplicationScheme, ApiKeyAuthenticationHandler.SchemeName)
+    .RequireAuthenticatedUser().Build());
+builder.Services.AddReachForgeRateLimits(builder.Configuration);
 
 builder.Services.AddScoped<WebTenantContext>();
 builder.Services.AddScoped<ITenantContext>(sp =>
@@ -135,7 +141,9 @@ if (!app.Environment.IsDevelopment())
 app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"),
     b => b.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
+app.UseMiddleware<IdempotencyMiddleware>();
 app.UseAntiforgery();
 
 app.MapStaticAssets();

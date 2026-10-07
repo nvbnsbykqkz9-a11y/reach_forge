@@ -57,7 +57,7 @@ public static class MediaEndpoints
         {
             var job = await media.EnqueueGenerationAsync(request, ct);
             return Results.Accepted($"/api/v1/ai/jobs/{job.Id}", new { jobId = job.Id, job.CreditsHeld });
-        });
+        }).RequireRateLimiting(Hosting.ApiProtection.AiPolicy);
         api.MapGet("/ai/jobs/{id:guid}", async (Guid id, MediaService media, CancellationToken ct) =>
         {
             var job = await media.GetJobAsync(id, ct);

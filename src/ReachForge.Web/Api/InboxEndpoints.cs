@@ -24,7 +24,8 @@ public static class InboxEndpoints
             return new { d.Message, d.ChannelName, d.OriginalPost, d.TypingOther, d.ReplyCostUsd,
                 knowledge = d.Knowledge.Select(k => new { k.Entry.Id, k.Entry.Question, k.Score }) };
         });
-        api.MapPost("/{id:guid}/replies:suggest", (Guid id, InboxService s, CancellationToken ct) => s.SuggestRepliesAsync(id, ct));
+        api.MapPost("/{id:guid}/replies:suggest", (Guid id, InboxService s, CancellationToken ct) => s.SuggestRepliesAsync(id, ct))
+            .RequireRateLimiting(Hosting.ApiProtection.AiPolicy);
         api.MapPost("/{id:guid}:reply", async (Guid id, ReplyBody body, InboxService s, CancellationToken ct) =>
         {
             await s.ReplyAsync(id, body.Text, ct);

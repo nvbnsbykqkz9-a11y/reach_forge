@@ -27,7 +27,7 @@ public static class AnalyticsEndpoints
         {
             var (report, job) = await s.RequestAsync(new ReportRequest(r.From, r.To, ReportKind.Custom, r.Platform, r.CampaignId, r.Compare), ct);
             return Results.Accepted($"/api/v1/reports/{report.Id}", new { reportId = report.Id, jobId = job.Id });
-        });
+        }).RequireRateLimiting(Hosting.ApiProtection.AiPolicy);
         api.MapGet("/reports", async (ReportService s, CancellationToken ct) =>
             (await s.ListAsync(50, ct)).Select(r => new { r.Id, r.Title, r.Kind, r.Status, r.PeriodFrom, r.PeriodTo, r.CreatedAt, hasPdf = r.PdfPath != null }));
         api.MapGet("/reports/{id:guid}", async (Guid id, ReportService s, CancellationToken ct) =>

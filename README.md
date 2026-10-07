@@ -46,6 +46,13 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - 外部 ID（Google / Microsoft / Entra External ID）：`Auth:Oidc:<名前>` に Authority・ClientId・ClientSecret を設定すると有効。既存利用者（同じ確認済みメールアドレス）に紐づける
 - 監査ログ：ログイン・ログアウト・MFA 変更・招待・ロール変更・チャネル連携
 
+## 外部連携 API（RF-DES-001 13章）
+
+- 認証：ログイン（Cookie）または API キー。キーは「設定 → API キー」でオーナー・管理者が発行（権限は編集者／承認者／返信担当／閲覧者から選択、有効期限つき、本体は一度だけ表示・DB にはハッシュのみ）。`Authorization: Bearer rfk_…` または `X-Api-Key: rfk_…`。キーは `/api/v1` 以外（画面）では使えない
+- レート制限：テナント単位 600 回/分、AI 生成系（投稿文・SNS 別変換・画像・レポート・返信案・A/B）60 回/分、ログイン前の POST（ログイン・パスワード再設定など）は IP 単位 20 回/分。超過時は 429・`Retry-After`。設定は `RateLimits:*`（複数インスタンスでは Front Door / API Management でも制限する）
+- 冪等性：POST に `Idempotency-Key` を付けると、同じキーの再送には最初の応答を返す（`Idempotent-Replayed: true`、24時間保持）。内容の違う再送は 422、処理中は 409、5xx は保存しない
+- パスワード再設定：ログイン画面の「パスワードを忘れた場合」からメールで再設定（1時間・1回限り、登録の有無は表示しない）。ロック時・パスワード変更時・招待時にメールで通知
+
 ## SNS 公式 API 連携（初期リリース：X / Facebook / Instagram / Threads / LINE）
 
 各 SNS の開発者サイトでアプリを作成し、User Secrets・環境変数・Key Vault で設定します（リポジトリに置かない）。
@@ -185,8 +192,7 @@ tests/
 
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 生成 AI 動画（F-05 ①②）・BGM、C2PA 署名、参照画像の編集（背景差替・不要物除去）、X の動画投稿
-3. パスワード再設定・メール送信（招待・ロック通知）、API キー認証（外部連携）、レート制限
-4. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
-5. PostgreSQL のマイグレーションと RLS
-6. プロンプトのDB管理・AI Evals・SignalR による進捗通知
-7. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査
+3. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
+4. PostgreSQL のマイグレーションと RLS
+5. プロンプトのDB管理・AI Evals・SignalR による進捗通知
+6. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

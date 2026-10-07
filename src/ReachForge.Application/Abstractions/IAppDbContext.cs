@@ -32,6 +32,7 @@ public interface IAppDbContext
     DbSet<InboxAlert> InboxAlerts { get; }
     DbSet<AbTest> AbTests { get; }
     DbSet<TrendIdea> TrendIdeas { get; }
+    DbSet<ApiKey> ApiKeys { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

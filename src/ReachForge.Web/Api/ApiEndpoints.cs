@@ -70,7 +70,8 @@ public static class ApiEndpoints
         api.MapPut("/brand-profile", (BrandProfile body, WorkspaceService s, CancellationToken ct) => s.SaveBrandAsync(body, ct));
 
         // F-03 投稿文生成
-        api.MapPost("/ai/copies", (CopyRequest body, StudioService s, CancellationToken ct) => s.GenerateCopiesAsync(body, ct));
+        api.MapPost("/ai/copies", (CopyRequest body, StudioService s, CancellationToken ct) => s.GenerateCopiesAsync(body, ct))
+            .RequireRateLimiting(Hosting.ApiProtection.AiPolicy);
 
         // F-06 マスター投稿・バリアント
         api.MapPost("/posts", (SavePostRequest r, StudioService s, CancellationToken ct) => s.SaveMasterPostAsync(new SaveMasterPost
@@ -79,7 +80,8 @@ public static class ApiEndpoints
             Hashtags = r.Hashtags ?? [], ProductIds = r.ProductIds ?? [], CampaignId = r.CampaignId, AiGenerationId = r.AiGenerationId,
         }, ct));
         api.MapPost("/posts/{id:guid}/variants:generate", (Guid id, GenerateVariantsRequest r, StudioService s,
-            CancellationToken ct) => s.GenerateVariantsAsync(id, r.ChannelIds, new VariantOptions(r.LinkUrl, r.IncludeUrlForX), ct));
+            CancellationToken ct) => s.GenerateVariantsAsync(id, r.ChannelIds, new VariantOptions(r.LinkUrl, r.IncludeUrlForX), ct))
+            .RequireRateLimiting(Hosting.ApiProtection.AiPolicy);
         api.MapGet("/posts/{id:guid}/variants", (Guid id, StudioService s, CancellationToken ct) => s.GetVariantsAsync(id, ct));
         api.MapPatch("/variants/{id:guid}", async (Guid id, PatchVariantRequest r, StudioService s, CancellationToken ct) =>
         {

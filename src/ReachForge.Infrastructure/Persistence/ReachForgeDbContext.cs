@@ -56,6 +56,8 @@ public sealed class ReachForgeDbContext(
     public DbSet<InboxAlert> InboxAlerts => Set<InboxAlert>();
     public DbSet<AbTest> AbTests => Set<AbTest>();
     public DbSet<TrendIdea> TrendIdeas => Set<TrendIdea>();
+    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
@@ -155,6 +157,19 @@ public sealed class ReachForgeDbContext(
         b.Entity<InboxAlert>().HasIndex(x => new { x.WorkspaceId, x.Status });
         b.Entity<AbTest>().HasIndex(x => new { x.WorkspaceId, x.Status });
         b.Entity<TrendIdea>().HasIndex(x => new { x.WorkspaceId, x.Status, x.GeneratedOn });
+        b.Entity<ApiKey>(e =>
+        {
+            e.HasIndex(x => x.SecretHash).IsUnique();
+            e.Property(x => x.SecretHash).HasMaxLength(64);
+            e.Property(x => x.Prefix).HasMaxLength(16);
+        });
+        b.Entity<IdempotencyRecord>(e =>
+        {
+            e.HasIndex(x => new { x.Scope, x.Key }).IsUnique();
+            e.HasIndex(x => x.CreatedAt);
+            e.Property(x => x.Key).HasMaxLength(128);
+            e.Property(x => x.Scope).HasMaxLength(64);
+        });
         b.Entity<Campaign>().HasIndex(x => new { x.WorkspaceId, x.Code }).IsUnique();
     }
 

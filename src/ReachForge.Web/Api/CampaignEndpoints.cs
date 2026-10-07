@@ -30,7 +30,7 @@ public static class CampaignEndpoints
         {
             var t = await s.CreateAsync(body, ct);
             return Results.Created($"/api/v1/ab-tests/{t.Id}", t);
-        });
+        }).RequireRateLimiting(Hosting.ApiProtection.AiPolicy);
         ab.MapGet("/{id:guid}", (Guid id, AbTestService s, CancellationToken ct) => s.GetAsync(id, ct));
         ab.MapPost("/{id:guid}:start", (Guid id, StartAbTest body, AbTestService s, CancellationToken ct) =>
             s.StartAsync(id, body.StartAt, body.TimeB, ct));
