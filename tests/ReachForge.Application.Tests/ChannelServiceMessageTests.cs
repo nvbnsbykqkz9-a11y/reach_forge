@@ -14,7 +14,7 @@ public class ChannelServiceMessageTests
     {
         var message = ChannelService.NotConfiguredMessage(platform);
         Assert.Contains(key, message);
-        Assert.Contains("再起動", message);
+        Assert.Contains("SNSアプリの設定", message);
         Assert.DoesNotContain("準備中", message);
     }
 }

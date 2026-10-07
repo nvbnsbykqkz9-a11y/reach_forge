@@ -11,10 +11,13 @@ public sealed class OpsOptions
 
     public List<string> Operators { get; set; } = [];
 
+    /// <summary>ログインした利用者を全員運用者として扱う（Windows 版）。</summary>
+    public bool EveryoneIsOperator { get; set; }
+
     public bool IsOperator(ClaimsPrincipal user) =>
         user.Identity?.IsAuthenticated == true
-        && user.FindFirstValue(ClaimTypes.Email) is { Length: > 0 } email
-        && Operators.Contains(email, StringComparer.OrdinalIgnoreCase);
+        && (EveryoneIsOperator
+            || (user.FindFirstValue(ClaimTypes.Email) is { Length: > 0 } email && Operators.Contains(email, StringComparer.OrdinalIgnoreCase)));
 }
 
 public static class OpsAccess
@@ -25,6 +28,8 @@ public static class OpsAccess
     public static IServiceCollection AddReachForgeOps(this IServiceCollection services, IConfiguration configuration)
     {
         var options = configuration.GetSection(OpsOptions.SectionName).Get<OpsOptions>() ?? new OpsOptions();
+        // Windows 版（PC 単体）は、その PC でログインした利用者（オーナー）が運用者を兼ねる
+        options.EveryoneIsOperator = configuration.GetValue("Desktop:Enabled", false);
         services.AddSingleton(options);
         services.AddAuthorizationBuilder().AddPolicy(Policy, p => p
             .AddAuthenticationSchemes(IdentityConstants.ApplicationScheme)

@@ -47,7 +47,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 | データ | `%LOCALAPPDATA%\ReachForge`：DB（SQLite）・メディア・ログ（14日分）・証明書・設定。アプリを更新・アンインストールしても残る。DB は起動時にマイグレーションで新しい版にそろえる（`ReachForge.Migrations.Sqlite`） |
 | ログイン | 起動ごとに作る秘密の値で、最初に登録した利用者（オーナー）として自動ログインする。初回は登録画面でワークスペースを作る |
 | 常駐 | ウィンドウを閉じてもタスクトレイに残り、予約投稿・指標の取得・受信箱の取り込みを続ける。終了はトレイのメニューから。「Windows の起動時に開始」も選べる |
-| 設定 | トレイの「設定ファイル（API キー）を開く」で `appsettings.user.json` を編集する（生成AI の API キー、SNS アプリの ID・シークレット）。保存後にアプリを再起動すると反映される（トレイの「終了」→ 起動）。お試しは `"Social": { "UseMock": true }` でデモ接続（実際には投稿しない）。SNS のトークンの暗号鍵は Windows の DPAPI で利用者ごとに保護する |
+| 設定 | SNS アプリの ID・シークレットとデモ接続は画面の「設定 → SNSアプリの設定」で入力する（すぐ反映）。生成AI の API キーはトレイの「設定ファイル（API キー）を開く」で `appsettings.user.json` を編集し、アプリを再起動する（トレイの「終了」→ 起動）。SNS のトークンの暗号鍵は Windows の DPAPI で利用者ごとに保護する |
 | HTTPS | SNS の OAuth は HTTPS のコールバックを求めるため、初回に `localhost` 用の自己署名証明書を作り、アプリの画面だけがこの証明書を信頼する（OS の信頼ストアには入れない） |
 
 SNS アプリに登録するコールバック URL：`https://localhost:47120/api/v1/oauth/callback/<X|Facebook|Instagram|Threads|TikTok|YouTube>`
@@ -151,7 +151,7 @@ iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 �
 
 ## SNS 公式 API 連携（X / Facebook / Instagram / Threads / LINE / TikTok / YouTube）
 
-各 SNS の開発者サイトでアプリを作成し、User Secrets・環境変数・Key Vault で設定します（リポジトリに置かない）。
+各 SNS の開発者サイトでアプリを作成し、その ID・シークレットを **「設定 → SNSアプリの設定」（`/settings/sns-apps`）** で入力します（運用者のみ。Windows 版はオーナー）。保存するとすぐに使われ（再起動不要。Worker など別のプロセスにも1分以内に反映）、シークレットは Data Protection で暗号化して DB（`AppSettings`）に保存し、画面には表示しません。変更は監査ログに残ります（値は残さない）。同じ画面でデモ接続（お試し）を切り替えられます。User Secrets・環境変数・Key Vault で設定することもでき、画面で入力した値はそれらより優先します。画面にはコールバック URL（コピー可）と各社の開発者サイトへのリンクを表示します。
 コールバック URL は `https://<ホスト>/api/v1/oauth/callback/<X|Facebook|Instagram|Threads|TikTok|YouTube>` を登録します。
 
 | SNS | 設定キー | 方式 |

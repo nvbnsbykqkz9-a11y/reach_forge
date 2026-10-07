@@ -1,3 +1,4 @@
+using ReachForge.Infrastructure.Settings;
 using ReachForge.Application.Abstractions;
 using ReachForge.Infrastructure;
 using ReachForge.Infrastructure.Jobs;
@@ -15,4 +16,6 @@ builder.Services.AddReachForgeJobs(builder.Configuration);
 
 var host = builder.Build();
 await DemoSeeder.InitializeAsync(host.Services, seed: builder.Configuration.GetValue("Database:SeedDemo", false));
+// 画面で保存した設定（SNS アプリの ID・シークレットなど）。Web で保存した変更も1分以内に読み直す
+builder.Configuration.AddDbSettings(host.Services);
 host.Run();

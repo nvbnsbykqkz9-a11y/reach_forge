@@ -20,6 +20,18 @@
             </MudCard>
         </MudItem>
     }
+    <AuthorizeView Policy="@OpsAccess.Policy">
+        <MudItem xs="12" sm="6" md="4">
+            <MudCard Class="rf-card" Elevation="0" Outlined="true">
+                <MudCardContent>
+                    <MudIcon Icon="@Icons.Material.Rounded.AppSettingsAlt" Color="Color.Primary" aria-hidden="true" />
+                    <MudText Typo="Typo.h6">SNSアプリの設定</MudText>
+                    <MudText Typo="Typo.body2">SNS 連携に使うアプリの ID・シークレット、デモ接続</MudText>
+                </MudCardContent>
+                <MudCardActions><MudButton Href="/settings/sns-apps" Variant="Variant.Text" Color="Color.Primary">開く</MudButton></MudCardActions>
+            </MudCard>
+        </MudItem>
+    </AuthorizeView>
 </MudGrid>
 
 @code {

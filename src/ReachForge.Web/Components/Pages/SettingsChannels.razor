@@ -105,8 +105,16 @@
         </MudItem>
     }
 </MudGrid>
+<AuthorizeView Policy="@OpsAccess.Policy">
+    <MudPaper Class="pa-3 mt-4" Elevation="0" Outlined="true">
+        <div class="d-flex align-center gap-2 flex-wrap">
+            <MudText Typo="Typo.body2">SNS と連携するには、SNS ごとのアプリの ID・シークレットを先に設定します。</MudText>
+            <MudButton Href="/settings/sns-apps" Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Rounded.Key">SNSアプリの設定</MudButton>
+        </div>
+    </MudPaper>
+</AuthorizeView>
 <MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">
-    公式APIのアプリ設定（Social:X / Meta / Threads / TikTok / YouTube）がないSNSは、開発環境ではデモ接続になります。LinkedIn・Pinterest はパートナー承認後のフェーズ2で対応します。
+    アプリの設定がないSNSは、デモ接続（お試し）がオンのときだけデモとして連携できます。LinkedIn・Pinterest はパートナー承認後のフェーズ2で対応します。
 </MudText>
 
 @code {

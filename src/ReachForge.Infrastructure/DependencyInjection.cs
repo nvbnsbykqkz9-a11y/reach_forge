@@ -90,6 +90,9 @@ public static class DependencyInjection
         services.AddSingleton<Prompts.DbPromptStore>();
         services.AddSingleton<IPromptStore>(sp => sp.GetRequiredService<Prompts.DbPromptStore>());
         services.AddSingleton<Prompts.PromptAdminService>();
+        // 画面から変える設定（SNS アプリの ID・シークレット）
+        services.AddSingleton<Settings.AppSettingsReloader>();
+        services.AddSingleton<Settings.SnsAppSettingsService>();
 
         // ---- ジョブ基盤（14章）：キューへの登録側。処理役はホストが AddReachForgeJobs / AddReachForgeWorkConsumers で登録する ----
         services.AddReachForgeWorkQueue(configuration);

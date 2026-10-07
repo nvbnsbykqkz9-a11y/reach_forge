@@ -22,7 +22,8 @@ public static class DependencyInjection
     public static IServiceCollection AddReachForgeSocial(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<SocialOptions>(configuration.GetSection(SocialOptions.SectionName));
-        var options = configuration.GetSection(SocialOptions.SectionName).Get<SocialOptions>() ?? new SocialOptions();
+        // 画面で SNS アプリの設定を変えたら、再起動せずに反映する（IOptions でも毎回最新の値を返す）
+        services.AddSingleton<IOptions<SocialOptions>>(sp => new LiveOptions<SocialOptions>(sp.GetRequiredService<IOptionsMonitor<SocialOptions>>()));
         services.AddSingleton<IPublisherFactory, PublisherFactory>();
 
         // 公式 API（X / Facebook / Instagram / Threads / LINE / TikTok / YouTube）。
@@ -76,19 +77,17 @@ public static class DependencyInjection
         // TikTok はコメント取得 API が一般のアプリに提供されていないため受信箱は対象外
         // TODO(フェーズ2): LinkedIn / Pinterest（パートナー承認後）
 
-        if (options.UseMock)
+        // デモ接続（モック）。使うかどうかは Social:UseMock で、画面から切り替えられる（DemoChannelConnector が判定）
+        foreach (var platform in Enum.GetValues<SocialPlatform>())
         {
-            foreach (var platform in Enum.GetValues<SocialPlatform>())
-            {
-                services.AddSingleton<ISocialPublisher>(sp =>
-                    new MockPublisher(platform, sp.GetRequiredService<ILogger<MockPublisher>>(), sp.GetService<TimeProvider>()));
-                services.AddSingleton<ISocialInboxReader>(sp =>
-                    new MockInboxReader(platform, sp.GetService<TimeProvider>() ?? TimeProvider.System));
-                services.AddSingleton<ISocialInsightsReader>(sp =>
-                    new MockInsightsReader(platform, sp.GetService<TimeProvider>() ?? TimeProvider.System));
-            }
-            services.AddSingleton<IChannelConnector, DemoChannelConnector>();
+            services.AddSingleton<ISocialPublisher>(sp =>
+                new MockPublisher(platform, sp.GetRequiredService<ILogger<MockPublisher>>(), sp.GetService<TimeProvider>()));
+            services.AddSingleton<ISocialInboxReader>(sp =>
+                new MockInboxReader(platform, sp.GetService<TimeProvider>() ?? TimeProvider.System));
+            services.AddSingleton<ISocialInsightsReader>(sp =>
+                new MockInsightsReader(platform, sp.GetService<TimeProvider>() ?? TimeProvider.System));
         }
+        services.AddSingleton<IChannelConnector, DemoChannelConnector>();
         return services;
     }
 
@@ -107,5 +106,11 @@ public static class DependencyInjection
             o.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(20);
         });
         return builder;
+    }
+
+    /// <summary>毎回 <see cref="IOptionsMonitor{T}.CurrentValue"/> を返す IOptions（設定の変更をすぐ反映する）。</summary>
+    private sealed class LiveOptions<T>(IOptionsMonitor<T> monitor) : IOptions<T> where T : class
+    {
+        public T Value => monitor.CurrentValue;
     }
 }

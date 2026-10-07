@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using ReachForge.Application.Social;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
@@ -8,9 +9,9 @@ namespace ReachForge.Social.Mock;
 /// デモ接続（OAuth を行わずにモックのアカウントを連携する）。Social:UseMock が true の環境で、
 /// 公式 API の設定がない SNS にだけ使われる（実コネクタが優先）。
 /// </summary>
-public sealed class DemoChannelConnector(TimeProvider clock) : IChannelConnector
+public sealed class DemoChannelConnector(TimeProvider clock, IOptions<SocialOptions> options) : IChannelConnector
 {
-    public bool Supports(SocialPlatform platform) => true;
+    public bool Supports(SocialPlatform platform) => options.Value.UseMock;
     public ConnectMode Mode => ConnectMode.Demo;
 
     public Task<IReadOnlyList<ConnectedAccount>> ConnectAsync(SocialPlatform platform,

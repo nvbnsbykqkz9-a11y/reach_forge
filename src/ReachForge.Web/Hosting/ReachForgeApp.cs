@@ -11,6 +11,7 @@ using ReachForge.Infrastructure.Hosting;
 using ReachForge.Infrastructure.Identity;
 using ReachForge.Infrastructure.Jobs;
 using ReachForge.Infrastructure.Persistence;
+using ReachForge.Infrastructure.Settings;
 using ReachForge.Web.Api;
 using ReachForge.Web.Components;
 
@@ -151,6 +152,8 @@ public static class ReachForgeApp
         var app = builder.Build();
 
         await DemoSeeder.InitializeAsync(app.Services, seed: app.Configuration.GetValue("Database:SeedDemo", false));
+        // 画面で保存した設定（SNS アプリの ID・シークレットなど）を、設定ファイルより優先して読み込む
+        builder.Configuration.AddDbSettings(app.Services);
 
         app.UseExceptionHandler();
         if (!app.Environment.IsDevelopment())

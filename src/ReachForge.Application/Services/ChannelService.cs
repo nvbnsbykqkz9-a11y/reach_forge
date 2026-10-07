@@ -235,8 +235,8 @@ public sealed class ChannelService(
         };
         if (keys is null) return $"{name}との連携は今後対応予定です（パートナー承認が必要なため）。";
         return $"{name}と連携するには、{name}の開発者サイトで作成したアプリの設定（{keys}）が必要です。" +
-               "設定ファイル（Windows 版はトレイの「設定ファイル（API キー）を開く」）に入力して保存し、アプリを再起動してください。" +
-               "動作を試すだけなら Social:UseMock を true にすると、デモ接続（実際には投稿しない）で連携できます。";
+               "「設定 → SNSアプリの設定」で入力して保存してください（運用者・Windows 版はオーナーが設定できます）。" +
+               "動作を試すだけなら、同じ画面で「デモ接続」をオンにすると、実際には投稿しないデモとして連携できます。";
     }
 
     internal static string RandomToken(int bytes) => Base64Url(RandomNumberGenerator.GetBytes(bytes));

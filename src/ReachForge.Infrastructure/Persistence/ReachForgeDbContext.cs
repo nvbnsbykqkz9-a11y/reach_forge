@@ -62,6 +62,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<PromptTemplate> PromptTemplates => Set<PromptTemplate>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -189,6 +190,13 @@ public sealed class ReachForgeDbContext(
             e.Property(x => x.Key).HasMaxLength(64);
             e.Property(x => x.Note).HasMaxLength(500);
             e.Property(x => x.Evaluation).HasConversion(Json<PromptEvalResult?>());
+        });
+        b.Entity<AppSetting>(e =>
+        {
+            e.HasIndex(x => x.Key).IsUnique();
+            e.Property(x => x.Key).HasMaxLength(AppSetting.MaxKeyLength);
+            e.Property(x => x.Value).HasMaxLength(AppSetting.MaxValueLength);
+            e.Property(x => x.UpdatedBy).HasMaxLength(256);
         });
         b.Entity<IdempotencyRecord>(e =>
         {
