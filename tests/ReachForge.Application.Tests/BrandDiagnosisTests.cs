@@ -67,6 +67,9 @@ public class BrandDiagnosisTests
         public Task<WebPage> FetchAsync(string url, CancellationToken ct) => page is null
             ? throw new DomainException(ErrorCodes.BrdUrlUnavailable, "取得できません")
             : Task.FromResult(page);
+
+        public Task<FetchedImage> FetchImageAsync(Uri url, CancellationToken ct) =>
+            throw new DomainException(ErrorCodes.BrdUrlUnavailable, "取得できません");
     }
 
     [Fact]

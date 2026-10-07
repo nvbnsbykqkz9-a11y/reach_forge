@@ -58,6 +58,12 @@ public interface IImageProcessor
     /// </summary>
     Task<ProcessedImage> RenderTextAsync(byte[] source, TextOverlay overlay, CancellationToken ct);
 
+    /// <summary>文字の帯だけを透明な画像（PNG）に描く。動画のクリップの上に重ねるテロップに使う。</summary>
+    Task<ProcessedImage> RenderTextLayerAsync(TextOverlay overlay, (int Width, int Height) size, CancellationToken ct);
+
+    /// <summary>単色の画像（JPEG）。素材の画像がないシーンの背景に使う。</summary>
+    Task<ProcessedImage> CreateBackgroundAsync(string colorHex, (int Width, int Height) size, CancellationToken ct);
+
     /// <summary>不要物除去用のキャンバス：指定範囲を透明にした PNG（生成 AI に透明部分だけを描き直させる）。</summary>
     Task<ProcessedImage> PrepareEraseCanvasAsync(byte[] source, IReadOnlyList<NormalizedRect> regions, CancellationToken ct);
 
@@ -87,7 +93,11 @@ public interface IMediaStorage
 }
 
 /// <summary>動画の1シーン（9:16・1080×1920 にテロップを焼き込んだ画像と、表示秒数・ナレーション）。</summary>
-public sealed record VideoSceneInput(byte[] Image, double Seconds, byte[]? NarrationWav);
+/// <summary>
+/// 動画の1シーン。<paramref name="Clip"/>（生成 AI の動画）があれば静止画の代わりに使い、<paramref name="OverlayPng"/>（透明なテロップ）を重ねる。
+/// <paramref name="Image"/> はサムネイル・クリップを使えないときの代わりにもなる。
+/// </summary>
+public sealed record VideoSceneInput(byte[] Image, double Seconds, byte[]? NarrationWav, byte[]? Clip = null, byte[]? OverlayPng = null);
 
 public sealed record ComposedVideo(byte[] Mp4, int DurationMs, int Width, int Height);
 

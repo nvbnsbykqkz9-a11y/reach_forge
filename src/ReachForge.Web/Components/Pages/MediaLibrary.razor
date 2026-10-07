@@ -22,12 +22,16 @@
 {
     <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
         <RfMediaPicker Selected="_picked" SelectedChanged="PickedAsync" Max="99" ShowLibrary="false" />
-        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.Movie" Class="mt-2"
-                   OnClick="() => _videoMaker = !_videoMaker">ショート動画をつくる</MudButton>
+        <div class="d-flex flex-wrap gap-2 mt-2">
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.Movie"
+                       OnClick="() => OpenVideoMaker(VideoMode.Template)">ショート動画をつくる</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Rounded.Language"
+                       OnClick="() => OpenVideoMaker(VideoMode.LandingPage)">LP から集客動画をつくる</MudButton>
+        </div>
     </MudPaper>
     @if (_videoMaker)
     {
-        <div class="mb-4"><RfVideoMaker OnCreated="VideoCreatedAsync" /></div>
+        <div class="mb-4"><RfVideoMaker @key="_videoMode" InitialMode="_videoMode" OnCreated="VideoCreatedAsync" /></div>
     }
 }
 
@@ -144,10 +148,18 @@
     private IReadOnlyList<PostVariant> _usages = [];
     private string? _alt, _provenance;
     private bool _altBusy, _textBusy, _videoMaker;
+    private VideoMode _videoMode = VideoMode.Template;
+
+    private void OpenVideoMaker(VideoMode mode)
+    {
+        _videoMaker = !_videoMaker || _videoMode != mode;
+        _videoMode = mode;
+    }
 
     private async Task VideoCreatedAsync(Guid id)
     {
-        _videoMaker = false;
+        // LP から作った場合は、訴求と投稿文の案を見られるよう開いたままにする
+        if (_videoMode != VideoMode.LandingPage) _videoMaker = false;
         await LoadAsync();
         if (_items.FirstOrDefault(i => i.Id == id) is { } m) await SelectAsync(m);
     }

@@ -2,6 +2,9 @@ using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using ReachForge.Application.Ai;
 using Microsoft.Data.Sqlite;
 using Microsoft.Playwright;
 
@@ -36,6 +39,8 @@ public sealed class E2EFixture : IAsyncLifetime
             builder.UseSetting("Auth:RequireMfaForAdmins", "false");
             builder.UseSetting("Ops:Operators:0", "owner@example.com");
             builder.UseSetting("Logging:LogLevel:Default", "Warning");
+            // 外部のサイトには出ない：LP の取得は決まったページを返す
+            builder.ConfigureTestServices(s => s.AddSingleton<IWebPageFetcher, FakeLandingPageFetcher>());
             UseKestrel(port);
         }
     }
@@ -104,6 +109,27 @@ public sealed class E2EFixture : IAsyncLifetime
         SqliteConnection.ClearAllPools();
         if (File.Exists(_db)) File.Delete(_db);
         if (Directory.Exists(_media)) Directory.Delete(_media, recursive: true);
+    }
+}
+
+/// <summary>E2E 用の LP（ページと画像）。画像はテスト内で描いたものを返す。</summary>
+public sealed class FakeLandingPageFetcher : IWebPageFetcher
+{
+    public const string Url = "https://lp.example.com/autumn-latte";
+
+    public Task<WebPage> FetchAsync(string url, CancellationToken ct) => Task.FromResult(new WebPage(new Uri(Url),
+        "秋限定さつまいもラテ | ほっこりカフェ", "10月末までの期間限定メニュー",
+        "秋限定さつまいもラテ 680円。焼きいもの香ばしさとミルクのやさしい甘さ。", ["#B45309"],
+        [
+            new WebImage(new Uri("https://lp.example.com/og.jpg"), null, IsShareImage: true),
+            new WebImage(new Uri("https://lp.example.com/latte.jpg"), "さつまいもラテ"),
+        ]));
+
+    public async Task<FetchedImage> FetchImageAsync(Uri url, CancellationToken ct)
+    {
+        var image = await new ReachForge.Infrastructure.Media.ImageSharpProcessor()
+            .RenderPlaceholderAsync(1200, 900, url.AbsolutePath.Length, ["#B45309", "#FDE68A"], ct);
+        return new FetchedImage(image.Bytes, image.Mime);
     }
 }
 

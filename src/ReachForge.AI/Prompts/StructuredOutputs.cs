@@ -39,3 +39,8 @@ public sealed record IdeaBatch(IdeaDraft[] Ideas);
 public sealed record SceneDraft(string Caption, string Narration, double Seconds);
 
 public sealed record ScriptDraft(string Title, SceneDraft[] Scenes);
+
+public sealed record LandingSceneDraft(string Role, string Caption, string Narration, double Seconds, int? ImageIndex);
+
+public sealed record LandingPlanDraft(string Title, string Product, string Target, string[] Benefits, string Offer, string CallToAction,
+    LandingSceneDraft[] Scenes, string PostText, string[] Hashtags, string HookMotion);

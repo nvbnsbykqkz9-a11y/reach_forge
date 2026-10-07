@@ -49,3 +49,28 @@ public interface IVideoGenerationService
 {
     Task<GeneratedVideo> GenerateAsync(VideoGenerationSpec spec, Guid? generationId, CancellationToken ct);
 }
+
+/// <summary>LP 動画の1シーン。<paramref name="ImageIndex"/> は使う LP の画像の番号（0 始まり、なければ null）。</summary>
+public sealed record LandingPageScene(string Role, string Caption, string Narration, double Seconds, int? ImageIndex);
+
+/// <summary>
+/// LP（ランディングページ）から作る集客動画の企画（訴求の整理＋絵コンテ）。
+/// 価格・数値・効果は LP に書かれていることだけを使う（生成後に LP の本文と突き合わせる）。
+/// </summary>
+public sealed record LandingPageVideoPlan(
+    string Title,
+    string Product,
+    string Target,
+    IReadOnlyList<string> Benefits,
+    string Offer,
+    string CallToAction,
+    IReadOnlyList<LandingPageScene> Scenes,
+    string PostText,
+    IReadOnlyList<string> Hashtags,
+    string HookMotion);
+
+/// <summary>LP の内容から、縦型ショート動画の企画と絵コンテをつくる（構造化出力）。</summary>
+public interface ILandingPageVideoPlanner
+{
+    Task<LandingPageVideoPlan> PlanAsync(BrandContext brand, WebPage page, int sceneCount, int targetSeconds, CancellationToken ct);
+}

@@ -22,9 +22,43 @@ public sealed partial class SafeWebPageFetcher(IHttpClientFactory http) : IWebPa
     public const int MaxRedirects = 3;
     public const string UserAgent = "ReachForgeBot/1.0 (+brand diagnosis)";
 
+    public const int MaxImageBytes = 10 * 1024 * 1024;
+    public const int MaxImages = 16;
+
     public async Task<WebPage> FetchAsync(string url, CancellationToken ct)
     {
         if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri)) throw Unavailable("URLの形式が正しくありません。");
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        var (response, final) = await SendAsync(uri, "text/html,application/xhtml+xml", cts.Token);
+        using (response)
+        {
+            var type = response.Content.Headers.ContentType?.MediaType ?? "";
+            if (!type.Contains("html", StringComparison.OrdinalIgnoreCase)) throw Unavailable("HTMLのページを指定してください。");
+            var html = Decode(response, await ReadLimitedAsync(response, MaxBytes, cts.Token));
+            return Parse(final, html);
+        }
+    }
+
+    public async Task<FetchedImage> FetchImageAsync(Uri url, CancellationToken ct)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(TimeSpan.FromSeconds(15));
+        var (response, _) = await SendAsync(url, "image/jpeg,image/png,image/webp", cts.Token);
+        using (response)
+        {
+            var type = response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant() ?? "";
+            if (type is not ("image/jpeg" or "image/png" or "image/webp")) throw Unavailable("JPEG・PNG・WebP の画像ではありません。");
+            if (response.Content.Headers.ContentLength > MaxImageBytes) throw Unavailable("画像が大きすぎます（10MBまで）。");
+            var bytes = await ReadLimitedAsync(response, MaxImageBytes + 1, cts.Token);
+            if (bytes.Length > MaxImageBytes) throw Unavailable("画像が大きすぎます（10MBまで）。");
+            return new FetchedImage(bytes, type);
+        }
+    }
+
+    /// <summary>転送を自前で追い、各ホップで URL・接続先・robots.txt を確かめてから取得する。成功した応答と最終の URL を返す。</summary>
+    private async Task<(HttpResponseMessage Response, Uri Final)> SendAsync(Uri uri, string accept, CancellationToken ct)
+    {
         var client = http.CreateClient(HttpClientName);
         for (var hop = 0; ; hop++)
         {
@@ -34,32 +68,30 @@ public sealed partial class SafeWebPageFetcher(IHttpClientFactory http) : IWebPa
 
             using var request = new HttpRequestMessage(HttpMethod.Get, uri);
             request.Headers.UserAgent.ParseAdd(UserAgent);
-            request.Headers.Accept.ParseAdd("text/html,application/xhtml+xml");
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(TimeSpan.FromSeconds(10));
+            request.Headers.Accept.ParseAdd(accept);
             HttpResponseMessage response;
             try
             {
-                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cts.Token);
+                response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
                 throw Unavailable("サイトに接続できませんでした。");
             }
-            using (response)
+            if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
             {
-                if ((int)response.StatusCode is >= 300 and < 400 && response.Headers.Location is { } location)
-                {
-                    if (hop >= MaxRedirects) throw Unavailable("転送が多すぎます。");
-                    uri = new Uri(uri, location);
-                    continue;
-                }
-                if (!response.IsSuccessStatusCode) throw Unavailable($"ページを取得できませんでした（HTTP {(int)response.StatusCode}）。");
-                var type = response.Content.Headers.ContentType?.MediaType ?? "";
-                if (!type.Contains("html", StringComparison.OrdinalIgnoreCase)) throw Unavailable("HTMLのページを指定してください。");
-                var html = await ReadLimitedAsync(response, cts.Token);
-                return Parse(uri, html);
+                response.Dispose();
+                if (hop >= MaxRedirects) throw Unavailable("転送が多すぎます。");
+                uri = new Uri(uri, location);
+                continue;
             }
+            if (!response.IsSuccessStatusCode)
+            {
+                var status = (int)response.StatusCode;
+                response.Dispose();
+                throw Unavailable($"ページを取得できませんでした（HTTP {status}）。");
+            }
+            return (response, uri);
         }
     }
 
@@ -146,13 +178,18 @@ public sealed partial class SafeWebPageFetcher(IHttpClientFactory http) : IWebPa
         return disallow is null || (allow is not null && allow.Length >= disallow.Length);
     }
 
-    private static async Task<string> ReadLimitedAsync(HttpResponseMessage response, CancellationToken ct)
+    private static async Task<byte[]> ReadLimitedAsync(HttpResponseMessage response, int maxBytes, CancellationToken ct)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
-        var buffer = new byte[MaxBytes];
+        var buffer = new byte[maxBytes];
         var total = 0;
         int read;
-        while (total < MaxBytes && (read = await stream.ReadAsync(buffer.AsMemory(total, MaxBytes - total), ct)) > 0) total += read;
+        while (total < maxBytes && (read = await stream.ReadAsync(buffer.AsMemory(total, maxBytes - total), ct)) > 0) total += read;
+        return buffer.AsSpan(0, total).ToArray();
+    }
+
+    private static string Decode(HttpResponseMessage response, byte[] bytes)
+    {
         var charset = response.Content.Headers.ContentType?.CharSet;
         Encoding encoding;
         try
@@ -163,7 +200,7 @@ public sealed partial class SafeWebPageFetcher(IHttpClientFactory http) : IWebPa
         {
             encoding = Encoding.UTF8;
         }
-        return encoding.GetString(buffer, 0, total);
+        return encoding.GetString(bytes);
     }
 
     [GeneratedRegex(@"<(script|style|noscript|svg|template)\b[^>]*>.*?</\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline)]
@@ -184,6 +221,18 @@ public sealed partial class SafeWebPageFetcher(IHttpClientFactory http) : IWebPa
     private static partial Regex Spaces();
     [GeneratedRegex(@"\n\s*\n+")]
     private static partial Regex BlankLines();
+    [GeneratedRegex(@"<meta\s+[^>]*(?:name|property)\s*=\s*[""'](?:og:image|og:image:url|twitter:image)[""'][^>]*content\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
+    private static partial Regex ShareImage();
+    [GeneratedRegex(@"<img\b[^>]*>", RegexOptions.IgnoreCase)]
+    private static partial Regex ImgTag();
+    [GeneratedRegex(@"\b(?:data-src|src)\s*=\s*[""']([^""']+)[""']", RegexOptions.IgnoreCase)]
+    private static partial Regex ImgSrc();
+    [GeneratedRegex(@"\balt\s*=\s*[""']([^""']*)[""']", RegexOptions.IgnoreCase)]
+    private static partial Regex ImgAlt();
+    [GeneratedRegex(@"\b(?:width|height)\s*=\s*[""']?(\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex ImgSize();
+    [GeneratedRegex(@"(icon|sprite|pixel|spacer|tracking|loading|badge|blank|1x1)", RegexOptions.IgnoreCase)]
+    private static partial Regex DecorativeName();
 
     internal static WebPage Parse(Uri url, string html)
     {
@@ -199,7 +248,36 @@ public sealed partial class SafeWebPageFetcher(IHttpClientFactory http) : IWebPa
         body = WebUtility.HtmlDecode(Tags().Replace(body, " "));
         body = BlankLines().Replace(Spaces().Replace(body, " "), "\n").Trim();
         if (body.Length > 12000) body = body[..12000];
-        return new WebPage(url, title, description, body, colors.Distinct().Take(4).ToList());
+        return new WebPage(url, title, description, body, colors.Distinct().Take(4).ToList(), Images(url, html));
+    }
+
+    /// <summary>
+    /// ページ内の画像：SNS 共有用の画像（og:image）を先頭に、本文の img（代替テキスト付き）を続ける。
+    /// アイコン・計測用の画像・SVG・GIF、明らかに小さい画像（幅か高さが 120px 未満）は除く。
+    /// </summary>
+    internal static IReadOnlyList<WebImage> Images(Uri page, string html)
+    {
+        var result = new List<WebImage>();
+        void Add(string? src, string? alt, bool share)
+        {
+            if (string.IsNullOrWhiteSpace(src) || src.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return;
+            if (!Uri.TryCreate(page, WebUtility.HtmlDecode(src.Trim()), out var uri) || uri.Scheme is not ("http" or "https")) return;
+            var path = uri.AbsolutePath.ToLowerInvariant();
+            if (path.EndsWith(".svg", StringComparison.Ordinal) || path.EndsWith(".gif", StringComparison.Ordinal)
+                || path.EndsWith(".ico", StringComparison.Ordinal) || DecorativeName().IsMatch(Path.GetFileName(path))) return;
+            if (result.Any(r => r.Url == uri)) return;
+            var text = string.IsNullOrWhiteSpace(alt) ? null : WebUtility.HtmlDecode(alt).Trim();
+            result.Add(new WebImage(uri, text is { Length: > 100 } ? text[..100] : text, share));
+        }
+
+        foreach (Match m in ShareImage().Matches(html)) Add(m.Groups[1].Value, null, true);
+        var body = Blocks().Replace(html, " ");
+        foreach (Match tag in ImgTag().Matches(body))
+        {
+            if (ImgSize().Matches(tag.Value).Any(s => int.TryParse(s.Groups[1].Value, out var px) && px < 120)) continue;
+            Add(ImgSrc().Match(tag.Value).Groups[1].Value, ImgAlt().Match(tag.Value).Groups[1].Value, false);
+        }
+        return result.Take(MaxImages).ToList();
     }
 
     private static bool IsGray(string hex)

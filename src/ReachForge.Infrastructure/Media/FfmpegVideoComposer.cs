@@ -24,7 +24,8 @@ public sealed class VideoOptions
 }
 
 /// <summary>
-/// FFmpeg による動画の合成（F-05 ③ 処理 4〜5）。各シーンの静止画にゆっくりズーム（Ken Burns）をかけて連結し、
+/// FFmpeg による動画の合成（F-05 ③ 処理 4〜5）。各シーンの静止画にゆっくりズーム（Ken Burns）をかけて連結し
+/// （生成 AI のクリップのシーンはクリップにテロップを重ね）、
 /// シーンごとのナレーションを無音で埋めて同じ長さにそろえて連結する。
 /// 出力は 1080×1920・30fps・H.264（yuv420p）／AAC・moov 先頭（faststart）。
 /// 引数は配列で渡し（シェルを通さない）、作業フォルダは処理後に削除する。
@@ -44,10 +45,29 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
             var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y" };
             for (var i = 0; i < scenes.Count; i++)
             {
+                if (scenes[i].Clip is { } clip)
+                {
+                    // 生成 AI のクリップ：短ければ繰り返してシーンの長さにそろえる
+                    var path = Path.Combine(dir.FullName, $"scene{i}.mp4");
+                    await File.WriteAllBytesAsync(path, clip, ct);
+                    args.AddRange(["-stream_loop", "-1", "-t", Sec(scenes[i].Seconds), "-i", path]);
+                    continue;
+                }
                 var image = Path.Combine(dir.FullName, $"scene{i}.jpg");
                 await File.WriteAllBytesAsync(image, scenes[i].Image, ct);
                 args.AddRange(["-loop", "1", "-framerate", Fps.ToString(CultureInfo.InvariantCulture), "-t", Sec(scenes[i].Seconds), "-i", image]);
             }
+            // クリップに重ねるテロップ（透明な PNG）
+            var overlayInputs = new Dictionary<int, int>();
+            for (var i = 0; i < scenes.Count; i++)
+            {
+                if (scenes[i].Clip is null || scenes[i].OverlayPng is not { } png) continue;
+                var path = Path.Combine(dir.FullName, $"caption{i}.png");
+                await File.WriteAllBytesAsync(path, png, ct);
+                args.AddRange(["-i", path]);
+                overlayInputs[i] = scenes.Count + overlayInputs.Count;
+            }
+            var firstAudio = scenes.Count + overlayInputs.Count;
             var audioInputs = new List<int>();
             for (var i = 0; i < scenes.Count; i++)
             {
@@ -59,16 +79,28 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
                 var path = Path.Combine(dir.FullName, $"voice{i}.wav");
                 await File.WriteAllBytesAsync(path, wav, ct);
                 args.AddRange(["-i", path]);
-                audioInputs.Add(scenes.Count + audioInputs.Count(x => x >= 0));
+                audioInputs.Add(firstAudio + audioInputs.Count(x => x >= 0));
             }
 
             var filters = new List<string>();
             for (var i = 0; i < scenes.Count; i++)
             {
                 var frames = (int)Math.Round(scenes[i].Seconds * Fps);
-                // わずかにズームインして静止画に動きを出す（1.0 → 1.06）
-                filters.Add($"[{i}:v]scale={Width * 2}:{Height * 2},zoompan=z='min(1+0.06*on/{Math.Max(1, frames)},1.06)':" +
-                            $"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={Width}x{Height}:fps={Fps},setsar=1,format=yuv420p[v{i}]");
+                if (scenes[i].Clip is not null)
+                {
+                    // クリップは 1080×1920 を覆うように拡大して中央を切り出し（引き伸ばさない）、長さをそろえる
+                    var fit = $"[{i}:v]scale={Width}:{Height}:force_original_aspect_ratio=increase,crop={Width}:{Height},fps={Fps},setsar=1," +
+                              $"trim=duration={Sec(scenes[i].Seconds)},setpts=PTS-STARTPTS";
+                    filters.Add(overlayInputs.TryGetValue(i, out var caption)
+                        ? $"{fit}[c{i}];[c{i}][{caption}:v]overlay=0:0:format=auto,format=yuv420p[v{i}]"
+                        : $"{fit},format=yuv420p[v{i}]");
+                }
+                else
+                {
+                    // わずかにズームインして静止画に動きを出す（1.0 → 1.06）
+                    filters.Add($"[{i}:v]scale={Width * 2}:{Height * 2},zoompan=z='min(1+0.06*on/{Math.Max(1, frames)},1.06)':" +
+                                $"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={Width}x{Height}:fps={Fps},setsar=1,format=yuv420p[v{i}]");
+                }
                 var a = audioInputs[i];
                 filters.Add(a >= 0
                     ? $"[{a}:a]aformat=sample_rates=44100:channel_layouts=stereo,apad,atrim=0:{Sec(scenes[i].Seconds)},asetpts=N/SR/TB[a{i}]"
@@ -77,7 +109,7 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
             var concatInputs = string.Concat(Enumerable.Range(0, scenes.Count).Select(i => $"[v{i}][a{i}]"));
             filters.Add($"{concatInputs}concat=n={scenes.Count}:v=1:a=1[v][voice]");
             var total = scenes.Sum(s => s.Seconds);
-            var nextInput = scenes.Count + audioInputs.Count(x => x >= 0);
+            var nextInput = firstAudio + audioInputs.Count(x => x >= 0);
             AddBgm(args, filters, "voice", "a", total, nextInput, audio);
 
             var output = Path.Combine(dir.FullName, "out.mp4");

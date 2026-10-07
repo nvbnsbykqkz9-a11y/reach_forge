@@ -40,9 +40,29 @@ public sealed partial class ImageSharpProcessor(IOptions<MediaOptions>? options 
 
     public async Task<ProcessedImage> RenderTextAsync(byte[] source, TextOverlay overlay, CancellationToken ct)
     {
+        using var image = Image.Load<Rgba32>(s_decoder, source);
+        DrawOverlay(image, overlay);
+        return await JpegAsync(image, 92, ct);
+    }
+
+    public async Task<ProcessedImage> RenderTextLayerAsync(TextOverlay overlay, (int Width, int Height) size, CancellationToken ct)
+    {
+        using var image = new Image<Rgba32>(size.Width, size.Height, new Rgba32(0, 0, 0, 0));
+        DrawOverlay(image, overlay);
+        return await PngAsync(image, ct);
+    }
+
+    public async Task<ProcessedImage> CreateBackgroundAsync(string colorHex, (int Width, int Height) size, CancellationToken ct)
+    {
+        using var image = new Image<Rgba32>(size.Width, size.Height, Color.ParseHex(colorHex).ToPixel<Rgba32>());
+        return await JpegAsync(image, 92, ct);
+    }
+
+    /// <summary>帯の上に見出し・補足を描く（幅に収まるよう自動で縮める）。</summary>
+    private void DrawOverlay(Image<Rgba32> image, TextOverlay overlay)
+    {
         var family = _font.Value ?? throw new InvalidOperationException(
             "日本語フォントが見つかりません。Media:FontPath に Noto Sans JP などのフォントファイルを設定してください。");
-        using var image = Image.Load<Rgba32>(s_decoder, source);
         var w = image.Width;
         var h = image.Height;
         var band = Color.ParseHex(overlay.BandColorHex).ToPixel<Rgba32>();
@@ -98,7 +118,6 @@ public sealed partial class ImageSharpProcessor(IOptions<MediaOptions>? options 
                 }, overlay.Sub!, text);
             }
         });
-        return await JpegAsync(image, 92, ct);
     }
 
     private static double Luminance(Rgba32 c)

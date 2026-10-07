@@ -37,6 +37,7 @@ public sealed class StubChatClient : IChatClient
             BrandStubPayload p => Serialize(Brand(p.Input)),
             TrendStubPayload p => Serialize(Ideas(p)),
             ScriptStubPayload p => Serialize(Script(p)),
+            LandingPageStubPayload p => Serialize(LandingPage(p)),
             ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
@@ -211,6 +212,29 @@ public sealed class StubChatClient : IChatClient
             Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
         };
         return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
+    }
+
+    /// <summary>LP のタイトル・説明から決定的な企画をつくる（画像は順に割り当てる）。</summary>
+    private static LandingPlanDraft LandingPage(LandingPageStubPayload p)
+    {
+        var product = PostText.Truncate((p.Page.Title.Split('|', '｜', '-')[0]).Trim() is { Length: > 0 } t ? t : p.BrandName, 14);
+        var roles = new (string Role, string Caption, string Narration)[]
+        {
+            ("hook", $"{product}、知ってる？", $"{product}、もう試しましたか？"),
+            ("problem", "こんなお悩みに", "毎日の小さな悩み、ありませんか。"),
+            ("solution", $"{product}で解決", $"{product}なら、気軽に始められます。"),
+            ("benefit", "うれしいポイント", "選ばれている理由をチェック。"),
+            ("offer", "詳しくはLPで", "詳しい内容はページで確認できます。"),
+            ("cta", "プロフィールから", "プロフィールのリンクからどうぞ。"),
+        };
+        var count = Math.Clamp(p.SceneCount, 2, roles.Length);
+        var picked = roles.Take(count - 1).Append(roles[^1]).ToArray();
+        var per = Math.Round((double)p.TargetSeconds / count, 1);
+        var images = p.Page.ImageList.Count;
+        var scenes = picked.Select((r, i) => new LandingSceneDraft(r.Role, r.Caption, r.Narration, per, images == 0 ? null : i % images)).ToArray();
+        return new LandingPlanDraft($"{product}の紹介動画", product, "はじめての方", ["気軽に始められる"], "", "プロフィールのリンクから",
+            scenes, $"{product}をショート動画で紹介します。詳しくはプロフィールのリンクから。", ["PR", PostText.Normalize(product)],
+            "slow push-in camera move, soft natural light, subtle steam");
     }
 
     private static ScriptDraft Script(ScriptStubPayload p)

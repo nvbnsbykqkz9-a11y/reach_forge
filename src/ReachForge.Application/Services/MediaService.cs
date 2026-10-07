@@ -133,6 +133,32 @@ public sealed class MediaService(
     }
 
     /// <summary>
+    /// LP（利用者の Web ページ）の画像を取り込む（LP から作る動画の素材）。利用者が使う権利を確認した画像だけを渡すこと。
+    /// アップロードと同じく向き補正・メタデータ削除・sRGB 化し、取得元の URL を来歴に残す。
+    /// </summary>
+    public async Task<MediaAsset> ImportFromWebAsync(FetchedImage image, WebImage source, CancellationToken ct)
+    {
+        RolePolicy.Demand(tenant.Role, Permission.Generate);
+        ProcessedImage normalized;
+        try
+        {
+            using var stream = new MemoryStream(image.Bytes, writable: false);
+            normalized = await images.NormalizeAsync(stream, MaxDimension, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException and not DomainException)
+        {
+            throw new DomainException(ErrorCodes.Validation, "LP の画像を読み込めませんでした。");
+        }
+        var name = Path.GetFileName(source.Url.AbsolutePath);
+        var asset = await SaveAsync(normalized, MediaSource.Upload, string.IsNullOrWhiteSpace(name) ? "lp-image.jpg" : name, null, null, ct);
+        asset.AltText = source.Alt;
+        asset.Provenance = JsonSerializer.Serialize(new { kind = "web", url = source.Url.ToString(), importedAt = DateTimeOffset.UtcNow });
+        db.Record(tenant, "media.imported_from_web", nameof(MediaAsset), asset.Id, source.Url.Host);
+        await db.SaveChangesAsync(ct);
+        return asset;
+    }
+
+    /// <summary>
     /// 画像に文字を入れる（F-04 文字入れ）。日本語の文字は生成 AI に描かせず、フォントで正確に描く（0 クレジット）。
     /// 元の画像は残し、新しい画像としてライブラリに追加する。
     /// </summary>
