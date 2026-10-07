@@ -42,12 +42,22 @@ public class LpCreateTests(E2EFixture app)
         await page.GetByRole(AriaRole.Button, new() { Name = "つくる", Exact = true }).ClickAsync();
         await page.GetByRole(AriaRole.Dialog).GetByRole(AriaRole.Button, new() { Name = "つくる", Exact = true }).ClickAsync();
 
+        // 進み具合：手順の一覧と割合が出る
+        var progress = page.GetByTestId("create-progress");
+        await progress.WaitForAsync();
+        await Assertions.Expect(progress.GetByText("Instagram：広告文・投稿文・画像をつくる")).ToBeVisibleAsync();
+        await Assertions.Expect(progress.GetByText("縦型の動画づくりを始める")).ToBeVisibleAsync();
+        await ShotAsync(page, "lp-progress");
+
         // つくったものの画面：SNS ごとのタブ（投稿文・画像・広告文）と動画
         await page.WaitForURLAsync(new System.Text.RegularExpressions.Regex("/lp/[0-9a-f-]{36}$"), new() { Timeout = 60000 });
         await page.GetByRole(AriaRole.Button, new() { Name = "投稿文をコピー" }).First.WaitForAsync(new() { Timeout = 30000 });
         await Assertions.Expect(page.GetByRole(AriaRole.Tab)).ToHaveCountAsync(4);
         await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { NameRegex = new("^案 1 をコピー") }).First).ToBeVisibleAsync();
         await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { NameRegex = new("画像 1 をダウンロード") }).First).ToBeVisibleAsync();
+        // 動画：いまの作業と割合が出る
+        await page.GetByTestId("job-progress-text").WaitForAsync(new() { Timeout = 30000 });
+        await ShotAsync(page, "lp-video-progress");
         try
         {
             await page.GetByRole(AriaRole.Link, new() { NameRegex = new("動画をダウンロード") }).WaitForAsync(new() { Timeout = 120_000 });

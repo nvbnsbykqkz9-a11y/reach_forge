@@ -304,10 +304,13 @@ public sealed class VideoService(
     /// </summary>
     private async Task<MediaAsset> LandingPageAsync(AiJob job, VideoJobRequest request, CancellationToken ct)
     {
+        await ReportAsync(job, AiJobStage.Generating, 3, "LP を読み込んでいます", ct);
         var page = await fetcher.FetchAsync(request.SourceUrl!, ct);
         var imported = new List<(WebImage Web, MediaAsset Asset)>();
-        foreach (var url in request.SourceImageUrls ?? [])
+        var sourceUrls = request.SourceImageUrls ?? [];
+        foreach (var (url, n) in sourceUrls.Select((u, n) => (u, n)))
         {
+            await ReportAsync(job, AiJobStage.Generating, 5 + 10 * n / sourceUrls.Count, $"LP の画像を取り込んでいます（{n + 1}/{sourceUrls.Count}）", ct);
             var web = page.ImageList.FirstOrDefault(i => i.Url.ToString() == url) ?? new WebImage(new Uri(url), null);
             try
             {
@@ -331,9 +334,8 @@ public sealed class VideoService(
         };
         var ctx = await brand.BuildAsync(job.WorkspaceId, [], ct);
         var sceneCount = request.TargetSeconds <= 15 ? 4 : request.TargetSeconds <= 20 ? 5 : 6;
+        await ReportAsync(job, AiJobStage.Generating, 15, "AI が動画の構成（シーン・テロップ・ナレーション）を考えています", ct);
         var plan = await planner.PlanAsync(ctx, planPage, sceneCount, request.TargetSeconds, ct);
-        job.MoveTo(AiJobStage.Generating);
-        await db.SaveChangesAsync(ct);
 
         var band = ctx.Profile.BrandColors.FirstOrDefault() ?? page.Colors.FirstOrDefault() ?? "#1B2333";
         var scenes = new List<VideoSceneInput>();
@@ -342,6 +344,8 @@ public sealed class VideoService(
         var hookAnimated = false;
         foreach (var (scene, i) in plan.Scenes.Select((s, i) => (s, i)))
         {
+            await ReportAsync(job, AiJobStage.Generating, 20 + 60 * i / plan.Scenes.Count,
+                $"シーン {i + 1}/{plan.Scenes.Count} をつくっています（画像・テロップ{(request.Narration ? "・ナレーション" : "")}）", ct);
             MediaAsset? source = scene.ImageIndex is { } k ? imported[k].Asset : imported.Count > 0 ? imported[i % imported.Count].Asset : null;
             var background = source is null
                 ? await images.CreateBackgroundAsync(band, Size, ct)
@@ -368,6 +372,8 @@ public sealed class VideoService(
             {
                 try
                 {
+                    await ReportAsync(job, AiJobStage.Generating, 20 + 60 * i / plan.Scenes.Count,
+                        "冒頭のシーンを AI で動かしています（数分かかることがあります）", ct);
                     var start = (await images.EncodeJpegAsync(background.Bytes, 5_000_000, ct)).Bytes;
                     var generated = await generator.GenerateAsync(new VideoGenerationSpec
                     {
@@ -392,12 +398,12 @@ public sealed class VideoService(
             timeline.Add((new VideoScene(scene.Caption, scene.Narration, seconds), seconds));
         }
 
-        job.MoveTo(AiJobStage.Checking);
-        await db.SaveChangesAsync(ct);
+        await ReportAsync(job, AiJobStage.Checking, 85, "BGM を重ねて、動画を書き出しています", ct);
         var video = await composer.ComposeAsync(scenes, ct, new VideoAudioOptions(request.BgmTrackId));
         var max = PlatformCatalog.All.Where(c => c.MaxVideoSeconds is not null).Min(c => c.MaxVideoSeconds!.Value);
         if (video.DurationMs > max * 1000) throw new DomainException(ErrorCodes.Validation, $"動画が長すぎます（{max}秒まで）。");
 
+        await ReportAsync(job, AiJobStage.Checking, 95, "仕上げています（サムネイル・字幕）", ct);
         var asset = await media.SaveVideoAsync(video, $"{PostText.Truncate(plan.Title, 40)}.mp4", firstFrame!, BuildSrt(timeline), ct);
         asset.IsAiLabeled = true; // AI の企画・ナレーション（冒頭を動かした場合は AI の映像も含む）
         asset.AltText = $"{plan.Title}（{page.Url.Host} の LP から作った{video.DurationMs / 1000}秒の動画）";
@@ -412,6 +418,12 @@ public sealed class VideoService(
             narration = request.Narration, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
         return asset;
+    }
+
+    private async Task ReportAsync(AiJob job, AiJobStage stage, int percent, string text, CancellationToken ct)
+    {
+        job.Report(stage, percent, text);
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>字幕（SRT）：各シーンのナレーション（なければテロップ）を表示する。</summary>

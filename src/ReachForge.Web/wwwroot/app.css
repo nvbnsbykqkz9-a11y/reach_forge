@@ -271,3 +271,13 @@ body { font-variant-numeric: tabular-nums; }
 
 /* 横に並べる選択ボタン（SNS を選ぶ） */
 .rf-choice.rf-choice-inline { flex-direction: row; align-items: center; width: auto; padding: 10px 16px; gap: 8px; }
+
+/* つくる途中の手順（ホーム） */
+.rf-progress-steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+.rf-progress-step { display: flex; align-items: center; gap: 8px; font-size: .9375rem; }
+.rf-progress-step.is-current { font-weight: 700; }
+.rf-progress-step.is-todo { color: var(--rf-color-text-secondary); }
+.rf-spinner { width: 18px; height: 18px; margin: 1px; flex: none; border-radius: 50%;
+  border: 3px solid var(--mud-palette-secondary-lighten, #c4b5fd); border-top-color: var(--mud-palette-secondary); animation: rf-spin .8s linear infinite; }
+@keyframes rf-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .rf-spinner { animation-duration: 2.4s; } }

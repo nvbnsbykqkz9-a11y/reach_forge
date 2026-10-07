@@ -8,8 +8,9 @@ namespace ReachForge.Application.Abstractions;
 [JsonDerivedType(typeof(JobProgressEvent), "job")]
 public abstract record RealtimeEvent(Guid TenantId, Guid WorkspaceId);
 
-/// <summary>AI ジョブの進み具合（キュー待ち → 生成中 → 検査中 → 完了）。</summary>
-public sealed record JobProgressEvent(Guid TenantId, Guid WorkspaceId, Guid JobId, AiTaskType TaskType, AiJobStatus Status, AiJobStage Stage)
+/// <summary>AI ジョブの進み具合（キュー待ち → 生成中 → 検査中 → 完了）。Percent・Text は細かい進み具合（出さない処理では 0・null）。</summary>
+public sealed record JobProgressEvent(Guid TenantId, Guid WorkspaceId, Guid JobId, AiTaskType TaskType, AiJobStatus Status, AiJobStage Stage,
+    int Percent = 0, string? Text = null)
     : RealtimeEvent(TenantId, WorkspaceId);
 
 /// <summary>

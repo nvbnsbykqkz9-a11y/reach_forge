@@ -85,11 +85,27 @@ public sealed class AiJob : Entity
         Attempts++;
     }
 
+    /// <summary>いま行っている作業（画面に出す。例：「シーン 2/5 をつくっています」）。</summary>
+    public string? ProgressText { get; private set; }
+
+    /// <summary>進み具合（0〜100）。細かい進み具合を出さない処理では 0 のまま。</summary>
+    public int ProgressPercent { get; private set; }
+
     public void MoveTo(AiJobStage stage) => Stage = stage;
+
+    /// <summary>進み具合を記録する（段階も合わせて進める）。</summary>
+    public void Report(AiJobStage stage, int percent, string text)
+    {
+        Stage = stage;
+        ProgressPercent = Math.Clamp(percent, 0, 100);
+        ProgressText = text;
+    }
 
     public void Succeed(IEnumerable<Guid> assetIds, DateTimeOffset now)
     {
         ResultAssetIds = [.. assetIds];
+        ProgressPercent = 100;
+        ProgressText = null;
         Status = AiJobStatus.Succeeded;
         Stage = AiJobStage.Done;
         CompletedAt = now;

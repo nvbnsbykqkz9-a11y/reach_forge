@@ -137,16 +137,56 @@
                 </tbody>
             </table>
             <MudText Typo="Typo.caption" Class="d-block mt-2">文章と画像は1分ほどでできます。動画はそのあと数分かけてつくります（画面を閉じても続きます）。</MudText>
+            @if (_steps is { } steps)
+            {
+                var done = Math.Min(_progress?.StepIndex ?? 0, steps.Count);
+                var percent = 100 * done / steps.Count;
+                <MudPaper Class="pa-4 mt-4 rf-ai-surface" Elevation="0" role="status" aria-live="polite" data-testid="create-progress">
+                    <div class="d-flex align-center gap-2">
+                        <MudText Typo="Typo.subtitle1"><b>@(done >= steps.Count ? "できました。画面を切り替えます…" : "つくっています")</b></MudText>
+                        <MudSpacer />
+                        <MudText Typo="Typo.caption">@(_elapsed)秒</MudText>
+                    </div>
+                    <div class="d-flex align-center gap-2 mt-2">
+                        <MudProgressLinear Value="@percent" Color="Color.Secondary" Size="Size.Medium" Rounded="true" Style="flex:1"
+                                           aria-label="@($"進み具合 {percent}%")" />
+                        <MudText Typo="Typo.body2" Style="min-width:3em;text-align:right"><b>@percent%</b></MudText>
+                    </div>
+                    <ol class="rf-progress-steps mt-3">
+                        @foreach (var (label, i) in steps.Select((x, i) => (x, i)))
+                        {
+                            var state = i < done ? "done" : i == done ? "current" : "todo";
+                            <li class="@($"rf-progress-step is-{state}")" aria-current="@(state == "current" ? "step" : null)">
+                                @if (state == "done")
+                                {
+                                    <MudIcon Icon="@Icons.Material.Rounded.CheckCircle" Color="Color.Success" Size="Size.Small" aria-hidden="true" />
+                                }
+                                else if (state == "current")
+                                {
+                                    <span class="rf-spinner" aria-hidden="true"></span>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Rounded.RadioButtonUnchecked" Size="Size.Small" Style="color:var(--rf-color-text-secondary)" aria-hidden="true" />
+                                }
+                                <span>
+                                    @label
+                                    @if (state == "current" && _progress?.Detail is { } detail) { <span class="mud-typography-caption">（@detail）</span> }
+                                    <span class="rf-visually-hidden">@(state == "done" ? "（完了）" : state == "current" ? "（作業中）" : "（これから）")</span>
+                                </span>
+                            </li>
+                        }
+                    </ol>
+                    <MudText Typo="Typo.caption" Class="d-block mt-2">
+                        文章と画像ができると、自動で「つくったもの」の画面に移ります。@(_video ? "動画はそこで続けてつくり、進み具合を表示します。" : "")
+                    </MudText>
+                </MudPaper>
+            }
             <div class="d-flex justify-space-between mt-4">
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" Disabled="_busy" OnClick="() => _step = 2">戻る</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Rounded.AutoAwesome"
                            Disabled="_busy" OnClick="CreateAsync">@(_busy ? "つくっています…" : "つくる")</MudButton>
             </div>
-            @if (_busy)
-            {
-                <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mt-3" />
-                <MudText Typo="Typo.caption">AI が LP を読んで、SNS ごとの文章と画像をつくっています。</MudText>
-            }
             break;
     }
 </MudPaper>
@@ -244,19 +284,55 @@
         var ok = await Dialogs.ShowMessageBoxAsync("つくりますか？", "AI を使ってつくります。AI の利用料金は、設定した AI サービスから請求されます（目安は「設定」→「AI の利用料金」で確認できます）。", yesText: "つくる", cancelText: "やめる");
         if (ok != true) return;
         _busy = true;
+        var request = Request with { Platforms = LpStudioService.Supported.Where(_platforms.Contains).ToList() };
+        _steps = LpStudioService.CreateSteps(request);
+        _progress = new LpCreateProgress(0);
+        _elapsed = 0;
+        using var ticking = new CancellationTokenSource();
+        _ = TickAsync(ticking.Token);
         try
         {
-            var project = await Lp.CreateAsync(Request with { Platforms = LpStudioService.Supported.Where(_platforms.Contains).ToList() }, CancellationToken.None);
+            var project = await Lp.CreateAsync(request, CancellationToken.None,
+                new Progress(p => { _progress = p; _ = InvokeAsync(StateHasChanged); }));
             await State.RefreshAsync();
             Nav.NavigateTo($"/lp/{project.Id}");
         }
         catch (Exception ex)
         {
+            _steps = null;
             Snackbar.Show(ex, Log);
         }
         finally
         {
+            await ticking.CancelAsync();
             _busy = false;
         }
+    }
+
+    private IReadOnlyList<string>? _steps;
+    private LpCreateProgress? _progress;
+    private int _elapsed;
+
+    /// <summary>経過秒数を1秒ごとに表示する。</summary>
+    private async Task TickAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                _elapsed++;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>報告をその場で反映する（<see cref="Progress{T}"/> と違い、あとから古い報告が届いて表示が戻ることがない）。</summary>
+    private sealed class Progress(Action<LpCreateProgress> report) : IProgress<LpCreateProgress>
+    {
+        public void Report(LpCreateProgress value) => report(value);
     }
 }

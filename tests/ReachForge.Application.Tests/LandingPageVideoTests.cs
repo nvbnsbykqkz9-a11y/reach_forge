@@ -42,6 +42,40 @@ public class LandingPageVideoTests
         }
     }
 
+    private sealed class Recorder(System.Collections.Concurrent.ConcurrentQueue<JobProgressEvent> events) : IRealtimeNotifier
+    {
+        public void Publish(RealtimeEvent e)
+        {
+            if (e is JobProgressEvent job) events.Enqueue(job);
+        }
+    }
+
+    [Fact]
+    public async Task Creating_from_a_landing_page_reports_each_step_in_order()
+    {
+        await using var f = await AppFixture.CreateAsync(configure: s => s.AddSingleton<IWebPageFetcher>(new FakeLpFetcher()));
+        await using var scope = f.Scope();
+        var request = new LpProjectRequest
+        {
+            Url = Lp.ToString(), Platforms = [SocialPlatform.Instagram, SocialPlatform.YouTube],
+            ImageUrls = ["https://example.com/og.jpg", "https://example.com/img/latte.png"], RightsConfirmed = true, MakeVideo = false,
+        };
+        var steps = LpStudioService.CreateSteps(request);
+        Assert.Equal(["LP を読み込む", "LP の画像を取り込む", "Instagram：広告文・投稿文・画像をつくる", "YouTube：広告文・投稿文をつくる"], steps);
+
+        var reports = new List<LpCreateProgress>();
+        await f.Get<LpStudioService>(scope).CreateAsync(request, CancellationToken.None, new SyncProgress(reports.Add));
+        Assert.Equal(
+            [new(0), new(1, "1/2枚"), new(1, "2/2枚"), new(2), new(3), new(4)],
+            reports);
+        Assert.Equal(steps.Count, reports[^1].StepIndex); // 最後は「すべて終わった」
+    }
+
+    private sealed class SyncProgress(Action<LpCreateProgress> report) : IProgress<LpCreateProgress>
+    {
+        public void Report(LpCreateProgress value) => report(value);
+    }
+
     private static bool HasFfmpeg()
     {
         try
@@ -61,7 +95,10 @@ public class LandingPageVideoTests
     {
         if (!HasFfmpeg()) Assert.Skip("ffmpeg がない環境では実行しない");
         var fetcher = new FakeLpFetcher();
-        await using var f = await AppFixture.CreateAsync(configure: s => s.AddSingleton<IWebPageFetcher>(fetcher));
+        var events = new System.Collections.Concurrent.ConcurrentQueue<JobProgressEvent>();
+        await using var f = await AppFixture.CreateAsync(configure: s => s
+            .AddSingleton<IWebPageFetcher>(fetcher)
+            .AddSingleton<IRealtimeNotifier>(new Recorder(events)));
         Guid jobId;
         await using (var scope = f.Scope())
         {
@@ -86,6 +123,17 @@ public class LandingPageVideoTests
             var db = f.Get<IAppDbContext>(scope);
             var job = await db.AiJobs.SingleAsync(j => j.Id == jobId);
             Assert.True(job.Status == AiJobStatus.Succeeded, job.Error);
+            Assert.Equal(100, job.ProgressPercent);
+
+            // 進み具合：LP の読み込み → 画像の取り込み → 構成 → シーンごと → 書き出し の順に、割合が増えながら画面へ届く
+            var progress = events.Where(e => e.JobId == jobId && e.Text is not null).ToList();
+            Assert.Equal(progress.Select(e => e.Percent).Order(), progress.Select(e => e.Percent));
+            Assert.Equal("LP を読み込んでいます", progress[0].Text);
+            Assert.Contains(progress, e => e.Text == "LP の画像を取り込んでいます（3/3）");
+            Assert.Contains(progress, e => e.Text!.StartsWith("AI が動画の構成", StringComparison.Ordinal));
+            Assert.Contains(progress, e => e.Text!.StartsWith("シーン 1/", StringComparison.Ordinal) && e.Text.Contains("ナレーション"));
+            Assert.Contains(progress, e => e.Text!.StartsWith("冒頭のシーンを AI で動かしています", StringComparison.Ordinal));
+            Assert.Contains(progress, e => e.Text!.StartsWith("BGM を重ねて", StringComparison.Ordinal) && e.Stage == AiJobStage.Checking);
             var video = await db.MediaAssets.SingleAsync(m => m.Id == job.ResultAssetIds[0]);
             Assert.Equal((MediaKind.Video, 1080, 1920), (video.Kind, video.Width, video.Height));
             Assert.InRange(video.DurationMs!.Value, 10_000, 31_000);

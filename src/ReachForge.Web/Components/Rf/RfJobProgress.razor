@@ -20,6 +20,18 @@
                      Color="@(stage <= current ? Color.Secondary : Color.Default)">@stage.ToLabel()</MudChip>
         }
     </div>
+    @if (_job is { IsFinished: false, ProgressPercent: > 0 } running)
+    {
+        <div class="d-flex align-center gap-2 mt-2">
+            <MudProgressLinear Value="@running.ProgressPercent" Color="Color.Secondary" Size="Size.Medium" Rounded="true" Style="flex:1"
+                               aria-label="@($"進み具合 {running.ProgressPercent}%")" />
+            <MudText Typo="Typo.body2" Style="min-width:3em;text-align:right"><b>@running.ProgressPercent%</b></MudText>
+        </div>
+        @if (running.ProgressText is { Length: > 0 } text)
+        {
+            <MudText Typo="Typo.body2" Class="mt-1" data-testid="job-progress-text">@text</MudText>
+        }
+    }
     <MudText Typo="Typo.caption" Class="d-block mt-1">ほかの作業を続けられます。画面を離れても処理は続きます。</MudText>
     @if (_job?.Status == AiJobStatus.Queued)
     {

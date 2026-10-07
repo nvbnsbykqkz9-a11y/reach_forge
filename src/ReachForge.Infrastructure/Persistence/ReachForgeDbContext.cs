@@ -180,10 +180,11 @@ public sealed class ReachForgeDbContext(
         {
             var changed = entry.State == EntityState.Added
                 || (entry.State == EntityState.Modified
-                    && (entry.Property(j => j.Status).IsModified || entry.Property(j => j.Stage).IsModified));
+                    && (entry.Property(j => j.Status).IsModified || entry.Property(j => j.Stage).IsModified
+                        || entry.Property(j => j.ProgressPercent).IsModified || entry.Property(j => j.ProgressText).IsModified));
             if (!changed) continue;
             var j = entry.Entity;
-            events.Add(new JobProgressEvent(j.TenantId, j.WorkspaceId, j.Id, j.TaskType, j.Status, j.Stage));
+            events.Add(new JobProgressEvent(j.TenantId, j.WorkspaceId, j.Id, j.TaskType, j.Status, j.Stage, j.ProgressPercent, j.ProgressText));
         }
         return events;
     }

@@ -27,6 +27,9 @@ public sealed record LpProjectRequest
     public bool Narration { get; init; } = true;
 }
 
+/// <summary>つくる途中の進み具合。<see cref="LpStudioService.CreateSteps"/> の何番目をしているか（Detail は「2/4枚」など）。</summary>
+public sealed record LpCreateProgress(int StepIndex, string? Detail = null);
+
 /// <summary>
 /// LP から、選んだ SNS 向けの広告文（3案）・投稿文・ハッシュタグ・SNS のサイズの画像と、縦型の動画（ジョブ）をまとめてつくる。
 /// SNS とはつながず、できたものは利用者がダウンロード・コピーして、各 SNS や広告マネージャーに手動でアップロードする。
@@ -54,6 +57,18 @@ public sealed class LpStudioService(
     /// <summary>LP を読み込む（タイトル・説明・画像の候補）。</summary>
     public Task<WebPage> PreviewAsync(string url, CancellationToken ct) => videos.PreviewLandingPageAsync(url, ct);
 
+    /// <summary>つくるときの手順（画面に進み具合として出す。<see cref="CreateAsync"/> はこの順に進める）。</summary>
+    public static IReadOnlyList<string> CreateSteps(LpProjectRequest r)
+    {
+        var steps = new List<string> { "LP を読み込む" };
+        var images = r.ImageUrls.Distinct().Any();
+        if (images) steps.Add("LP の画像を取り込む");
+        steps.AddRange(r.Platforms.Distinct().Select(p =>
+            $"{PlatformCatalog.Get(p).DisplayName}：広告文・投稿文{(images && MakesImages(p) ? "・画像" : "")}をつくる"));
+        if (r.MakeVideo) steps.Add("縦型の動画づくりを始める");
+        return steps;
+    }
+
     /// <summary>この SNS に画像をつくるか（YouTube は動画だけ）。</summary>
     public static bool MakesImages(SocialPlatform p) => !PlatformCatalog.Get(p).VideoOnly;
 
@@ -70,7 +85,7 @@ public sealed class LpStudioService(
         project.VideoJobId is { } id ? await db.AiJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct) : null; // 別のプロセスの更新を読む
 
     /// <summary>つくる。文章と画像はその場でつくり、動画はジョブとして裏でつくる（できあがりは画面で知らせる）。</summary>
-    public async Task<LpProject> CreateAsync(LpProjectRequest request, CancellationToken ct)
+    public async Task<LpProject> CreateAsync(LpProjectRequest request, CancellationToken ct, IProgress<LpCreateProgress>? progress = null)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
         var platforms = request.Platforms.Distinct().ToList();
@@ -87,6 +102,8 @@ public sealed class LpStudioService(
             throw new DomainException(ErrorCodes.Validation, "LP の画像を1枚以上選ぶか、動画をつくるようにしてください。");
         }
 
+        var step = 0;
+        progress?.Report(new(step));
         var page = await fetcher.FetchAsync(request.Url, ct);
         var project = new LpProject
         {
@@ -101,8 +118,10 @@ public sealed class LpStudioService(
         {
             // LP の画像を取り込む（取れなかった画像は飛ばす）
             var sources = new List<MediaAsset>();
-            foreach (var url in imageUrls)
+            if (imageUrls.Count > 0) step++;
+            foreach (var (url, n) in imageUrls.Select((u, n) => (u, n)))
             {
+                progress?.Report(new(step, $"{n + 1}/{imageUrls.Count}枚"));
                 var web = page.ImageList.FirstOrDefault(i => i.Url.ToString() == url) ?? new WebImage(new Uri(url), null);
                 try
                 {
@@ -119,6 +138,7 @@ public sealed class LpStudioService(
             var outputs = new Dictionary<SocialPlatform, LpPlatformOutput>();
             foreach (var platform in platforms)
             {
+                progress?.Report(new(++step));
                 var creative = await writer.WriteAsync(ctx, page, platform, ct);
 
                 var images = new List<Guid>();
@@ -138,6 +158,7 @@ public sealed class LpStudioService(
 
             if (request.MakeVideo)
             {
+                progress?.Report(new(++step));
                 var job = await videos.EnqueueAsync(VideoRequest(request with { Url = project.Url, ImageUrls = sources.Count == 0 ? [] : imageUrls }), ct);
                 project.VideoJobId = job.Id;
             }
@@ -151,6 +172,7 @@ public sealed class LpStudioService(
             throw;
         }
         await db.SaveChangesAsync(ct);
+        progress?.Report(new(++step)); // すべて終わった
         return project;
     }
 
