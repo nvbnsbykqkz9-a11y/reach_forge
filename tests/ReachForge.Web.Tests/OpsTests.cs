@@ -33,10 +33,10 @@ public class OpsTests
         var operatorClient = app.Browser();
         await WebFixture.LoginAsync(operatorClient, "approver@example.com");
         r = await operatorClient.GetAsync("/ops/jobs/recurring");
-        Assert.Equal(HttpStatusCode.OK, r.StatusCode);
+        Assert.True(r.StatusCode == HttpStatusCode.OK, string.Join("\n", app.Logs.Errors));
         Assert.Contains("ReachForge ジョブ", await r.Content.ReadAsStringAsync());
         var ops = await (await operatorClient.GetAsync("/ops")).Content.ReadAsStringAsync();
-        Assert.Contains("デッドレター", ops);
+        Assert.True(ops.Contains("デッドレター"), string.Join("\n", app.Logs.Errors));
         Assert.Contains("DataRetentionJob", ops);
     }
 

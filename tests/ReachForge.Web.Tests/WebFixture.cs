@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -45,6 +46,9 @@ public sealed class WebFixture : WebApplicationFactory<Program>
     /// <summary>送信されたメール（テスト用に送信せず記録する）。</summary>
     public System.Collections.Concurrent.ConcurrentQueue<ReachForge.Application.Abstractions.EmailMessage> Emails { get; } = new();
 
+    /// <summary>サーバー側のエラーログ（テストの失敗原因の表示用）。</summary>
+    public ReachForge.Application.Tests.CapturingLoggerProvider Logs { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -52,6 +56,7 @@ public sealed class WebFixture : WebApplicationFactory<Program>
         builder.UseDefaultServiceProvider(o => o.ValidateScopes = true);
         foreach (var (k, v) in _settings) builder.UseSetting(k, v);
         builder.ConfigureServices(s => s.AddSingleton<ReachForge.Application.Abstractions.IEmailSender>(new CapturingEmailSender(Emails)));
+        builder.ConfigureLogging(l => l.AddProvider(Logs));
     }
 
     private sealed class CapturingEmailSender(System.Collections.Concurrent.ConcurrentQueue<ReachForge.Application.Abstractions.EmailMessage> sink)

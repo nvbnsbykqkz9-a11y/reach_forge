@@ -78,6 +78,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - 予約配信（PublishJob）は ±60 秒の精度が要るため、どちらのエンジンでも Worker の短い間隔の巡回＋楽観排他で実行する
 - 運用管理（`/ops`）：`Ops:Operators` に書いたメールアドレスの利用者だけが見られる。定期ジョブの一覧、デッドレターの確認・再投入、Hangfire の実行履歴（`/ops/jobs`）
 - データ保存期限：Idempotency-Key 24時間、監査ログ2年、終了した AI ジョブ・使用済み／見送りのネタ・期限切れ招待 90日
+- 投稿指標（PostMetrics）：PostgreSQL では取得日時（`CapturedAt`）で月ごとにパーティション分割する。DataRetentionJob が3か月先までのパーティションを作り、13か月より前の明細を投稿×月の集計（`PostMetricRollups`、その月の最後の値）へ移して削除し、空になったパーティションを削除する（所有者権限の関数 `rf_ensure_post_metric_partitions`／`rf_drop_post_metric_partitions` を使うため、アプリ用ロールに CREATE 権限は不要）。分析は明細のない古い投稿を集計の値で表示する
 
 ## 外部連携 API（RF-DES-001 13章）
 
@@ -227,5 +228,5 @@ Blazor Server の DI スコープはサーキット（タブを開いている�
 
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 生成 AI 動画（F-05 ①②）・BGM、C2PA 署名、参照画像の編集（背景差替・不要物除去）、X の動画投稿
-3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認、post_metric の月次パーティションと13か月超の集計移行
+3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認
 5. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

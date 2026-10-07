@@ -230,6 +230,14 @@ public sealed class AnalyticsService(
             .GroupBy(m => m.PostVariantId)
             .Select(g => g.MaxBy(m => m.CapturedAt)!)
             .ToList();
+        // 13か月より前の指標は月次集計（PostMetricRollups）へ移しているため、明細のない投稿は集計の最後の値を使う
+        var covered = latest.Select(m => m.PostVariantId).ToHashSet();
+        latest.AddRange((await db.PostMetricRollups.AsNoTracking()
+                .Where(r => ids.Contains(r.PostVariantId) && r.PostedAt >= from && r.PostedAt < to)
+                .ToListAsync(ct))
+            .Where(r => !covered.Contains(r.PostVariantId))
+            .GroupBy(r => r.PostVariantId)
+            .Select(g => g.MaxBy(r => r.LastCapturedAt)!.ToSnapshot()));
         var masterIds = latest.Select(m => variants[m.PostVariantId].MasterPostId).Distinct().ToList();
         var masters = await db.MasterPosts.Where(p => masterIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct);
         return (variants, latest, masters);

@@ -3,13 +3,22 @@ using ReachForge.Application.Services;
 
 namespace ReachForge.Web.Hosting;
 
-/// <summary>日時の表示（テナント TZ・相対＋絶対：RF-UX-001 10.1「日時は相対＋絶対」）。</summary>
-public sealed class TimeDisplay(SchedulingService scheduling, TimeProvider clock)
+/// <summary>
+/// 日時の表示（テナント TZ・相対＋絶対：RF-UX-001 10.1「日時は相対＋絶対」）。
+/// サーキット単位で共有され、レイアウトと画面から同時に呼ばれるため、タイムゾーンは1回だけ専用のスコープで読み込み、結果を共有する。
+/// </summary>
+public sealed class TimeDisplay(TenantScopes scopes, TimeProvider clock)
 {
     private static readonly CultureInfo Ja = CultureInfo.GetCultureInfo("ja-JP");
     private TimeZoneInfo? _tz;
+    private Task<TimeZoneInfo>? _loading;
 
-    public async Task<TimeZoneInfo> ZoneAsync() => _tz ??= await scheduling.TenantTimeZoneAsync(CancellationToken.None);
+    public async Task<TimeZoneInfo> ZoneAsync()
+    {
+        if (_tz is not null) return _tz;
+        _loading ??= scopes.RunAsync(sp => sp.GetRequiredService<SchedulingService>().TenantTimeZoneAsync(CancellationToken.None));
+        return _tz = await _loading;
+    }
 
     public TimeZoneInfo Zone => _tz ?? TimeZoneInfo.Utc;
 

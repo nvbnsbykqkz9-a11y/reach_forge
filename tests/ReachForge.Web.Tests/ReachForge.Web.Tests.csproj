@@ -15,6 +15,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\ReachForge.Application.Tests\PostgresTestDatabase.cs" Link="PostgresTestDatabase.cs" />
+    <Compile Include="..\ReachForge.Application.Tests\CapturingLogger.cs" Link="CapturingLogger.cs" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

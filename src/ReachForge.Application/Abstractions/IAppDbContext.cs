@@ -20,6 +20,7 @@ public interface IAppDbContext
     DbSet<AiGeneration> AiGenerations { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }
     DbSet<PostMetric> PostMetrics { get; }
+    DbSet<PostMetricRollup> PostMetricRollups { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<CreditAccount> CreditAccounts { get; }
     DbSet<WorkspaceMember> WorkspaceMembers { get; }

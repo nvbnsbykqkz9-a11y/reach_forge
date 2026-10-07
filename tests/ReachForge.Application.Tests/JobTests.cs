@@ -130,6 +130,67 @@ public class JobTests
     }
 
     [Fact]
+    public async Task Post_metrics_older_than_13_months_move_to_monthly_rollups_without_changing_analytics()
+    {
+        await using var f = await AppFixture.CreateAsync();
+        var filter = new AnalyticsFilter(f.Clock.GetUtcNow().AddDays(-120), f.Clock.GetUtcNow().AddDays(1));
+        AnalyticsData before;
+        int details;
+        await using (var scope = f.Scope())
+        {
+            before = await f.Get<AnalyticsService>(scope).BuildAsync(filter, CancellationToken.None);
+            details = await f.Get<IAppDbContext>(scope).PostMetrics.CountAsync();
+            Assert.True(details > 0);
+        }
+
+        f.Clock.Advance(TimeSpan.FromDays(31 * 15));
+        await using (var worker = f.Scope(c => c.IsSystem = true))
+        {
+            var result = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
+            Assert.Equal(details, result.PostMetricsRolledUp);
+            var again = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
+            Assert.Equal(0, again.PostMetricsRolledUp); // 冪等
+        }
+
+        await using (var scope = f.Scope())
+        {
+            var db = f.Get<IAppDbContext>(scope);
+            Assert.Equal(0, await db.PostMetrics.CountAsync());
+            var rollups = await db.PostMetricRollups.AsNoTracking().ToListAsync();
+            Assert.NotEmpty(rollups);
+            Assert.Equal(details, rollups.Sum(r => r.Snapshots));
+            Assert.All(rollups, r => Assert.Equal(1, r.Month.Day));
+
+            var after = await f.Get<AnalyticsService>(scope).BuildAsync(filter, CancellationToken.None);
+            Assert.Equal(before.Kpis.Select(k => (k.Label, k.Value)), after.Kpis.Select(k => (k.Label, k.Value)));
+            Assert.Equal(before.Ranking.Select(r => (r.VariantId, r.Impressions)), after.Ranking.Select(r => (r.VariantId, r.Impressions)));
+        }
+    }
+
+    [Fact]
+    public async Task Postgres_post_metrics_are_partitioned_by_month()
+    {
+        Assert.SkipWhen(AppFixture.PostgresAdmin is null, "RF_TEST_POSTGRES が未設定");
+        await using var f = await AppFixture.CreateAsync();
+        await using var worker = f.Scope(c => c.IsSystem = true);
+        var db = f.Get<ReachForgeDbContext>(worker);
+        var kind = await db.Database.SqlQueryRaw<string>("SELECT c.relkind::text AS \"Value\" FROM pg_class c WHERE c.relname = 'PostMetrics'").SingleAsync();
+        Assert.Equal("p", kind); // partitioned table
+
+        async Task<List<string>> PartitionsAsync() => await db.Database.SqlQueryRaw<string>(
+            "SELECT c.relname AS \"Value\" FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent = '\"PostMetrics\"'::regclass").ToListAsync();
+        var monthOf = (DateTimeOffset d) => $"PostMetrics_{d.UtcDateTime:yyyyMM}";
+        Assert.Contains(monthOf(f.Clock.GetUtcNow()), await PartitionsAsync());
+
+        f.Clock.Advance(TimeSpan.FromDays(31 * 15));
+        var result = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
+        Assert.True(result.PartitionsDropped > 0);
+        Assert.True(result.PartitionsCreated > 0);
+        var partitions = await PartitionsAsync();
+        Assert.DoesNotContain(monthOf(f.Clock.GetUtcNow().AddDays(-31 * 15)), partitions);
+    }
+
+    [Fact]
     public async Task Every_system_job_runs_in_system_context()
     {
         await using var f = await AppFixture.CreateAsync();

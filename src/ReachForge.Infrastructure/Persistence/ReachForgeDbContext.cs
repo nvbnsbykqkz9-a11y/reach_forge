@@ -45,6 +45,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<AiGeneration> AiGenerations => Set<AiGeneration>();
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<PostMetric> PostMetrics => Set<PostMetric>();
+    public DbSet<PostMetricRollup> PostMetricRollups => Set<PostMetricRollup>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CreditAccount> CreditAccounts => Set<CreditAccount>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
@@ -143,6 +144,8 @@ public sealed class ReachForgeDbContext(
         });
 
         b.Entity<PostMetric>().HasIndex(x => new { x.PostVariantId, x.CapturedAt });
+        b.Entity<PostMetric>().HasIndex(x => x.CapturedAt);
+        b.Entity<PostMetricRollup>().HasIndex(x => new { x.PostVariantId, x.Month }).IsUnique();
         b.Entity<ChannelMetric>().HasIndex(x => new { x.ChannelId, x.Date }).IsUnique();
         b.Entity<MediaAsset>(e =>
         {

@@ -45,6 +45,7 @@ public static class PostgresTestDatabase
                 GRANT USAGE ON SCHEMA public TO {AppRole};
                 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {AppRole};
                 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {AppRole};
+                CREATE SCHEMA IF NOT EXISTS hangfire AUTHORIZATION {AppRole};
                 """);
         }
         return new NpgsqlConnectionStringBuilder(adminConnection)
