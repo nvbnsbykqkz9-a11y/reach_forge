@@ -1,0 +1,48 @@
+@* About：アプリのアイコン・名前・バージョン・開発元・お問い合わせ先と、使用許諾契約・第三者ソフトウェアのライセンス *@
+@using ReachForge.Infrastructure.Help
+@inject IDialogService Dialogs
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">@AppInfo.Name について</MudText>
+    </TitleContent>
+    <DialogContent>
+        <div class="d-flex align-center gap-4">
+            <img src="icon.png" alt="" width="72" height="72" style="border-radius:16px" />
+            <div>
+                <MudText Typo="Typo.h5"><b>@AppInfo.Name</b></MudText>
+                <MudText Typo="Typo.body2" Style="color:var(--rf-color-text-secondary)">@AppInfo.Subtitle</MudText>
+            </div>
+        </div>
+        <table class="rf-summary mt-4" aria-label="アプリケーションの情報">
+            <tbody>
+                <tr><th scope="row">バージョン</th><td>@AppInfo.DisplayVersion</td></tr>
+                <tr>
+                    <th scope="row">開発元</th>
+                    <td><MudLink Href="@AppInfo.DeveloperUrl" Target="_blank" rel="noopener">@AppInfo.Developer</MudLink></td>
+                </tr>
+                <tr>
+                    <th scope="row">お問い合わせ先</th>
+                    <td><MudLink Href="@($"mailto:{AppInfo.ContactEmail}")">@AppInfo.ContactEmail</MudLink></td>
+                </tr>
+            </tbody>
+        </table>
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.Gavel" OnClick="() => ShowLegalAsync(RfLegalDialog.Eula)">使用許諾契約</MudButton>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.Description" OnClick="() => ShowLegalAsync(RfLegalDialog.ThirdParty)">第三者ソフトウェアのライセンス</MudButton>
+        </div>
+        <MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">@AppInfo.Copyright</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => Dialog.Close()">閉じる</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+
+    private Task ShowLegalAsync(string kind) =>
+        Dialogs.ShowAsync<RfLegalDialog>(kind == RfLegalDialog.Eula ? "使用許諾契約" : "第三者ソフトウェアのライセンス",
+            new DialogParameters<RfLegalDialog> { { x => x.Kind, kind } },
+            new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true, CloseOnEscapeKey = true });
+}

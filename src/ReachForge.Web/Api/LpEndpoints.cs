@@ -13,6 +13,13 @@ public static class LpEndpoints
 {
     public static void MapLpEndpoints(this IEndpointRouteBuilder app)
     {
+        // 操作説明書（PDF）：ブラウザで開く（保存するときのファイル名も付ける）。説明書なのでログイン前でも読める
+        app.MapGet("/help/manual.pdf", (ReachForge.Infrastructure.Help.ManualPdfRenderer manual, HttpResponse response) =>
+        {
+            response.Headers.ContentDisposition = $"inline; filename=\"ReachForge_manual.pdf\"; filename*=UTF-8''{Uri.EscapeDataString(ReachForge.Infrastructure.Help.ManualPdfRenderer.FileName)}";
+            return Results.Bytes(manual.Pdf, "application/pdf");
+        }).AllowAnonymous();
+
         var api = app.MapGroup("/api/v1").RequireAuthorization();
 
         api.MapGet("/files/{id:guid}", async (Guid id, MediaService media, IMediaStorage storage, ITenantContext tenant, CancellationToken ct) =>

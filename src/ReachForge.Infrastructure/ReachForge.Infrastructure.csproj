@@ -29,4 +29,8 @@
     <PackageReference Include="QuestPDF" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- 操作説明書（PDF）の表紙に使うアプリのアイコン -->
+    <EmbeddedResource Include="Help\icon.png" LogicalName="ReachForge.Help.icon.png" />
+  </ItemGroup>
 </Project>

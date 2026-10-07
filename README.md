@@ -83,6 +83,12 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 > **ライセンス注意**：画像処理は SixLabors.ImageSharp 3.1 を使用しています（`IImageProcessor` の実装を差し替え可能）。
 > Six Labors Split License では、年間売上 100万米ドル以上の営利企業による利用は商用ライセンスが必要です。本番利用前に確認してください。
 
+## 操作説明書・About
+
+- 画面右上の氏名のメニュー →「操作説明書（PDF版）」：`/help/manual.pdf`（ログイン不要。QuestPDF で生成、`src/ReachForge.Infrastructure/Help/ManualPdfRenderer.cs`）。Windows 版は既定の PDF ビューアーで開く
+- 「About」：アイコン・名前・バージョン（ver 1.00.00）・開発元（ブラウザで開く）・お問い合わせ先（メーラーを起動）、「使用許諾契約」「第三者ソフトウェアのライセンス」
+- バージョン・開発元は `Help/AppInfo.cs`、契約とライセンスの文面は `Help/LegalTexts.cs` で管理（使用許諾契約はひな形のため、リリース前に法務の確認を受けること）
+
 ## ブランド設定
 
 - 口調・一人称・絵文字・NG ワード・必須表記・お客様像・よく使うハッシュタグ・商品（価格は文章の事実確認に使う）。AI はこれに沿って文章をつくる

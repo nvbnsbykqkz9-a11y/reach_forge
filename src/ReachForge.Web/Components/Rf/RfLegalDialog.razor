@@ -1,0 +1,57 @@
+@* 使用許諾契約・第三者ソフトウェアのライセンスの表示 *@
+@using ReachForge.Infrastructure.Help
+
+<MudDialog>
+    <DialogContent>
+        <div style="max-height:60vh;overflow-y:auto" tabindex="0" aria-label="@(Kind == Eula ? LegalTexts.EulaTitle : "第三者ソフトウェアのライセンス")">
+            @if (Kind == Eula)
+            {
+                <MudText Typo="Typo.h6">@LegalTexts.EulaTitle</MudText>
+                <MudText Typo="Typo.caption" Class="d-block mb-3">@LegalTexts.EulaEffective</MudText>
+                <MudText Typo="Typo.body2" Class="mb-3">@LegalTexts.EulaPreamble</MudText>
+                @foreach (var article in LegalTexts.Eula)
+                {
+                    <MudText Typo="Typo.subtitle1" Class="mt-3"><b>@article.Title</b></MudText>
+                    @foreach (var p in article.Paragraphs)
+                    {
+                        <MudText Typo="Typo.body2" Class="mt-1">@p</MudText>
+                    }
+                }
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Class="mb-3">
+                    @AppInfo.Name は、次の第三者のソフトウェア・素材を使用しています。それぞれの著作権は各権利者に帰属し、各ライセンスの条件に従って使用しています。
+                    ライセンスの全文は、各リンク先で確認できます。
+                </MudText>
+                <table class="rf-summary">
+                    <thead><tr><th scope="col">名称</th><th scope="col">ライセンス</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in LegalTexts.ThirdParty)
+                        {
+                            <tr>
+                                <td>
+                                    <b>@c.Name</b><br />
+                                    <span class="mud-typography-caption">@c.Holder</span>
+                                    @if (c.Note is not null) { <br /><span class="mud-typography-caption">@c.Note</span> }
+                                </td>
+                                <td><MudLink Href="@c.Url" Target="_blank" rel="noopener">@c.License</MudLink></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => Dialog.Close()">閉じる</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public const string Eula = "eula";
+    public const string ThirdParty = "third-party";
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = default!;
+    [Parameter] public string Kind { get; set; } = Eula;
+}

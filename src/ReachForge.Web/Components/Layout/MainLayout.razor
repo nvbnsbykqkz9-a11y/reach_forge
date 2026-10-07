@@ -7,6 +7,7 @@
 @inject TenantScopes Scopes
 @inject ReachForge.Infrastructure.Realtime.RealtimeBus Realtime
 @inject ISnackbar Snackbar
+@inject IDialogService Dialogs
 @inject Microsoft.Extensions.Options.IOptions<AuthOptions> Auth
 
 <MudThemeProvider Theme="Theme.RfTheme.Default" @bind-IsDarkMode="_dark" />
@@ -62,6 +63,9 @@
                 <MudDivider Class="my-1" />
                 <MudMenuItem Href="/account/mfa" ForceLoad="true">2段階認証の設定</MudMenuItem>
                 <MudMenuItem OnClick="() => _dark = !_dark">@(_dark ? "ライト表示にする" : "ダーク表示にする")</MudMenuItem>
+                <MudDivider Class="my-1" />
+                <MudMenuItem Href="/help/manual.pdf" Target="_blank" Icon="@Icons.Material.Rounded.MenuBook">操作説明書（PDF版）</MudMenuItem>
+                <MudMenuItem OnClick="AboutAsync" Icon="@Icons.Material.Rounded.Info">About</MudMenuItem>
                 <form method="post" action="/account/logout" class="px-2 pb-1">
                     <AntiforgeryToken />
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" FullWidth="true" Class="justify-start"
@@ -120,6 +124,9 @@
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private Task AboutAsync() => Dialogs.ShowAsync<RfAboutDialog>("About",
+        new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = false, CloseOnEscapeKey = true });
 
     private IDisposable? _realtime;
 

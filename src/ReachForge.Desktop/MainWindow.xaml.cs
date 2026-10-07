@@ -1,4 +1,7 @@
 using System;
+using System.IO;
+using System.Net.Http;
+using System.Net.Security;
 using System.ComponentModel;
 using System.Threading.Tasks;
 using System.Windows;
@@ -8,8 +11,8 @@ using ReachForge.Desktop.Host;
 namespace ReachForge.Desktop;
 
 /// <summary>
-/// 画面（WebView2）。アプリの自己署名証明書だけを例外として受け入れ、外部サイトへのリンクは既定のブラウザーで開く。
-/// SNS の連携（OAuth）は同じ画面の中で行い、コールバックで https://localhost に戻る。
+/// 画面（WebView2）。アプリの自己署名証明書だけを例外として受け入れ、外部サイトへのリンクは既定のブラウザーで、
+/// メールアドレスのリンク（mailto:）は既定のメールアプリで、操作説明書（PDF）は既定の PDF ビューアーで開く。
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -63,6 +66,12 @@ public partial class MainWindow : Window
     /// </summary>
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
     {
+        if (IsMailto(e.Uri))
+        {
+            e.Cancel = true;
+            App.OpenExternal(e.Uri);
+            return;
+        }
         if (_server is null || !Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) || !IsOwnOrigin(e.Uri)) return;
         if (uri.AbsolutePath.Equals("/account/login", StringComparison.OrdinalIgnoreCase)
             && uri.Query.Contains("ReturnUrl=", StringComparison.OrdinalIgnoreCase))
@@ -72,14 +81,43 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>新しいウィンドウ：アプリ内のページは同じ画面で、外部サイト（投稿の URL など）は既定のブラウザーで開く。</summary>
+    /// <summary>新しいウィンドウ：アプリ内のページは同じ画面で、PDF は既定の PDF ビューアーで、外部サイトは既定のブラウザーで開く。</summary>
     private void OnNewWindowRequested(object? sender, CoreWebView2NewWindowRequestedEventArgs e)
     {
         e.Handled = true;
-        if (IsOwnOrigin(e.Uri)) Web.CoreWebView2.Navigate(e.Uri);
+        if (IsMailto(e.Uri)) App.OpenExternal(e.Uri);
+        else if (IsOwnOrigin(e.Uri) && Uri.TryCreate(e.Uri, UriKind.Absolute, out var own)
+                 && own.AbsolutePath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) _ = OpenPdfAsync(own);
+        else if (IsOwnOrigin(e.Uri)) Web.CoreWebView2.Navigate(e.Uri);
         else if (Uri.TryCreate(e.Uri, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp))
         {
             App.OpenExternal(uri.ToString());
+        }
+    }
+
+    private static bool IsMailto(string url) => url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>アプリの PDF（操作説明書）を一時フォルダーに保存して、既定の PDF ビューアーで開く。</summary>
+    private async Task OpenPdfAsync(Uri url)
+    {
+        try
+        {
+            using var handler = new HttpClientHandler
+            {
+                // このアプリの証明書だけを信頼する
+                ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+                    errors == SslPolicyErrors.None || (cert is not null && _server?.IsOwnCertificate(cert) == true),
+            };
+            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+            var bytes = await http.GetByteArrayAsync(url);
+            var path = Path.Combine(Path.GetTempPath(), "ReachForge", Path.GetFileName(url.AbsolutePath));
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            await File.WriteAllBytesAsync(path, bytes);
+            App.OpenExternal(path);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or System.ComponentModel.Win32Exception)
+        {
+            MessageBox.Show(this, $"操作説明書を開けませんでした（{ex.Message}）。", "ReachForge", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 

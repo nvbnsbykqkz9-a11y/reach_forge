@@ -114,6 +114,9 @@ public static class DependencyInjection
         services.AddSingleton<IBgmLibrary>(sp => sp.GetRequiredService<BgmLibrary>());
         services.AddSingleton<IVideoComposer, FfmpegVideoComposer>();
 
+        // ---- 操作説明書（PDF） ----
+        services.AddSingleton<Help.ManualPdfRenderer>();
+
         // ---- ブランド診断（F-02）：外部サイトの取得。リダイレクトは自前で検査するため自動追従しない ----
         services.AddHttpClient(SafeWebPageFetcher.HttpClientName)
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
