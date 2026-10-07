@@ -68,6 +68,21 @@ pwsh deploy/desktop/publish.ps1 [-FfmpegDir C:\ffmpeg\bin]   # artifacts/desktop
 iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 でインストーラーを作る（管理者権限なしで入る）
 ```
 
+#### Windows 版のデバッグ
+
+前提：Windows 10/11、Visual Studio 2026（「.NET デスクトップ開発」と「ASP.NET と Web 開発」）または .NET 10 SDK、WebView2 ランタイム。
+
+| やりたいこと | 方法 |
+|---|---|
+| アプリ全体を動かす | `ReachForge.Desktop` をスタートアップにして F5（または `dotnet run --project src/ReachForge.Desktop`）。サーバーは自動でビルドされ、リポジトリの `src\ReachForge.Web\bin\Debug\net10.0` のものを子プロセスで起動する（別のサーバーを使うなら環境変数 `REACHFORGE_SERVER_PATH`） |
+| 画面（Blazor）を調べる | アプリの画面で F12 → WebView2 の開発者ツール（Debug ビルドのみ。Release では無効） |
+| サーバーのコードで止める | ① アプリを F5 で起動したまま「デバッグ → プロセスにアタッチ」で `ReachForge.Web.exe` を選ぶ、または ② サーバーだけを単独で起動：`dotnet run --project src/ReachForge.Web --launch-profile desktop`（Visual Studio ではプロファイル「desktop」を選んで F5）→ ブラウザが `https://localhost:47120/desktop/signin?t=debug` で開き自動ログインする。DB はリポジトリ直下の `reachforge.desktop.db`、設定は `appsettings.desktop-debug.json`（どちらも Git の対象外）。この場合はアプリ（WPF）を起動しない（ポートが重なる） |
+| 起動しない・止まる | `%LOCALAPPDATA%\ReachForge\logs\server-日付.log`（サーバーの出力）。起動画面の「ログを開く」からも開ける。ポートが使用中なら `desktop.json` の `Port` |
+| データを初期状態に戻す | アプリを終了して `%LOCALAPPDATA%\ReachForge`（DB・メディア・設定・証明書）を削除する。WebView2 の Cookie だけなら `webview` フォルダー |
+| お試し用のデモデータ | 単独起動（②）で環境変数 `Database__SeedDemo=true` を付ける（owner@example.com ／ ReachForge#2026） |
+| トレイから起動した状態を試す | 引数 `--minimized`（プロジェクトのデバッグ設定のコマンドライン引数） |
+| 証明書のエラー | `%LOCALAPPDATA%\ReachForge\certs\localhost.pfx` を削除すると次の起動で作り直す |
+
 - CI（`desktop` ジョブ）で Windows 上で発行・インストーラーの作成まで行い、成果物として残す
 - 動画機能には ffmpeg が必要（`-FfmpegDir` で同梱するか、PC に入れて PATH を通す）。WebView2 ランタイムがなければインストーラーが案内する
 - サーバーの起動・自動ログイン・終了・マイグレーションは `tests/ReachForge.Desktop.Tests` で Linux でも確認する（画面の WPF は Windows でのみ動く）

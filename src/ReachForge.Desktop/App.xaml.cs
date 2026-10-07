@@ -17,6 +17,12 @@ public partial class App : Application
 {
     public const string MinimizedArgument = "--minimized";
 
+#if DEBUG
+    private const string BuildConfiguration = "Debug";
+#else
+    private const string BuildConfiguration = "Release";
+#endif
+
     private SingleInstance? _instance;
     private TrayIcon? _tray;
     private MainWindow? _window;
@@ -58,7 +64,7 @@ public partial class App : Application
             if (Server is not null) await Server.DisposeAsync();
             var baseDir = AppContext.BaseDirectory;
             Server = new ServerProcess(new ServerLaunchOptions(
-                Path.Combine(baseDir, "server", "ReachForge.Web.exe"), Paths, Settings.Port,
+                ServerLocator.Find(baseDir, BuildConfiguration), Paths, Settings.Port,
                 Path.Combine(baseDir, "ffmpeg", "ffmpeg.exe")));
             Server.Exited += code => Dispatcher.Invoke(() => OnServerExited(code));
             await Server.StartAsync();

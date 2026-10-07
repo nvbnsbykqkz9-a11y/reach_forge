@@ -48,6 +48,9 @@ public static class DesktopMode
         {
             builder.Services.AddDataProtection().ProtectKeysWithDpapi();
         }
+        // 開発中（F5・ビルド結果から起動）は MudBlazor などの静的ファイルが wwwroot にないため、開発用の一覧から配信する。
+        // 発行した形では一覧のファイルがないので何もしない
+        builder.WebHost.UseStaticWebAssets();
         return builder;
     }
 

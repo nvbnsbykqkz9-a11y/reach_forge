@@ -485,3 +485,6 @@ $RECYCLE.BIN/
 *.local.db
 *.local.db-*
 media.local/
+reachforge.desktop.db*
+media.desktop/
+appsettings.desktop-debug.json

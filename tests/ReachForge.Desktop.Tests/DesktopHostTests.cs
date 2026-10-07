@@ -156,6 +156,12 @@ public sealed class DesktopHostTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, home.StatusCode);
         Assert.Equal("/", home.RequestMessage!.RequestUri!.AbsolutePath);
         Assert.Contains(cookies.GetCookies(server.BaseUri).Cast<Cookie>(), c => c.Name == "rf.auth" && c.Secure);
+        // ビルド結果から起動しても（F5）、画面の CSS・スクリプトが配信される
+        foreach (var asset in new[] { "_content/MudBlazor/MudBlazor.min.css", "_framework/blazor.web.js" })
+        {
+            using var response = await http.GetAsync(asset, TestContext.Current.CancellationToken);
+            Assert.True(response.IsSuccessStatusCode, $"{asset}: {(int)response.StatusCode}");
+        }
 
         await server.StopAsync();
         var log = string.Join('\n', Directory.GetFiles(paths.Logs).Select(File.ReadAllText));
@@ -185,5 +191,34 @@ public sealed class DesktopHostTests : IDisposable
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
+    }
+}
+
+public sealed class ServerLocatorTests : IDisposable
+{
+    private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("rf-locator-");
+
+    public void Dispose() => _root.Delete(recursive: true);
+
+    private string Touch(params string[] parts)
+    {
+        var path = Path.Combine([_root.FullName, .. parts]);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, "");
+        return path;
+    }
+
+    [Fact]
+    public void Prefers_environment_then_bundled_then_repository_build()
+    {
+        var app = Path.Combine(_root.FullName, "src", "ReachForge.Desktop", "bin", "Debug", "net10.0-windows");
+        Directory.CreateDirectory(app);
+        Touch("ReachForge.sln");
+        var built = Touch("src", "ReachForge.Web", "bin", "Debug", "net10.0", "ReachForge.Web.exe");
+
+        Assert.Equal(built, ServerLocator.Find(app, "Debug", _ => null)); // F5：リポジトリのビルド結果
+        var bundled = Touch("src", "ReachForge.Desktop", "bin", "Debug", "net10.0-windows", "server", "ReachForge.Web.exe");
+        Assert.Equal(bundled, ServerLocator.Find(app, "Debug", _ => null)); // 発行した形
+        Assert.Equal("C:/custom/ReachForge.Web.exe", ServerLocator.Find(app, "Debug", _ => "C:/custom/ReachForge.Web.exe"));
     }
 }

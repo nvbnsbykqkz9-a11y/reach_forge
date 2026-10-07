@@ -25,5 +25,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ReachForge.Desktop.Host\ReachForge.Desktop.Host.csproj" />
+    <!-- F5 で起動したときに使うサーバーを先にビルドする（出力には含めない。発行では server フォルダーに別に入れる） -->
+    <ProjectReference Include="..\ReachForge.Web\ReachForge.Web.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 </Project>
