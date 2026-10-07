@@ -43,6 +43,8 @@ public static class Extensions
             .WithTracing(t => t
                 .AddSource(builder.Environment.ApplicationName)
                 .AddSource("ReachForge.AI")
+                .AddSource("ReachForge.Jobs")
+                .AddSource("Azure.Messaging.ServiceBus.*")
                 .AddAspNetCoreInstrumentation(o => o.Filter = ctx => !ctx.Request.Path.StartsWithSegments("/health"))
                 .AddHttpClientInstrumentation());
 

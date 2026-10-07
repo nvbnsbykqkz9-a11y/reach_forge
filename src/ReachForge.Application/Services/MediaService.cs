@@ -38,6 +38,7 @@ public sealed class MediaService(
     IMediaUrlSigner signer,
     IAltTextGenerator alt,
     ICreditService credits,
+    IWorkQueue queue,
     TimeProvider clock)
 {
     public const int MaxDimension = 4096;
@@ -386,6 +387,7 @@ public sealed class MediaService(
             db.AiJobs.Add(job);
             db.Record(tenant, "ai.job_queued", nameof(AiJob), job.Id, type.ToString());
             await db.SaveChangesAsync(ct);
+            await queue.NotifyAiJobAsync(job.Id, ct);
             return job;
         }
         catch

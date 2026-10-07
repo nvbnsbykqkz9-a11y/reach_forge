@@ -99,6 +99,9 @@
                 </MudNavLink>
                 <MudNavLink Href="/analytics" Icon="@Icons.Material.Rounded.Insights">分析</MudNavLink>
                 <MudNavLink Href="/settings" Icon="@Icons.Material.Rounded.Settings">設定</MudNavLink>
+                <AuthorizeView Policy="@OpsAccess.Policy">
+                    <MudNavLink Href="/ops" Icon="@Icons.Material.Rounded.MonitorHeart">運用</MudNavLink>
+                </AuthorizeView>
             </MudNavMenu>
         </nav>
     </MudDrawer>

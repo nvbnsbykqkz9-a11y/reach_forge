@@ -92,13 +92,13 @@ public static class ApiProtection
 /// Idempotency-Key（RF-DES-001 13章：POST に対応、24時間保持）。同じ呼び出し元・同じキーの再送には最初の応答をそのまま返す。
 /// 内容が違う再送は 422、処理中の再送は 409。5xx の応答は保存せず、再試行できるようにする。
 /// </summary>
-public sealed class IdempotencyMiddleware(RequestDelegate next, DbContextOptions<ReachForgeDbContext> dbOptions, TimeProvider clock,
-    ILogger<IdempotencyMiddleware> log)
+public sealed class IdempotencyMiddleware(RequestDelegate next, TimeProvider clock, ILogger<IdempotencyMiddleware> log)
 {
     public const string Header = "Idempotency-Key";
     public const int MaxStoredBytes = 1024 * 1024;
 
-    public async Task InvokeAsync(HttpContext http)
+    /// <summary>DbContextOptions はスコープ付きのため、コンストラクタではなく要求ごとに受け取る。</summary>
+    public async Task InvokeAsync(HttpContext http, DbContextOptions<ReachForgeDbContext> dbOptions)
     {
         if (!HttpMethods.IsPost(http.Request.Method) || !http.Request.Path.StartsWithSegments("/api/v1")
             || http.Request.Headers[Header].FirstOrDefault() is not { Length: > 0 } key)

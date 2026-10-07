@@ -18,3 +18,6 @@ ALTER DEFAULT PRIVILEGES FOR ROLE reachforge_owner IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO reachforge_app;
 ALTER DEFAULT PRIVILEGES FOR ROLE reachforge_owner IN SCHEMA public
     GRANT EXECUTE ON FUNCTIONS TO reachforge_app;
+
+-- Hangfire（Jobs:Engine = Hangfire）の表はアプリ用ロールが自分のスキーマに作成・更新する（テナントのデータは入らないため RLS の対象外）
+CREATE SCHEMA IF NOT EXISTS hangfire AUTHORIZATION reachforge_app;

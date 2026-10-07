@@ -58,11 +58,12 @@ public sealed class CreditAccount : Entity
 
     public void Release(int held) => Held = Math.Max(0, Held - held);
 
-    /// <summary>月次付与・リセット（繰越なしが既定）。</summary>
+    /// <summary>
+    /// 月次付与・リセット（繰越なしが既定）。実行中のジョブのホールドは、そのジョブが確定・解放するため残す。
+    /// </summary>
     public void ResetPeriod(DateOnly periodStart, bool carryOver = false)
     {
         Balance = carryOver ? Balance + MonthlyGrant : MonthlyGrant;
-        Held = 0;
         ConsumedThisPeriod = 0;
         PeriodStart = periodStart;
     }

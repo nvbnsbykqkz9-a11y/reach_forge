@@ -54,6 +54,15 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - モデルを変えたら `dotnet ef migrations add <名前> -p src/ReachForge.Infrastructure -s src/ReachForge.Infrastructure -o Persistence/Migrations`。新しい表を作るマイグレーションでは `SELECT rf_enable_rls();` を呼ぶ（テストでマイグレーション漏れ・RLS 漏れを検出）
 - PostgreSQL でテストする：`RF_TEST_POSTGRES="Host=…;Username=postgres;Database=postgres" dotnet test`（テストごとに DB を作り、RLS 付き・アプリ専用ロールで実行）
 
+## ジョブ基盤（RF-DES-001 14章）
+
+- 定期ジョブ：TokenRefreshJob（03:00）、MetricsCollectJob（15分ごと。アカウント指標は1日1回）、Weekly／MonthlyReportJob、InboxPollJob（毎分確認・チャネルごとに5〜15分）、A/B 判定、TrendResearchJob、CreditResetJob（毎月1日 00:00・テナントのタイムゾーン）、DataRetentionJob（02:00）。時刻は `Jobs:TimeZone`（既定 Asia/Tokyo）。一覧と再試行回数は `SystemJobCatalog`
+- 実行エンジン `Jobs:Engine`：`Hosted`（既定。プロセス内のタイマー）／`Hangfire`（PostgreSQL の `hangfire` スキーマ。複数 Worker でも1回だけ実行、14章の回数で再試行、失敗は残して運用者が再実行）。Hangfire は LGPL v3（改変せずに参照する限り商用利用可）
+- キュー `Jobs:Queue`：`InProcess`（既定）／`ServiceBus`（`webhooks`・`ai-jobs` キュー、5回失敗でデッドレター）。Webhook は Web で受けてキューへ渡し、Worker が取り込む。AI ジョブは保存後にキューで通知し、届かなかった分は巡回（`Jobs:AiSweepSeconds`）で拾う。Service Bus は `Jobs:ServiceBus:FullyQualifiedNamespace`（マネージド ID）か `ConnectionString`。`CreateQueues=true` で起動時にキューを作成
+- 予約配信（PublishJob）は ±60 秒の精度が要るため、どちらのエンジンでも Worker の短い間隔の巡回＋楽観排他で実行する
+- 運用管理（`/ops`）：`Ops:Operators` に書いたメールアドレスの利用者だけが見られる。定期ジョブの一覧、デッドレターの確認・再投入、Hangfire の実行履歴（`/ops/jobs`）
+- データ保存期限：Idempotency-Key 24時間、監査ログ2年、終了した AI ジョブ・使用済み／見送りのネタ・期限切れ招待 90日
+
 ## 外部連携 API（RF-DES-001 13章）
 
 - 認証：ログイン（Cookie）または API キー。キーは「設定 → API キー」でオーナー・管理者が発行（権限は編集者／承認者／返信担当／閲覧者から選択、有効期限つき、本体は一度だけ表示・DB にはハッシュのみ）。`Authorization: Bearer rfk_…` または `X-Api-Key: rfk_…`。キーは `/api/v1` 以外（画面）では使えない
@@ -167,10 +176,10 @@ src/
   ReachForge.Application/     ユースケース（スタジオ・承認・予約・配信・チャネル・ダッシュボード）、権限マトリクス、AI/SNS の抽象
   ReachForge.AI/              設定駆動モデルルータ（フェイルオーバー・サーキットブレーカー・計量）、プロンプト、投稿文生成・SNS別変換・承認要約
   ReachForge.Social/          ISocialPublisher アダプタ（現状はモック＋デモ接続）
-  ReachForge.Infrastructure/  EF Core（SQLite / PostgreSQL）、テナント分離、デモデータ、配信ディスパッチャ
+  ReachForge.Infrastructure/  EF Core（SQLite / PostgreSQL）、テナント分離、デモデータ、ジョブ基盤（Hangfire・Service Bus）
   ReachForge.ServiceDefaults/ OpenTelemetry・ヘルスチェック・HTTP 回復性
   ReachForge.Web/             Blazor Web App（MudBlazor 9）＋ Minimal API（/api/v1）
-  ReachForge.Worker/          予約配信などのバックグラウンド処理
+  ReachForge.Worker/          予約配信・定期ジョブ・キューの処理
 tests/
   ReachForge.Domain.Tests / ReachForge.Application.Tests（SQLite＋スタブAI＋モックSNSのE2E）/ ReachForge.AI.Tests
   ReachForge.Social.Tests（SNS アダプタの HTTP 検証）/ ReachForge.Web.Tests（認証・権限・Webhook の結合テスト）
@@ -200,6 +209,6 @@ tests/
 
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 生成 AI 動画（F-05 ①②）・BGM、C2PA 署名、参照画像の編集（背景差替・不要物除去）、X の動画投稿
-3. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
+3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認、post_metric の月次パーティションと13か月超の集計移行
 4. プロンプトのDB管理・AI Evals・SignalR による進捗通知
 5. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

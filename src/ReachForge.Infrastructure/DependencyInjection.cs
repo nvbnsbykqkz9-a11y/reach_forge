@@ -11,6 +11,7 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Social;
 using ReachForge.Infrastructure.Email;
 using ReachForge.Infrastructure.Identity;
+using ReachForge.Infrastructure.Jobs;
 using ReachForge.Infrastructure.Media;
 using ReachForge.Infrastructure.Persistence;
 using ReachForge.Infrastructure.Reporting;
@@ -70,6 +71,10 @@ public static class DependencyInjection
         }
 
         services.AddScoped<AccountService>();
+
+        // ---- ジョブ基盤（14章）：キューへの登録側。処理役はホストが AddReachForgeJobs / AddReachForgeWorkConsumers で登録する ----
+        services.AddReachForgeWorkQueue(configuration);
+        services.AddScoped<DataRetentionService>();
 
         // ---- メディア（F-04 / SCR-13） ----
         services.Configure<MediaOptions>(configuration.GetSection(MediaOptions.SectionName));

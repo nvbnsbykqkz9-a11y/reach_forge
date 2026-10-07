@@ -28,6 +28,7 @@ public static class DependencyInjection
         services.AddScoped<AbTestService>();
         services.AddScoped<BrandDiagnosisService>();
         services.AddScoped<TrendService>();
+        services.AddScoped<CreditResetService>();
         services.AddScoped<VideoService>();
         services.AddScoped<AccountNotifications>();
         services.AddScoped<ApiKeyService>();

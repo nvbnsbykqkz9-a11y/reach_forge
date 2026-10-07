@@ -48,6 +48,8 @@ public sealed class WebFixture : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        // 開発環境と同じく、スコープ付きサービスをルートから解決していないかを検査する
+        builder.UseDefaultServiceProvider(o => o.ValidateScopes = true);
         foreach (var (k, v) in _settings) builder.UseSetting(k, v);
         builder.ConfigureServices(s => s.AddSingleton<ReachForge.Application.Abstractions.IEmailSender>(new CapturingEmailSender(Emails)));
     }

@@ -2,12 +2,14 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Hangfire;
 using MudBlazor;
 using MudBlazor.Services;
 using ReachForge.Application.Abstractions;
 using ReachForge.Infrastructure;
 using ReachForge.Infrastructure.Hosting;
 using ReachForge.Infrastructure.Identity;
+using ReachForge.Infrastructure.Jobs;
 using ReachForge.Infrastructure.Persistence;
 using ReachForge.Web.Api;
 using ReachForge.Web.Components;
@@ -103,6 +105,7 @@ builder.Services.AddAuthorization(o => o.DefaultPolicy = new Microsoft.AspNetCor
         IdentityConstants.ApplicationScheme, ApiKeyAuthenticationHandler.SchemeName)
     .RequireAuthenticatedUser().Build());
 builder.Services.AddReachForgeRateLimits(builder.Configuration);
+builder.Services.AddReachForgeOps(builder.Configuration);
 
 builder.Services.AddScoped<WebTenantContext>();
 builder.Services.AddScoped<ITenantContext>(sp =>
@@ -110,21 +113,20 @@ builder.Services.AddScoped<ITenantContext>(sp =>
 builder.Services.AddScoped<TimeDisplay>();
 builder.Services.AddScoped<AppState>();
 
-// ローカル開発では Web プロセス内でも予約配信・トークン更新を動かせる（本番は ReachForge.Worker が担当）
-// Webhook は Web で受けるため、取り込み処理は常に Web プロセスで動かす
-builder.Services.AddSingleton<WebhookQueue>();
-builder.Services.AddHostedService<WebhookProcessor>();
-builder.Services.Configure<PublishDispatcherOptions>(builder.Configuration.GetSection(PublishDispatcherOptions.SectionName));
+// ジョブ（14章）：本番は ReachForge.Worker が実行する。ローカル開発では Worker:RunInWeb で Web プロセス内でも動かせる
 if (builder.Configuration.GetValue<bool>("Worker:RunInWeb"))
 {
-    builder.Services.AddHostedService<PublishDispatcher>();
-    builder.Services.AddHostedService<TokenRefreshScheduler>();
-    builder.Services.AddHostedService<AiJobDispatcher>();
-    builder.Services.AddHostedService<MetricsCollectScheduler>();
-    builder.Services.AddHostedService<ReportScheduler>();
-    builder.Services.AddHostedService<InboxPollScheduler>();
-    builder.Services.AddHostedService<AbTestScheduler>();
-    builder.Services.AddHostedService<TrendScheduler>();
+    builder.Services.AddReachForgeJobs(builder.Configuration);
+}
+else
+{
+    // プロセス内キューの場合、Web で受けた Webhook は Web で取り込む
+    builder.Services.AddReachForgeWorkConsumers(builder.Configuration, all: false);
+    // Hangfire のダッシュボード（/ops/jobs）を表示するためにストレージだけ登録する
+    if (builder.Configuration.GetValue<JobEngine>("Jobs:Engine") == JobEngine.Hangfire)
+    {
+        builder.Services.AddReachForgeHangfire(builder.Configuration, server: false);
+    }
 }
 
 var app = builder.Build();
@@ -155,6 +157,17 @@ app.MapInboxEndpoints();
 app.MapCampaignEndpoints();
 app.MapWebhookEndpoints();
 app.MapDefaultEndpoints();
+if (app.Configuration.GetValue<JobEngine>("Jobs:Engine") == JobEngine.Hangfire)
+{
+    // ジョブ監視（14章・SCR-16）：実行履歴・失敗の確認と再実行。運用者だけが見られる
+    app.MapHangfireDashboard("/ops/jobs", new Hangfire.DashboardOptions
+    {
+        Authorization = [],
+        AppPath = "/ops",
+        DashboardTitle = "ReachForge ジョブ",
+        DisplayStorageConnectionString = false,
+    }).RequireAuthorization(OpsAccess.Policy);
+}
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 
 app.Run();

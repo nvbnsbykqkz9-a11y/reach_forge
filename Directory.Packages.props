@@ -33,6 +33,15 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.19.0" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.19.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <!-- Jobs -->
+    <PackageVersion Include="Hangfire.NetCore" Version="1.8.25" />
+    <PackageVersion Include="Hangfire.AspNetCore" Version="1.8.25" />
+    <PackageVersion Include="Hangfire.PostgreSql" Version="1.21.1" />
+    <PackageVersion Include="Hangfire.InMemory" Version="1.0.0" />
+    <PackageVersion Include="Cronos" Version="0.11.1" />
+    <!-- Hangfire.Core の依存（11.0.1）には既知の脆弱性があるため修正版に上げる -->
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.21.0" />
     <!-- UI -->
     <PackageVersion Include="MudBlazor" Version="9.11.0" />
     <!-- Tests -->

@@ -37,7 +37,8 @@ public sealed class VideoService(
     ITextToSpeech tts,
     IVideoComposer composer,
     IBrandContextProvider brand,
-    ICreditService credits)
+    ICreditService credits,
+    IWorkQueue queue)
 {
     public static readonly (int Width, int Height) Size = (1080, 1920);
     public static readonly TimeSpan EstimatedDuration = TimeSpan.FromSeconds(60);
@@ -80,6 +81,7 @@ public sealed class VideoService(
             db.AiJobs.Add(job);
             db.Record(tenant, "ai.job_queued", nameof(AiJob), job.Id, AiTaskType.Video.ToString());
             await db.SaveChangesAsync(ct);
+            await queue.NotifyAiJobAsync(job.Id, ct);
             return job;
         }
         catch

@@ -34,6 +34,7 @@ public sealed class ReportService(
     IReportPdfRenderer renderer,
     IMediaStorage storage,
     IEmailSender email,
+    IWorkQueue queue,
     TimeProvider clock,
     ILogger<ReportService> log)
 {
@@ -52,6 +53,7 @@ public sealed class ReportService(
         var result = Enqueue(tenant.TenantId, tenant.WorkspaceId, tenant.UserName, request, tz);
         db.Record(tenant, "report.requested", nameof(Report), result.Report.Id, request.Kind.ToString());
         await db.SaveChangesAsync(ct);
+        await queue.NotifyAiJobAsync(result.Job.Id, ct);
         return result;
     }
 
@@ -121,7 +123,7 @@ public sealed class ReportService(
         var now = clock.GetUtcNow();
         var tenants = await db.Tenants.AsNoTracking().ToDictionaryAsync(t => t.Id, ct);
         var workspaces = (await db.Workspaces.AsNoTracking().ToListAsync(ct)).Where(w => w.Reports.Weekly || w.Reports.Monthly).ToList();
-        var created = 0;
+        var jobs = new List<Guid>();
         foreach (var w in workspaces)
         {
             if (!tenants.TryGetValue(w.TenantId, out var t)) continue;
@@ -141,12 +143,12 @@ public sealed class ReportService(
             foreach (var (kind, from, to) in periods)
             {
                 if (await db.Reports.AnyAsync(r => r.WorkspaceId == w.Id && r.Kind == kind && r.PeriodFrom == from, ct)) continue;
-                Enqueue(w.TenantId, w.Id, "system", new ReportRequest(from, to, kind), tz);
-                created++;
+                jobs.Add(Enqueue(w.TenantId, w.Id, "system", new ReportRequest(from, to, kind), tz).Job.Id);
             }
         }
         await db.SaveChangesAsync(ct);
-        return created;
+        foreach (var id in jobs) await queue.NotifyAiJobAsync(id, ct);
+        return jobs.Count;
     }
 
     /// <summary>レポートを作成する（AiJobProcessor から、依頼したテナント・ワークスペースのコンテキストで呼ぶ）。</summary>

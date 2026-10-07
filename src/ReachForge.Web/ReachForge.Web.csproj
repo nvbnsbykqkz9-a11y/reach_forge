@@ -9,5 +9,6 @@
   <ItemGroup>
     <PackageReference Include="MudBlazor" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+    <PackageReference Include="Hangfire.AspNetCore" />
   </ItemGroup>
 </Project>

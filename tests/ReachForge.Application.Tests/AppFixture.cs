@@ -62,7 +62,8 @@ public sealed class AppFixture : IAsyncDisposable
             UserName = "田中",
             Role = Role.Owner,
         });
-        services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<MutableTenantContext>());
+        services.AddScoped<ITenantContext>(sp =>
+            sp.GetRequiredService<TenantContextOverride>().Current ?? sp.GetRequiredService<MutableTenantContext>());
         Services = services.BuildServiceProvider();
     }
 

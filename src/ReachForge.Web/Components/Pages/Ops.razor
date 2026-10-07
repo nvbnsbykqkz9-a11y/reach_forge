@@ -1,0 +1,126 @@
+@page "/ops"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = OpsAccess.Policy)]
+@using ReachForge.Infrastructure.Jobs
+@inject IDeadLetterAdmin DeadLetters
+@inject Microsoft.Extensions.Options.IOptions<JobOptions> Jobs
+@inject TimeDisplay Time
+@inject ISnackbar Snackbar
+
+<PageTitle>運用｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">運用</MudText>
+    <span class="rf-spacer"></span>
+    @if (Jobs.Value.Engine == JobEngine.Hangfire)
+    {
+        <MudButton Variant="Variant.Outlined" Href="/ops/jobs" Target="_blank" EndIcon="@Icons.Material.Rounded.OpenInNew">ジョブの実行履歴</MudButton>
+    }
+</div>
+
+<MudText Typo="Typo.body2" Class="mb-3">
+    定期ジョブは <b>@(Jobs.Value.Engine == JobEngine.Hangfire ? "Hangfire" : "プロセス内のタイマー")</b>、
+    キューは <b>@(Jobs.Value.Queue == QueueProvider.ServiceBus ? "Azure Service Bus" : "プロセス内")</b> で動いています（時刻は @Jobs.Value.TimeZone）。
+</MudText>
+
+<MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+    <MudText Typo="Typo.h6" Class="mb-2">定期ジョブ</MudText>
+    <MudSimpleTable Dense="true" Elevation="0">
+        <thead><tr><th>ジョブ</th><th>実行時刻（cron）</th><th>失敗時の再試行</th></tr></thead>
+        <tbody>
+            @foreach (var job in SystemJobCatalog.All)
+            {
+                <tr>
+                    <td>@job.Name</td>
+                    <td><code>@job.Cron</code></td>
+                    <td>@(job.Retries > 0 ? $"{job.Retries} 回" : "なし（次の周期／手動で再実行）")</td>
+                </tr>
+            }
+        </tbody>
+    </MudSimpleTable>
+</MudPaper>
+
+<MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+    <div class="d-flex align-center">
+        <MudText Typo="Typo.h6">デッドレター</MudText>
+        <MudSpacer />
+        <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.Refresh" OnClick="LoadAsync">更新</MudButton>
+    </div>
+    <MudText Typo="Typo.body2" Class="mb-2">@WorkQueues.MaxDeliveryCount 回処理に失敗したメッセージです。原因を直してから再投入してください。</MudText>
+    @if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true">デッドレターを取得できませんでした：@_error</MudAlert>
+    }
+    @foreach (var queue in WorkQueues.All)
+    {
+        var items = _dead.GetValueOrDefault(queue) ?? [];
+        <section class="mt-3" aria-label="@queue">
+            <div class="d-flex align-center gap-2">
+                <MudText Typo="Typo.subtitle1"><code>@queue</code></MudText>
+                <span class="rf-tag @(items.Count > 0 ? "rf-tag-warn" : "")">@(items.Count >= PeekCount ? $"{PeekCount}件以上" : $"{items.Count}件")</span>
+                <MudSpacer />
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" Disabled="@(items.Count == 0 || _busy)" OnClick="() => RequeueAsync(queue)">すべて再投入</MudButton>
+            </div>
+            @if (items.Count > 0)
+            {
+                <MudSimpleTable Dense="true" Elevation="0" Class="mt-1">
+                    <thead><tr><th>登録</th><th>理由</th><th>内容</th></tr></thead>
+                    <tbody>
+                        @foreach (var d in items)
+                        {
+                            <tr>
+                                <td style="white-space:nowrap">@Time.ToLocal(d.EnqueuedAt).ToString("M/d HH:mm")</td>
+                                <td>@d.Reason</td>
+                                <td><code>@(d.Payload.Length > 120 ? d.Payload[..120] + "…" : d.Payload)</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+            }
+        </section>
+    }
+</MudPaper>
+
+@code {
+    private const int PeekCount = 20;
+    private readonly Dictionary<string, IReadOnlyList<DeadLetter>> _dead = [];
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+        try
+        {
+            foreach (var queue in WorkQueues.All) _dead[queue] = await DeadLetters.PeekAsync(queue, PeekCount, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task RequeueAsync(string queue)
+    {
+        _busy = true;
+        try
+        {
+            var n = await DeadLetters.RequeueAsync(queue, CancellationToken.None);
+            Snackbar.Add($"{n} 件を {queue} に再投入しました", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"再投入できませんでした：{ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}
