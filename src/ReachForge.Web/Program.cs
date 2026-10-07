@@ -112,6 +112,9 @@ builder.Services.AddScoped<ITenantContext>(sp =>
     sp.GetRequiredService<TenantContextOverride>().Current ?? sp.GetRequiredService<WebTenantContext>());
 builder.Services.AddScoped<TimeDisplay>();
 builder.Services.AddScoped<TenantScopes>();
+// リアルタイム通知（RF-DES-001 3.3）：外部クライアント向けの SignalR Hub
+builder.Services.AddSignalR();
+builder.Services.AddHostedService<RealtimeHubForwarder>();
 builder.Services.AddScoped<ReachForge.AI.Evals.EvalRunner>();
 builder.Services.AddScoped<AppState>();
 
@@ -142,7 +145,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 // API は状態コード（401/403/404 と Problem Details）をそのまま返し、画面だけ「見つかりません」ページを表示する
-app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"),
+app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api") && !ctx.Request.Path.StartsWithSegments("/hubs"),
     b => b.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true));
 app.UseAuthentication();
 app.UseRateLimiter();
@@ -159,6 +162,7 @@ app.MapInboxEndpoints();
 app.MapCampaignEndpoints();
 app.MapWebhookEndpoints();
 app.MapDefaultEndpoints();
+app.MapHub<RealtimeHub>(RealtimeHub.Path);
 if (app.Configuration.GetValue<JobEngine>("Jobs:Engine") == JobEngine.Hangfire)
 {
     // ジョブ監視（14章・SCR-16）：実行履歴・失敗の確認と再実行。運用者だけが見られる
@@ -176,7 +180,8 @@ app.Run();
 
 static Task ApiAware(Microsoft.AspNetCore.Authentication.RedirectContext<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions> ctx, int status)
 {
-    if (ctx.Request.Path.StartsWithSegments("/api"))
+    // API と SignalR Hub はログイン画面へ転送せず、状態コードを返す
+    if (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/hubs"))
     {
         ctx.Response.StatusCode = status;
         return Task.CompletedTask;

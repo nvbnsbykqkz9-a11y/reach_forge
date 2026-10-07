@@ -37,6 +37,13 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 # モデルは appsettings.json の AI:Providers / AI:Routes で設定（コードにハードコードしない）
 ```
 
+## リアルタイム通知（RF-DES-001 3.3）
+
+- AI ジョブの段階（待機中 → 生成中 → 確認中 → 完了）と受信箱の更新（新着・対応状況・炎上アラート）は、保存した時点で画面へ届く（Blazor のサーキット＝SignalR）。ナビの未対応件数・クレジット残量もすぐ更新される
+- Web と Worker を分ける構成では `ConnectionStrings:Redis` を設定すると、Redis の Pub/Sub で Worker の出来事が全 Web インスタンスへ届く。未設定でも画面は数秒〜30秒ごとの読み直しで追いつく
+- 外部クライアント向けに SignalR Hub `/hubs/realtime`（ログインまたは API キー。WebSocket は `access_token` クエリ）を用意。メソッド `jobProgress` / `inboxUpdated` で、自分のワークスペースの出来事だけを受け取る
+- テスト：`RF_TEST_REDIS=127.0.0.1:6379 dotnet test` で Redis 経由の配信も確認する
+
 ## プロンプト管理・AI Evals（RF-DES-001 4.5・4.6）
 
 - AI への指示文は Scriban テンプレートとして DB（`PromptTemplates`）で版管理する。初回起動時にコードの既定テンプレート（`PromptLibrary.Defaults`）を v1 として登録する。ブランド・商品・SNS の制約などのデータはコードで整形して `{{ brand }}` などの値として差し込み、値の中の `{{ }}` はテンプレートとして解釈しない。安全規約（`common.safety`）は `{{ safety }}` で共通化し、外した版は保存できない
@@ -221,5 +228,4 @@ Blazor Server の DI スコープはサーキット（タブを開いている�
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 生成 AI 動画（F-05 ①②）・BGM、C2PA 署名、参照画像の編集（背景差替・不要物除去）、X の動画投稿
 3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認、post_metric の月次パーティションと13か月超の集計移行
-4. SignalR による進捗通知
 5. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

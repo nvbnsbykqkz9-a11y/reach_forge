@@ -5,6 +5,7 @@
 @inject TimeDisplay Time
 @inject NavigationManager Nav
 @inject TenantScopes Scopes
+@inject ReachForge.Infrastructure.Realtime.RealtimeBus Realtime
 @inject ISnackbar Snackbar
 @inject Microsoft.Extensions.Options.IOptions<AuthOptions> Auth
 
@@ -139,6 +140,12 @@
         State.Changed += OnChanged;
         await Time.ZoneAsync();
         await State.RefreshAsync();
+        // 受信箱の新着・AI ジョブの完了（クレジット残量）をナビ・トップバーへすぐに反映する
+        var (tenantId, workspaceId) = (Tenant.TenantId, Tenant.WorkspaceId);
+        _realtime = Realtime.Subscribe(e => e.TenantId == tenantId && e.WorkspaceId == workspaceId
+            && e is InboxUpdatedEvent or JobProgressEvent { Status: AiJobStatus.Succeeded or AiJobStatus.Failed or AiJobStatus.Canceled }
+                ? InvokeAsync(State.RefreshAsync)
+                : Task.CompletedTask);
         _memberships = await Scopes.RunAsync(sp => sp.GetRequiredService<ReachForge.Infrastructure.Identity.AccountService>()
             .MembershipsAsync(Tenant.UserId, CancellationToken.None));
     }
@@ -159,8 +166,11 @@
         }
     }
 
+    private IDisposable? _realtime;
+
     public void Dispose()
     {
         State.Changed -= OnChanged;
+        _realtime?.Dispose();
     }
 }

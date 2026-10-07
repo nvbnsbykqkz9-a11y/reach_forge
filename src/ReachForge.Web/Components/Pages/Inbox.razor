@@ -226,10 +226,12 @@
     {
         await Time.ZoneAsync();
         await LoadAsync();
+        // 新着・対応状況の変化はすぐに反映する（RF-DES-001 3.3）。ほかの人の入力中表示は30秒ごとに読み直す
+        OnRealtime<InboxUpdatedEvent>(_ => LoadAsync(keepSelection: true));
         _ = RefreshLoopAsync();
     }
 
-    /// <summary>新着・他の人の入力中表示を30秒ごとに反映する。</summary>
+    /// <summary>他の人の入力中表示（と、通知が届かない構成での新着）を30秒ごとに反映する。</summary>
     private async Task RefreshLoopAsync()
     {
         _timer = new PeriodicTimer(TimeSpan.FromSeconds(30));

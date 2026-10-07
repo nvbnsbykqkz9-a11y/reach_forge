@@ -25,8 +25,11 @@ public sealed class ApiKeyAuthenticationHandler(
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        if (!Request.Path.StartsWithSegments("/api/v1")) return AuthenticateResult.NoResult();
+        var hub = Request.Path.StartsWithSegments(RealtimeHub.Path);
+        if (!Request.Path.StartsWithSegments("/api/v1") && !hub) return AuthenticateResult.NoResult();
         var secret = Request.Headers["X-Api-Key"].FirstOrDefault();
+        // WebSocket ではヘッダーを付けられないため、Hub だけはクエリ（access_token）でも受け付ける（SignalR の標準の方法）
+        if (secret is null && hub) secret = Request.Query["access_token"].FirstOrDefault();
         if (secret is null && Request.Headers.Authorization.FirstOrDefault() is { } auth
             && auth.StartsWith("Bearer " + ApiKey.KeyPrefix, StringComparison.Ordinal))
         {
@@ -70,12 +73,12 @@ public sealed class ApiKeyAuthenticationHandler(
     }
 
     protected override Task HandleForbiddenAsync(AuthenticationProperties properties) =>
-        Request.Path.StartsWithSegments("/api") ? base.HandleForbiddenAsync(properties) : Task.CompletedTask;
+        Request.Path.StartsWithSegments("/api") || Request.Path.StartsWithSegments("/hubs") ? base.HandleForbiddenAsync(properties) : Task.CompletedTask;
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
         // 画面はログイン画面へのリダイレクト（Cookie 側）に任せる
-        if (!Request.Path.StartsWithSegments("/api")) return Task.CompletedTask;
+        if (!Request.Path.StartsWithSegments("/api") && !Request.Path.StartsWithSegments("/hubs")) return Task.CompletedTask;
         Response.StatusCode = StatusCodes.Status401Unauthorized;
         Response.Headers.WWWAuthenticate = "Bearer realm=\"ReachForge\"";
         return Task.CompletedTask;

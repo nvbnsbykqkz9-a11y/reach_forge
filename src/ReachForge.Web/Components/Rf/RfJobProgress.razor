@@ -35,32 +35,49 @@
     [Parameter] public int EstimatedSeconds { get; set; } = 40;
     [Parameter] public EventCallback<AiJob> OnFinished { get; set; }
 
+    /// <summary>通知が届かない構成（Redis なしで Web と Worker を分けた場合など）の保険として、この間隔でも状態を読み直す。</summary>
+    public static readonly TimeSpan FallbackRefresh = TimeSpan.FromSeconds(10);
+
     private AiJob? _job;
     private int _elapsed;
+    private bool _finished;
     private PeriodicTimer? _timer;
     private readonly CancellationTokenSource _cts = new();
 
-    protected override void OnInitialized() => _ = PollAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        // 進捗は SignalR（サーキット）で届いた時点で反映する（RF-DES-001 3.3）
+        OnRealtime<JobProgressEvent>(e => e.JobId == JobId ? RefreshAsync() : Task.CompletedTask);
+        await RefreshAsync();
+        _ = TickAsync();
+    }
 
-    private async Task PollAsync()
+    /// <summary>経過時間の表示は1秒ごと、DB の読み直しは通知がないときだけ数秒おき。</summary>
+    private async Task TickAsync()
     {
         _timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
         try
         {
-            while (await _timer.WaitForNextTickAsync(_cts.Token))
+            while (!_finished && await _timer.WaitForNextTickAsync(_cts.Token))
             {
                 _elapsed++;
-                _job = await Media.GetJobAsync(JobId, _cts.Token);
+                if (_elapsed % (int)FallbackRefresh.TotalSeconds == 0) await InvokeAsync(RefreshAsync);
                 await InvokeAsync(StateHasChanged);
-                if (_job.IsFinished)
-                {
-                    await InvokeAsync(() => OnFinished.InvokeAsync(_job));
-                    break;
-                }
             }
         }
         catch (OperationCanceledException)
         {
+        }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_finished || _cts.IsCancellationRequested) return;
+        _job = await Media.GetJobAsync(JobId, _cts.Token);
+        if (_job.IsFinished)
+        {
+            _finished = true;
+            await OnFinished.InvokeAsync(_job);
         }
     }
 

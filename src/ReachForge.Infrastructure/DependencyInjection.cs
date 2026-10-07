@@ -50,13 +50,20 @@ public static class DependencyInjection
             .PersistKeysToDbContext<ReachForgeDbContext>();
 
         // OAuth の state 等の一時保管：複数インスタンスでは Redis
+        // 画面へのリアルタイム通知（AI ジョブの進捗・受信箱）：Redis があれば Pub/Sub で Web・Worker 間に届ける
+        services.AddSingleton<Realtime.RealtimeBus>();
         if (configuration.GetConnectionString("Redis") is { Length: > 0 } redis)
         {
             services.AddStackExchangeRedisCache(o => o.Configuration = redis);
+            services.AddSingleton<StackExchange.Redis.IConnectionMultiplexer>(_ => StackExchange.Redis.ConnectionMultiplexer.Connect(redis));
+            services.AddSingleton<Realtime.RedisRealtimeNotifier>();
+            services.AddSingleton<IRealtimeNotifier>(sp => sp.GetRequiredService<Realtime.RedisRealtimeNotifier>());
+            services.AddHostedService(sp => sp.GetRequiredService<Realtime.RedisRealtimeNotifier>());
         }
         else
         {
             services.AddDistributedMemoryCache();
+            services.AddSingleton<IRealtimeNotifier, Realtime.LocalRealtimeNotifier>();
         }
         services.AddScoped<IOAuthStateStore, DistributedOAuthStateStore>();
 

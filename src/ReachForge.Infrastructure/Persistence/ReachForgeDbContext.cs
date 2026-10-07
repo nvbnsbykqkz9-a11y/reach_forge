@@ -25,7 +25,8 @@ public sealed class ReachForgeDbContext(
     DbContextOptions<ReachForgeDbContext> options,
     ITenantContext tenant,
     IAiUsageSink? usage = null,
-    TimeProvider? clock = null)
+    TimeProvider? clock = null,
+    IRealtimeNotifier? realtime = null)
     : IdentityDbContext<AppUser, IdentityRole<Guid>, Guid>(options), IAppDbContext, IDataProtectionKeyContext
 {
     private static readonly JsonSerializerOptions s_json = new(JsonSerializerDefaults.Web);
@@ -236,7 +237,37 @@ public sealed class ReachForgeDbContext(
                 throw new InvalidOperationException("他のテナントのデータは更新できません。");
             }
         }
-        return await base.SaveChangesAsync(cancellationToken);
+        var events = realtime is null ? [] : RealtimeEvents();
+        var saved = await base.SaveChangesAsync(cancellationToken);
+        foreach (var e in events) realtime!.Publish(e);
+        return saved;
+    }
+
+    /// <summary>保存後に画面へ知らせる出来事（AI ジョブの段階・状態の変化、受信箱の更新）。</summary>
+    private List<RealtimeEvent> RealtimeEvents()
+    {
+        var events = new List<RealtimeEvent>();
+        foreach (var entry in ChangeTracker.Entries<AiJob>())
+        {
+            var changed = entry.State == EntityState.Added
+                || (entry.State == EntityState.Modified
+                    && (entry.Property(j => j.Status).IsModified || entry.Property(j => j.Stage).IsModified));
+            if (!changed) continue;
+            var j = entry.Entity;
+            events.Add(new JobProgressEvent(j.TenantId, j.WorkspaceId, j.Id, j.TaskType, j.Status, j.Stage));
+        }
+        var inbox = ChangeTracker.Entries<InboxMessage>()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified)
+            .Select(e => (e.Entity.TenantId, e.Entity.WorkspaceId, Added: e.State == EntityState.Added))
+            .Concat(ChangeTracker.Entries<InboxAlert>().Where(e => e.State == EntityState.Added)
+                .Select(e => (e.Entity.TenantId, e.Entity.WorkspaceId, Added: false)))
+            .GroupBy(x => (x.TenantId, x.WorkspaceId));
+        foreach (var g in inbox)
+        {
+            var alert = ChangeTracker.Entries<InboxAlert>().Any(e => e.State == EntityState.Added && e.Entity.WorkspaceId == g.Key.WorkspaceId);
+            events.Add(new InboxUpdatedEvent(g.Key.TenantId, g.Key.WorkspaceId, g.Count(x => x.Added), alert));
+        }
+        return events;
     }
 
     private static ValueConverter<T, string> Json<T>() => new(

@@ -19,6 +19,9 @@ jobs:
         ports: ["5432:5432"]
         options: >-
           --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -28,6 +31,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
       - run: dotnet build -c Release
       - name: Test (SQLite)
+        env:
+          RF_TEST_REDIS: 127.0.0.1:6379
         run: dotnet test -c Release --no-build
       - name: Test (PostgreSQL + RLS)
         env:
