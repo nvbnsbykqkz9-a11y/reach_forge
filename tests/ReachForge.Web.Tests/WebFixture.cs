@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using System.Net;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
@@ -31,10 +32,24 @@ public sealed class WebFixture : WebApplicationFactory<Program>
         foreach (var (k, v) in overrides ?? []) _settings[k] = v;
     }
 
+    /// <summary>送信されたメール（テスト用に送信せず記録する）。</summary>
+    public System.Collections.Concurrent.ConcurrentQueue<ReachForge.Application.Abstractions.EmailMessage> Emails { get; } = new();
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
         foreach (var (k, v) in _settings) builder.UseSetting(k, v);
+        builder.ConfigureServices(s => s.AddSingleton<ReachForge.Application.Abstractions.IEmailSender>(new CapturingEmailSender(Emails)));
+    }
+
+    private sealed class CapturingEmailSender(System.Collections.Concurrent.ConcurrentQueue<ReachForge.Application.Abstractions.EmailMessage> sink)
+        : ReachForge.Application.Abstractions.IEmailSender
+    {
+        public Task SendAsync(ReachForge.Application.Abstractions.EmailMessage message, CancellationToken ct)
+        {
+            sink.Enqueue(message);
+            return Task.CompletedTask;
+        }
     }
 
     public HttpClient Browser() => CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true, BaseAddress = new Uri("https://localhost") });

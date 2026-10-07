@@ -5,6 +5,8 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject AccountNotifications Notify
+@inject AppState State
 
 <PageTitle>メンバー・権限｜ReachForge</PageTitle>
 
@@ -62,11 +64,11 @@
             </MudSelect>
             <MudText Typo="Typo.caption" Class="d-block mt-2">このロールでできること：@RoleDescription(_role)</MudText>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-3" Disabled="@(!CanManage || string.IsNullOrWhiteSpace(_email))"
-                       OnClick="InviteAsync">招待リンクを作る</MudButton>
+                       OnClick="InviteAsync">招待メールを送る</MudButton>
             @if (_link is not null)
             {
                 <MudAlert Severity="Severity.Success" Class="mt-3">
-                    招待リンクを作りました（7日間有効）。招待する人に共有してください。
+                    招待メールを送りました（7日間有効）。メールが届かない場合は、このリンクを直接共有してください。
                     <code class="rf-code mt-2">@_link</code>
                 </MudAlert>
             }
@@ -114,8 +116,13 @@
     {
         try
         {
+            var to = _email;
             var link = await Members.InviteAsync(_email, _role, CancellationToken.None);
             _link = Nav.ToAbsoluteUri($"/account/invite/{link.Token}").ToString();
+            // 招待メールを送る（届かない場合に備えて、リンクは画面にも表示する）
+            await Notify.InvitationAsync(to, State.Workspace?.Name ?? "ReachForge", Tenant.UserName, _role, _link,
+                link.Invitation.ExpiresAt, CancellationToken.None);
+            Snackbar.Add($"{to} に招待メールを送りました", Severity.Success);
             _email = "";
             await LoadAsync();
         }

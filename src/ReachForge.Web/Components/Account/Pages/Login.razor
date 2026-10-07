@@ -50,7 +50,7 @@
     {
         <a href="/account/register">新規登録</a>
     }
-    <span style="color:var(--rf-color-text-tertiary)">パスワードを忘れた場合は管理者にご連絡ください</span>
+    <a href="/account/forgot-password">パスワードを忘れた場合</a>
 </div>
 
 @code {
@@ -95,7 +95,7 @@
             return;
         }
         _error = result.IsLockedOut ? LockedMessage : "メールアドレスまたはパスワードが違います。";
-        // TODO(SCR-01): ロック時のメール通知
+        if (result.IsLockedOut) await Accounts.NotifyLockedOutAsync(Input!.Email, default); // 本人へメールで知らせる
     }
 
     private sealed class InputModel

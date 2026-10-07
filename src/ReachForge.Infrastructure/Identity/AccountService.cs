@@ -148,6 +148,67 @@ public sealed class AccountService(
             .ToList();
     }
 
+    /// <summary>パスワード再設定リンクの有効期間。</summary>
+    public static readonly TimeSpan ResetTokenLifetime = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// パスワード再設定のメールを送る。アカウントの有無は画面に出さない（メールアドレスの存在を推測させない）。
+    /// パスワードを持たない外部 ID の利用者には送らない。
+    /// </summary>
+    public async Task RequestPasswordResetAsync(string email, Func<Guid, string, string> linkFor, CancellationToken ct)
+    {
+        var user = await Users.FindByEmailAsync(email.Trim());
+        if (user is null || !await Users.HasPasswordAsync(user)) return;
+        var token = await Users.GeneratePasswordResetTokenAsync(user);
+        var code = System.Buffers.Text.Base64Url.EncodeToString(System.Text.Encoding.UTF8.GetBytes(token));
+        await services.GetRequiredService<AccountNotifications>().PasswordResetAsync(user.Email!, linkFor(user.Id, code), ResetTokenLifetime, ct);
+        await AuditAsync(user, "auth.password_reset_requested", null, ct);
+    }
+
+    /// <summary>新しいパスワードを設定する。成功したらロックを解除し、ほかの端末のログインを無効にする（セキュリティスタンプ更新）。</summary>
+    public async Task ResetPasswordAsync(Guid userId, string code, string newPassword, CancellationToken ct)
+    {
+        var invalid = new DomainException("E-AUTH-410", "このリンクは使えません（期限切れ・使用済み）。もう一度、パスワードの再設定を依頼してください。");
+        var user = await Users.FindByIdAsync(userId.ToString()) ?? throw invalid;
+        string token;
+        try
+        {
+            token = System.Text.Encoding.UTF8.GetString(System.Buffers.Text.Base64Url.DecodeFromChars(code));
+        }
+        catch (FormatException)
+        {
+            throw invalid;
+        }
+        var result = await Users.ResetPasswordAsync(user, token, newPassword);
+        if (!result.Succeeded)
+        {
+            if (result.Errors.Any(e => e.Code == "InvalidToken")) throw invalid;
+            throw new DomainException(ErrorCodes.Validation, string.Join(" ", result.Errors.Select(IdentityMessages.Translate)));
+        }
+        await Users.SetLockoutEndDateAsync(user, null);
+        await Users.ResetAccessFailedCountAsync(user);
+        await AuditAsync(user, "auth.password_reset", null, ct);
+        await services.GetRequiredService<AccountNotifications>().PasswordChangedAsync(user.Email!, ct);
+    }
+
+    /// <summary>ログインがロックされた直後に本人へ知らせる（SCR-01）。</summary>
+    public async Task NotifyLockedOutAsync(string email, CancellationToken ct)
+    {
+        var user = await Users.FindByEmailAsync(email.Trim());
+        if (user?.LockoutEnd is not { } until || until <= clock.GetUtcNow()) return;
+        // 1回のロックにつき1通（ロック中の再試行のたびに送らない）。このロックの開始以降に通知済みかを監査ログで確かめる
+        var lockedSince = until - services.GetRequiredService<IOptions<IdentityOptions>>().Value.Lockout.DefaultLockoutTimeSpan - TimeSpan.FromMinutes(1);
+        await using (var db = SystemDb())
+        {
+            var notified = (await db.AuditLogs.AsNoTracking()
+                    .Where(a => a.TargetId == user.Id && a.Action == "auth.locked_out").Select(a => a.CreatedAt).ToListAsync(ct))
+                .Any(at => at >= lockedSince);
+            if (notified) return;
+        }
+        await services.GetRequiredService<AccountNotifications>().LockedOutAsync(user.Email!, until, ct);
+        await AuditAsync(user, "auth.locked_out", null, ct);
+    }
+
     /// <summary>監査ログ（ログイン・MFA 設定などの認証イベント）。</summary>
     public async Task AuditAsync(AppUser user, string action, string? detail, CancellationToken ct)
     {

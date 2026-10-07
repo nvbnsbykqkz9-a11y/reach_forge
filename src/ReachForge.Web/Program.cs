@@ -94,6 +94,8 @@ builder.Services.ConfigureApplicationCookie(o =>
     o.Events.OnRedirectToAccessDenied = ctx => ApiAware(ctx, StatusCodes.Status403Forbidden);
 });
 builder.Services.Configure<SecurityStampValidatorOptions>(o => o.ValidationInterval = TimeSpan.FromMinutes(5));
+// パスワード再設定などのトークンは1時間で失効させる
+builder.Services.Configure<DataProtectionTokenProviderOptions>(o => o.TokenLifespan = AccountService.ResetTokenLifetime);
 builder.Services.AddAuthorization();
 
 builder.Services.AddScoped<WebTenantContext>();
