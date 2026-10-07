@@ -26,8 +26,8 @@ public sealed record EvalBrand(
             PreferredHashtags = [.. Hashtags],
             Tone = new BrandTone { Casualness = Casualness, EmojiLevel = EmojiLevel },
         };
-        var campaign = isAdvertisement ? new Campaign { Name = "PR案件", Code = "pr", IsAdvertisement = true } : null;
-        return new BrandContext(profile, Products.Select(p => p.ToProduct()).ToList(), campaign);
+        _ = isAdvertisement; // 広告（PR 表記）の判定は以前のキャンペーン機能のもの。評価ケースの互換のため引数は残す
+        return new BrandContext(profile, Products.Select(p => p.ToProduct()).ToList());
     }
 }
 

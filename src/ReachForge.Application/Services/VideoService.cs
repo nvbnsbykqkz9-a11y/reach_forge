@@ -218,7 +218,7 @@ public sealed class VideoService(
         if (request.IsGenerative) return await GenerateAsync(job, request, ct);
         var sources = new List<MediaAsset>();
         foreach (var id in request.ImageAssetIds) sources.Add(await media.GetAsync(id, ct));
-        var ctx = await brand.BuildAsync(job.WorkspaceId, [], null, ct);
+        var ctx = await brand.BuildAsync(job.WorkspaceId, [], ct);
 
         // ① 構成台本（シーン数は 3〜6、画像が少なければ繰り返し使う）
         var sceneCount = Math.Clamp(sources.Count, 3, 6);
@@ -351,7 +351,7 @@ public sealed class VideoService(
             Images = imported.Select(i => i.Web).ToList(),
             Text = string.IsNullOrWhiteSpace(request.Theme) ? page.Text : $"（伝えたいこと：{request.Theme}）\n{page.Text}",
         };
-        var ctx = await brand.BuildAsync(job.WorkspaceId, [], null, ct);
+        var ctx = await brand.BuildAsync(job.WorkspaceId, [], ct);
         var sceneCount = request.TargetSeconds <= 15 ? 4 : request.TargetSeconds <= 20 ? 5 : 6;
         var plan = await planner.PlanAsync(ctx, planPage, sceneCount, request.TargetSeconds, ct);
         job.MoveTo(AiJobStage.Generating);

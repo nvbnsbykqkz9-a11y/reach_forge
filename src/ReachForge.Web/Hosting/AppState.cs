@@ -12,9 +12,6 @@ public sealed class AppState(TenantScopes scopes)
 {
     public Workspace? Workspace { get; private set; }
     public CreditAccount? Credits { get; private set; }
-    public int PendingApprovals { get; private set; }
-    public int OpenInbox { get; private set; }
-    public bool PublishingPaused { get; private set; }
 
     public event Action? Changed;
 
@@ -24,9 +21,6 @@ public sealed class AppState(TenantScopes scopes)
         {
             Workspace = await sp.GetRequiredService<WorkspaceService>().CurrentAsync(CancellationToken.None);
             Credits = await sp.GetRequiredService<ICreditService>().GetAccountAsync(CancellationToken.None);
-            PendingApprovals = (await sp.GetRequiredService<ApprovalService>().QueueAsync(CancellationToken.None)).Count;
-            OpenInbox = await sp.GetRequiredService<InboxService>().OpenCountAsync(CancellationToken.None);
-            PublishingPaused = await sp.GetRequiredService<SchedulingService>().IsPausedAsync(CancellationToken.None);
         });
         Changed?.Invoke();
     }

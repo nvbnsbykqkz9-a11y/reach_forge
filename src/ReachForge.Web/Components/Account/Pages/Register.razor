@@ -63,7 +63,7 @@ else
                 Input!.Email, Input!.Password), default);
             await SignIn.SignInAsync(user, isPersistent: false);
             await Accounts.AuditAsync(user, "auth.login", "register", default);
-            Nav.NavigateTo("/settings/channels?welcome=true", forceLoad: true);
+            Nav.NavigateTo("/", forceLoad: true);
         }
         catch (DomainException ex)
         {

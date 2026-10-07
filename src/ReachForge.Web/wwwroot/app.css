@@ -268,3 +268,6 @@ body { font-variant-numeric: tabular-nums; }
 .rf-summary { border-collapse: collapse; width: 100%; }
 .rf-summary th, .rf-summary td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--rf-color-border, rgba(0,0,0,.12)); vertical-align: top; }
 .rf-summary th { width: 9em; font-weight: 500; color: var(--rf-color-text-secondary); }
+
+/* 横に並べる選択ボタン（SNS を選ぶ） */
+.rf-choice.rf-choice-inline { flex-direction: row; align-items: center; width: auto; padding: 10px 16px; gap: 8px; }

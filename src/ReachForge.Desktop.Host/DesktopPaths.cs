@@ -20,7 +20,7 @@ public sealed class DesktopPaths(string root)
 
     /// <summary>
     /// 利用者が編集する細かな設定。アプリが起動時に読み込む（変更は再起動で反映）。
-    /// 生成 AI の API キーと SNS アプリの設定は画面（設定 → 生成AIの設定／SNSアプリの設定）で入力するのが基本。
+    /// 生成 AI の API キーは画面（設定 → 生成AIの設定）で入力するのが基本。
     /// </summary>
     public string UserConfig => Path.Combine(Root, "appsettings.user.json");
 
@@ -40,20 +40,12 @@ public sealed class DesktopPaths(string root)
     /// <summary>初回に作る設定ファイルのひな形（値が空の項目は使われない）。</summary>
     public const string UserConfigTemplate = """
         {
-          "Social": { "UseMock": false },
           "AI": {
             "Providers": {
               "anthropic": { "ApiKey": "" },
               "openai": { "ApiKey": "" },
               "google": { "ApiKey": "" }
             }
-          },
-          "Social": {
-            "X": { "ClientId": "", "ClientSecret": "" },
-            "Meta": { "AppId": "", "AppSecret": "" },
-            "Threads": { "AppId": "", "AppSecret": "" },
-            "TikTok": { "ClientKey": "", "ClientSecret": "", "Audited": false },
-            "YouTube": { "ClientId": "", "ClientSecret": "" }
           }
         }
         """;
@@ -63,11 +55,11 @@ public sealed class DesktopPaths(string root)
 public sealed record DesktopSettings
 {
     /// <summary>
-    /// アプリが待ち受けるポート（https://localhost:{Port}）。SNS アプリに登録するコールバック URL に含まれるため固定にする。
+    /// アプリが待ち受けるポート（https://localhost:{Port}）。
     /// </summary>
     public int Port { get; init; } = 47120;
 
-    /// <summary>ウィンドウを閉じてもタスクトレイに残り、予約投稿を続ける。</summary>
+    /// <summary>ウィンドウを閉じてもタスクトレイに残り、動画づくりを続ける。</summary>
     public bool KeepRunningInTray { get; init; } = true;
 
     /// <summary>トレイに残ったことを一度知らせたか。</summary>

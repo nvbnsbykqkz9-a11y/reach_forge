@@ -7,7 +7,6 @@ using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Identity;
-using ReachForge.Social.Mock;
 
 namespace ReachForge.Infrastructure.Persistence;
 
@@ -114,7 +113,7 @@ public static class DemoSeeder
         tenant.TenantId = TenantId;
         db.Tenants.Add(tenant);
 
-        var workspace = new Workspace { TenantId = TenantId, Name = "ほっこりカフェ 渋谷店", BrandColor = "#B45309", ApprovalSteps = 1 };
+        var workspace = new Workspace { TenantId = TenantId, Name = "ほっこりカフェ 渋谷店", BrandColor = "#B45309" };
         typeof(Workspace).GetProperty(nameof(Workspace.Id))!.SetValue(workspace, WorkspaceId);
         db.Workspaces.Add(workspace);
 
@@ -149,164 +148,8 @@ public static class DemoSeeder
                 Description = "濃厚なかぼちゃとクリームチーズのケーキ。", AvailableFrom = today, Url = "https://example.com/hokkori-cafe/menu/cake",
             });
 
-        db.Campaigns.AddRange(
-            new Campaign
-            {
-                TenantId = TenantId, WorkspaceId = WorkspaceId, Name = "秋の新作フェア", Code = "autumn2026", Objective = PostObjective.Traffic,
-                StartsOn = DateOnly.FromDateTime(now.UtcDateTime).AddDays(-20), EndsOn = DateOnly.FromDateTime(now.UtcDateTime).AddDays(25),
-                Kpi = CampaignKpi.LinkClicks, KpiTarget = 800, Budget = 30000m,
-                Platforms = [SocialPlatform.X, SocialPlatform.Instagram, SocialPlatform.Threads, SocialPlatform.Line],
-                Description = "秋限定メニューの来店を増やす",
-            },
-            new Campaign { TenantId = TenantId, WorkspaceId = WorkspaceId, Name = "インフルエンサー協業（広告）", Code = "collab-ad", IsAdvertisement = true });
-
-        var channels = new[] { SocialPlatform.X, SocialPlatform.Instagram, SocialPlatform.Threads, SocialPlatform.Line }
-            .Select(p => new Channel
-            {
-                TenantId = TenantId,
-                WorkspaceId = WorkspaceId,
-                Platform = p,
-                ExternalAccountId = $"demo-{p.ToString().ToLowerInvariant()}",
-                DisplayName = p == SocialPlatform.Line ? "ほっこりカフェ（LINE公式）" : "@hokkori_cafe",
-                CredentialSecretRef = "demo://",
-                TokenExpiresAt = p == SocialPlatform.Instagram ? now.AddDays(5) : now.AddDays(60),
-                Scopes = ["publish", "read_insights"],
-                LastCheckedAt = now,
-                IsDemo = true,
-            })
-            .ToList();
-        db.Channels.AddRange(channels);
-
         db.CreditAccounts.Add(CreditAccount.Open(TenantId, 1500, new DateOnly(today.Year, today.Month, 1)));
 
-        SeedHistory(db, channels, now);
-        SeedFollowers(db, channels, now);
-        SeedInbox(db, channels, now);
         await db.SaveChangesAsync(ct);
-    }
-
-    /// <summary>FAQ（返信案の根拠）と受信箱のサンプル。</summary>
-    private static void SeedInbox(ReachForgeDbContext db, IReadOnlyList<Channel> channels, DateTimeOffset now)
-    {
-        (string Q, string A, bool Auto)[] faq =
-        [
-            ("営業時間は何時から何時までですか？", "平日は8:00〜20:00、土日祝は9:00〜18:00です（火曜定休）。", true),
-            ("席の予約はできますか？", "4名様以上の席のご予約はお電話（03-0000-0000）で承っています。", false),
-            ("テイクアウトはできますか？", "すべてのドリンクと焼き菓子をテイクアウトいただけます。", true),
-            ("駐車場はありますか？", "専用の駐車場はありません。近くのコインパーキングをご利用ください。", true),
-            ("さつまいもラテはいつから販売しますか？", "秋限定さつまいもラテは10月10日（土）から販売します。", false),
-        ];
-        foreach (var (q, a, auto) in faq)
-        {
-            db.KnowledgeEntries.Add(new KnowledgeEntry { TenantId = TenantId, WorkspaceId = WorkspaceId, Question = q, Answer = a, AllowAutoReply = auto });
-        }
-
-        (int Minutes, string Author, string Text)[] samples =
-        [
-            (5, "@yuki_123", "注文したのに届いていません…どうなっていますか？"),
-            (12, "@hana_cafe", "ラテは何時から買えますか？"),
-            (60, "ゆうこ", "4人で予約できますか？"),
-            (95, "@mari.coffee", "写真すてきです！週末に行きます☕"),
-            (180, "@aya_m", "テイクアウトはできますか？"),
-            (300, "@promo_bot99", "フォロワーを1000人増やします！今すぐDMください"),
-            (1500, "@kenta_88", "土曜日は何時まで営業していますか？"),
-            (2000, "@sweets_love", "さつまいもラテ、とても美味しかったです！"),
-        ];
-        var settings = new InboxSettings();
-        for (var i = 0; i < samples.Length; i++)
-        {
-            var (minutes, author, text) = samples[i];
-            var channel = channels[i % channels.Count];
-            var labels = Domain.Engagement.InboxHeuristics.Classify(text);
-            var m = new InboxMessage
-            {
-                TenantId = TenantId, WorkspaceId = WorkspaceId, ChannelId = channel.Id, Platform = channel.Platform,
-                Kind = channel.Platform == SocialPlatform.Line ? InboxKind.DirectMessage : InboxKind.Comment,
-                ExternalId = $"seed-inbox-{i}", AuthorId = author, AuthorName = author, Text = text, ReceivedAt = now.AddMinutes(-minutes),
-            };
-            m.Classify(labels.Sentiment, labels.Intent, labels.Urgency, labels.Sensitive, labels.Language,
-                labels.Urgency switch
-                {
-                    Urgency.High => TimeSpan.FromHours(settings.SlaHighHours),
-                    Urgency.Medium => TimeSpan.FromHours(settings.SlaMediumHours),
-                    _ => null,
-                });
-            db.InboxMessages.Add(m);
-        }
-    }
-
-    /// <summary>過去60日のフォロワー数（日次）。</summary>
-    private static void SeedFollowers(ReachForgeDbContext db, IReadOnlyList<Channel> channels, DateTimeOffset now)
-    {
-        var today = DateOnly.FromDateTime(now.UtcDateTime);
-        for (var c = 0; c < channels.Count; c++)
-        {
-            for (var d = 60; d >= 1; d--)
-            {
-                var followers = MockInsightsReader.Followers(channels[c].ExternalAccountId, today.AddDays(-d));
-                db.ChannelMetrics.Add(new ChannelMetric
-                {
-                    TenantId = TenantId, WorkspaceId = WorkspaceId, ChannelId = channels[c].Id, Platform = channels[c].Platform,
-                    Date = today.AddDays(-d), Followers = followers,
-                });
-            }
-        }
-    }
-
-    /// <summary>過去60日の公開済み投稿と指標（ダッシュボード・最適時刻提案の計算用）。木曜19時・水曜12時が強い傾向にする。</summary>
-    private static void SeedHistory(ReachForgeDbContext db, IReadOnlyList<Channel> channels, DateTimeOffset now)
-    {
-        var random = new Random(42);
-        var jst = TimeSpan.FromHours(9);
-        var hours = new[] { 8, 12, 15, 19, 21 };
-        var topics = new[] { "新メニュー予告", "スタッフ紹介", "週末クーポン", "雨の日割引", "ラテアートの日", "モーニング再開" };
-
-        for (var i = 0; i < 48; i++)
-        {
-            var daysAgo = 2 + i * 58 / 48;
-            var hour = hours[random.Next(hours.Length)];
-            var localDate = now.ToOffset(jst).Date.AddDays(-daysAgo);
-            var postedAt = new DateTimeOffset(localDate.AddHours(hour), jst).ToUniversalTime();
-            var channel = channels[i % channels.Count];
-
-            var master = new MasterPost
-            {
-                TenantId = TenantId, WorkspaceId = WorkspaceId, Title = topics[i % topics.Length],
-                CoreMessage = $"{topics[i % topics.Length]}のお知らせです。", CreatedBy = "seed",
-            };
-            db.MasterPosts.Add(master);
-
-            var variant = PostVariant.Create(master, channel, master.CoreMessage, ["ほっこりカフェ"]);
-            variant.Schedule(postedAt, postedAt.AddMinutes(-1), requiresApproval: false);
-            variant.MarkPublishing();
-            variant.MarkPublished($"seed-{i}", null, postedAt);
-            db.PostVariants.Add(variant);
-
-            var boost = (localDate.DayOfWeek, hour) switch
-            {
-                (DayOfWeek.Thursday, 19) => 1.7,
-                (DayOfWeek.Wednesday, 12) => 1.4,
-                (_, 19) => 1.2,
-                _ => 1.0,
-            };
-            var impressions = random.Next(800, 2600);
-            var engagements = (int)(impressions * (0.035 + random.NextDouble() * 0.02) * boost);
-            db.PostMetrics.Add(new PostMetric
-            {
-                TenantId = TenantId,
-                PostVariantId = variant.Id,
-                Platform = channel.Platform,
-                PostedAt = postedAt,
-                CapturedAt = postedAt.AddDays(7) < now ? postedAt.AddDays(7) : now,
-                Impressions = impressions,
-                Reach = (long)(impressions * 0.8),
-                Likes = engagements * 7 / 10,
-                Comments = engagements / 10,
-                Shares = engagements / 10,
-                Saves = engagements / 10,
-                LinkClicks = random.Next(5, 60),
-                Follows = random.Next(0, 9),
-            });
-        }
     }
 }

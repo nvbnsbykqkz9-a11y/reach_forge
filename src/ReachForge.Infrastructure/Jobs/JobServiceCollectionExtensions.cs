@@ -60,8 +60,6 @@ public static class JobServiceCollectionExtensions
         var inProcess = options.Queue == QueueProvider.InProcess;
         if (!all && !inProcess) return services;
 
-        services.TryAddSingleton<WebhookWorkHandler>();
-        services.AddSingleton<IWorkHandler>(sp => sp.GetRequiredService<WebhookWorkHandler>());
         if (all) services.AddSingleton<IWorkHandler, AiJobWorkHandler>();
         if (inProcess) services.AddHostedService<InProcessWorkConsumer>();
         else services.AddHostedService<ServiceBusWorkConsumer>();
@@ -69,14 +67,12 @@ public static class JobServiceCollectionExtensions
     }
 
     /// <summary>
-    /// ジョブを実行するプロセス（Worker、または Worker:RunInWeb の Web）に、予約配信・AI ジョブの巡回・定期ジョブ・キューの処理役を登録する。
+    /// ジョブを実行するプロセス（Worker、または Worker:RunInWeb の Web）に、AI ジョブの巡回・定期ジョブ・キューの処理役を登録する。
     /// 定期ジョブは Jobs:Engine により、プロセス内のタイマーか Hangfire サーバで動かす。
     /// </summary>
     public static IServiceCollection AddReachForgeJobs(this IServiceCollection services, IConfiguration configuration)
     {
-        services.Configure<PublishDispatcherOptions>(configuration.GetSection(PublishDispatcherOptions.SectionName));
-        // 予約配信（±60秒の精度が要るため短い間隔で巡回し、楽観排他で二重投稿を防ぐ）と AI ジョブの巡回は常にこのプロセスで動かす
-        services.AddHostedService<PublishDispatcher>();
+        // AI ジョブの巡回は常にこのプロセスで動かす
         services.AddHostedService<AiJobDispatcher>();
 
         if (Options(configuration).Engine == JobEngine.Hangfire)

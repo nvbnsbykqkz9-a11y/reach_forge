@@ -1,8 +1,0 @@
-@* グラフ ⇄ 表 の切り替え（読み上げ・色覚の違いに対応：RF-UX-001 SCR-10） *@
-<MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@(Value ? Icons.Material.Rounded.BarChart : Icons.Material.Rounded.TableChart)"
-           OnClick="() => ValueChanged.InvokeAsync(!Value)" aria-pressed="@(Value ? "true" : "false")">@(Value ? "グラフで見る" : "表で見る")</MudButton>
-
-@code {
-    [Parameter] public bool Value { get; set; }
-    [Parameter] public EventCallback<bool> ValueChanged { get; set; }
-}

@@ -21,7 +21,7 @@ namespace ReachForge.Application.Tests;
 /// <summary>ジョブ基盤（14章）：定期ジョブ・Hangfire・キュー・クレジットの月次付与・データ保存期限。</summary>
 public class JobTests
 {
-    private static readonly TimeZoneInfo Tokyo = SchedulingService.FindTimeZone("Asia/Tokyo");
+    private static readonly TimeZoneInfo Tokyo = CreditResetService.FindTimeZone("Asia/Tokyo");
 
     /// <summary>Hangfire のログ設定は static。ほかのテストで破棄されたホストのロガーを使わないよう、何も出力しないものに戻す。</summary>
     private sealed class SilentLogProvider : Hangfire.Logging.ILogProvider, Hangfire.Logging.ILog
@@ -75,44 +75,39 @@ public class JobTests
     }
 
     [Fact]
-    public async Task Data_retention_deletes_only_expired_rows()
+    public async Task Data_retention_deletes_only_expired_rows_and_keeps_lp_videos()
     {
         await using var f = await AppFixture.CreateAsync();
-        Guid oldAudit, oldIdea, newIdea, oldJob, runningJob;
+        Guid oldAudit, oldJob, runningJob, lpJob;
         await using (var scope = f.Scope())
         {
             var db = f.Get<ReachForgeDbContext>(scope);
             var audit = new AuditLog { TenantId = DemoSeeder.TenantId, Actor = "田中", Action = "test.old" };
-            var idea = new TrendIdea { TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, Topic = "古いネタ",
-                RecommendedDate = new DateOnly(2026, 10, 10), Status = IdeaStatus.Used };
-            var done = new AiJob { TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, TaskType = AiTaskType.Image };
-            done.Start(f.Clock.GetUtcNow());
-            done.Succeed([], 0, f.Clock.GetUtcNow());
+            AiJob Done()
+            {
+                var job = new AiJob { TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, TaskType = AiTaskType.Image };
+                job.Start(f.Clock.GetUtcNow());
+                job.Succeed([], 0, f.Clock.GetUtcNow());
+                return job;
+            }
+            var done = Done();
+            var video = Done();
             var running = new AiJob { TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, TaskType = AiTaskType.Image };
             running.Start(f.Clock.GetUtcNow());
-            db.AddRange(audit, idea, done, running,
-                new IdempotencyRecord { TenantId = DemoSeeder.TenantId, Scope = "s", Key = "old", RequestHash = "h" });
+            var project = new LpProject
+            {
+                TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, Url = "https://example.com", VideoJobId = video.Id,
+            };
+            db.AddRange(audit, done, video, running, project);
             await db.SaveChangesAsync();
-            (oldAudit, oldIdea, oldJob, runningJob) = (audit.Id, idea.Id, done.Id, running.Id);
+            (oldAudit, oldJob, runningJob, lpJob) = (audit.Id, done.Id, running.Id, video.Id);
         }
 
         f.Clock.Advance(TimeSpan.FromDays(800));
-        await using (var scope = f.Scope())
-        {
-            var db = f.Get<ReachForgeDbContext>(scope);
-            var idea = new TrendIdea { TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, Topic = "新しいネタ",
-                RecommendedDate = DateOnly.FromDateTime(f.Clock.GetUtcNow().UtcDateTime) };
-            db.AddRange(idea, new IdempotencyRecord { TenantId = DemoSeeder.TenantId, Scope = "s", Key = "new", RequestHash = "h" });
-            await db.SaveChangesAsync();
-            newIdea = idea.Id;
-        }
-
         await using (var worker = f.Scope(c => c.IsSystem = true))
         {
             var result = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
-            Assert.Equal(1, result.Idempotency);
             Assert.Equal(1, result.AiJobs);
-            Assert.Equal(1, result.TrendIdeas);
             Assert.True(result.AuditLogs >= 1);
             Assert.True(result.Invitations >= 0);
         }
@@ -121,49 +116,9 @@ public class JobTests
         {
             var db = f.Get<ReachForgeDbContext>(scope);
             Assert.False(await db.AuditLogs.AnyAsync(a => a.Id == oldAudit));
-            Assert.False(await db.TrendIdeas.AnyAsync(i => i.Id == oldIdea));
-            Assert.True(await db.TrendIdeas.AnyAsync(i => i.Id == newIdea));
             Assert.False(await db.AiJobs.AnyAsync(j => j.Id == oldJob));
             Assert.True(await db.AiJobs.AnyAsync(j => j.Id == runningJob)); // 終わっていないジョブは残す
-            Assert.Equal("new", (await db.IdempotencyRecords.SingleAsync()).Key);
-        }
-    }
-
-    [Fact]
-    public async Task Post_metrics_older_than_13_months_move_to_monthly_rollups_without_changing_analytics()
-    {
-        await using var f = await AppFixture.CreateAsync();
-        var filter = new AnalyticsFilter(f.Clock.GetUtcNow().AddDays(-120), f.Clock.GetUtcNow().AddDays(1));
-        AnalyticsData before;
-        int details;
-        await using (var scope = f.Scope())
-        {
-            before = await f.Get<AnalyticsService>(scope).BuildAsync(filter, CancellationToken.None);
-            details = await f.Get<IAppDbContext>(scope).PostMetrics.CountAsync();
-            Assert.True(details > 0);
-        }
-
-        f.Clock.Advance(TimeSpan.FromDays(31 * 15));
-        await using (var worker = f.Scope(c => c.IsSystem = true))
-        {
-            var result = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
-            Assert.Equal(details, result.PostMetricsRolledUp);
-            var again = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
-            Assert.Equal(0, again.PostMetricsRolledUp); // 冪等
-        }
-
-        await using (var scope = f.Scope())
-        {
-            var db = f.Get<IAppDbContext>(scope);
-            Assert.Equal(0, await db.PostMetrics.CountAsync());
-            var rollups = await db.PostMetricRollups.AsNoTracking().ToListAsync();
-            Assert.NotEmpty(rollups);
-            Assert.Equal(details, rollups.Sum(r => r.Snapshots));
-            Assert.All(rollups, r => Assert.Equal(1, r.Month.Day));
-
-            var after = await f.Get<AnalyticsService>(scope).BuildAsync(filter, CancellationToken.None);
-            Assert.Equal(before.Kpis.Select(k => (k.Label, k.Value)), after.Kpis.Select(k => (k.Label, k.Value)));
-            Assert.Equal(before.Ranking.Select(r => (r.VariantId, r.Impressions)), after.Ranking.Select(r => (r.VariantId, r.Impressions)));
+            Assert.True(await db.AiJobs.AnyAsync(j => j.Id == lpJob)); // つくったものの画面で使う動画のジョブは残す
         }
     }
 
@@ -187,10 +142,10 @@ public class JobTests
             new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.FromHours(9)), Tokyo);
         Assert.Equal(new DateTimeOffset(2026, 10, 8, 2, 0, 0, TimeSpan.FromHours(9)), next);
 
-        var tokens = SystemJobCatalog.Find("token-refresh")!;
-        Assert.Equal(new DateTimeOffset(2026, 10, 7, 18, 0, 0, TimeSpan.Zero), // 03:00 JST
-            Infrastructure.Jobs.HostedJobScheduler.NextOccurrence(CronExpression.Parse(tokens.Cron),
-                new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero), Tokyo));
+        var credits = SystemJobCatalog.Find("credit-reset")!;
+        Assert.Equal(new DateTimeOffset(2026, 10, 7, 13, 0, 0, TimeSpan.Zero), // 毎時 0 分（22:00 JST）
+            Infrastructure.Jobs.HostedJobScheduler.NextOccurrence(CronExpression.Parse(credits.Cron),
+                new DateTimeOffset(2026, 10, 7, 12, 30, 0, TimeSpan.Zero), Tokyo));
         Assert.Equal(SystemJobCatalog.All.Count, SystemJobCatalog.All.Select(j => j.Id).Distinct().Count());
     }
 
@@ -218,8 +173,6 @@ public class JobTests
             .GetFilters(Job.FromExpression<HangfireSystemJob>(j => j.RunAsync(id, CancellationToken.None)))
             .Select(f => f.Instance).OfType<AutomaticRetryAttribute>().Single().Attempts;
 
-        Assert.Equal(3, Attempts("token-refresh"));
-        Assert.Equal(0, Attempts("inbox-poll"));
         Assert.Equal(0, Attempts("credit-reset"));
         Assert.Equal(0, Attempts("data-retention"));
     }
@@ -266,14 +219,14 @@ public class JobTests
     public async Task In_process_queue_retries_then_dead_letters_and_can_requeue()
     {
         InProcessWorkConsumer.BaseRetryDelay = TimeSpan.FromMilliseconds(1);
-        var flaky = new FlakyHandler(WorkQueues.Webhooks, failures: 2);
+        var flaky = new FlakyHandler("test-queue", failures: 2);
         var broken = new FlakyHandler(WorkQueues.AiJobs, failures: WorkQueues.MaxDeliveryCount);
         var queue = new InProcessWorkQueue([flaky, broken], TimeProvider.System);
         var consumer = new InProcessWorkConsumer(queue, [flaky, broken], TimeProvider.System, NullLogger<InProcessWorkConsumer>.Instance);
         await consumer.StartAsync(CancellationToken.None);
         try
         {
-            await queue.EnqueueAsync(WorkQueues.Webhooks, "w1", CancellationToken.None);
+            await queue.EnqueueAsync("test-queue", "w1", CancellationToken.None);
             await queue.EnqueueAsync(WorkQueues.AiJobs, "a1", CancellationToken.None);
             await queue.EnqueueAsync("unknown", "x", CancellationToken.None); // 処理役のいないキューは捨てる
 
@@ -353,14 +306,14 @@ public class JobTests
             Assert.Empty(sp.GetServices<IWorkHandler>());
         }
 
-        // Worker：Webhook と AI ジョブを Service Bus から受け取る
+        // Worker：AI ジョブを Service Bus から受け取る
         var worker = new ServiceCollection().AddLogging();
         worker.AddReachForge(config);
         worker.AddReachForgeWorkConsumers(config, all: true);
         Assert.Contains(worker, d => d.ImplementationType == typeof(ServiceBusWorkConsumer));
         await using (var sp = worker.BuildServiceProvider())
         {
-            Assert.Equal([WorkQueues.Webhooks, WorkQueues.AiJobs], sp.GetServices<IWorkHandler>().Select(h => h.Queue));
+            Assert.Equal([WorkQueues.AiJobs], sp.GetServices<IWorkHandler>().Select(h => h.Queue));
         }
 
         // 接続先がなければ起動時に分かるようにする

@@ -9,6 +9,8 @@ using ReachForge.AI.Routing;
 using ReachForge.AI.Services;
 using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
+using ReachForge.Application.Services;
+using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
 
@@ -75,7 +77,7 @@ public class RouterTests
     }
 
     private static ChatOptions DigestOptions() =>
-        new AiCallContext(AiTaskType.Summarize, null, new DigestStubPayload("秋限定ラテ", "店舗でお待ちしています")).Apply();
+        new AiCallContext(AiTaskType.Summarize, null, new AltStubPayload("秋限定ラテ")).Apply();
 
     [Fact]
     public async Task Fails_over_to_next_provider_and_records_usage()
@@ -141,56 +143,50 @@ public class RouterTests
     }
 }
 
-public class VariantGenerationTests
+public class LpCreativeWriterTests
 {
-    private static VariantGenerationService Service()
+    private static LpCreativeWriter Writer()
     {
         var router = Substitute.For<IModelRouter>();
         router.Resolve(Arg.Any<AiTaskType>()).Returns(new StubChatClient());
-        return new VariantGenerationService(router, PromptTests.Catalog());
+        return new LpCreativeWriter(router, PromptTests.Catalog());
     }
 
-    private static VariantRequest Request(SocialPlatform p, string? link = null, bool includeUrlForX = false) => new()
-    {
-        WorkspaceId = Guid.NewGuid(),
-        Platform = p,
-        Headline = "今年の秋は、ほっくり甘い一杯から。",
-        Body = "秋限定さつまいもラテが登場します。北海道産さつまいもを使った、ほっくり甘いラテ。" + new string('。', 10),
-        Cta = "お近くの店舗でお待ちしています",
-        Hashtags = ["秋限定", "さつまいもラテ", "ほっこりカフェ", "渋谷カフェ", "カフェ巡り"],
-        LinkUrl = link,
-        CampaignCode = "autumn2026",
-        IncludeUrlForX = includeUrlForX,
-    };
+    private static readonly WebPage Page = new(new Uri("https://example.com/latte"), "秋限定さつまいもラテ | ほっこりカフェ",
+        "北海道産さつまいもを使った、ほっくり甘いラテ。10月末までの期間限定です。", "秋限定さつまいもラテ 680円。", [], []);
+
+    private static readonly BrandContext Brand = new(new BrandProfile { BrandName = "ほっこりカフェ", NgWords = ["激安"] }, []);
 
     [Theory]
-    [InlineData(SocialPlatform.X)]
     [InlineData(SocialPlatform.Instagram)]
+    [InlineData(SocialPlatform.X)]
+    [InlineData(SocialPlatform.Facebook)]
     [InlineData(SocialPlatform.Threads)]
-    [InlineData(SocialPlatform.Line)]
-    [InlineData(SocialPlatform.Pinterest)]
+    [InlineData(SocialPlatform.TikTok)]
     [InlineData(SocialPlatform.YouTube)]
-    public async Task Output_satisfies_platform_constraints(SocialPlatform platform)
+    [InlineData(SocialPlatform.Line)]
+    public async Task Copies_fit_each_platforms_limits(SocialPlatform platform)
     {
-        var result = await Service().GenerateAsync(Request(platform, "https://example.com/latte"), null, CancellationToken.None);
+        var result = await Writer().WriteAsync(Brand, Page, platform, CancellationToken.None);
+        var limits = AdCopyLimits.For(platform);
+        var c = PlatformCatalog.Get(platform);
+        Assert.Equal(3, result.AdCopies.Count);
+        Assert.All(result.AdCopies, x =>
+        {
+            Assert.InRange(PostText.Length(x.PrimaryText), 1, limits.PrimaryText);
+            Assert.InRange(PostText.Length(x.Headline), 0, limits.Headline);
+            Assert.InRange(PostText.Length(x.Description), 0, limits.Description);
+            Assert.False(PostText.ContainsUrl(x.PrimaryText));
+        });
+        Assert.InRange(PostText.Length(PostText.Compose(result.PostText, result.Hashtags)), 1, c.MaxBodyLength);
+        Assert.InRange(result.Hashtags.Count, 0, c.MaxHashtags ?? 30);
         Assert.False(result.Guardrail.HasErrors, string.Join(", ", result.Guardrail.Findings.Select(f => f.Message)));
     }
 
     [Fact]
-    public async Task X_omits_url_unless_explicitly_included()
+    public async Task Line_has_no_hashtags_and_tiktok_has_no_headline()
     {
-        var without = await Service().GenerateAsync(Request(SocialPlatform.X, "https://example.com"), null, CancellationToken.None);
-        Assert.False(PostText.ContainsUrl(without.Body));
-
-        var with = await Service().GenerateAsync(Request(SocialPlatform.X, "https://example.com", includeUrlForX: true), null,
-            CancellationToken.None);
-        Assert.Contains("utm_source=x", with.Body);
-    }
-
-    [Fact]
-    public async Task Line_has_no_hashtags_and_youtube_includes_shorts()
-    {
-        Assert.Empty((await Service().GenerateAsync(Request(SocialPlatform.Line), null, CancellationToken.None)).Hashtags);
-        Assert.Contains("Shorts", (await Service().GenerateAsync(Request(SocialPlatform.YouTube), null, CancellationToken.None)).Hashtags);
+        Assert.Empty((await Writer().WriteAsync(Brand, Page, SocialPlatform.Line, CancellationToken.None)).Hashtags);
+        Assert.All((await Writer().WriteAsync(Brand, Page, SocialPlatform.TikTok, CancellationToken.None)).AdCopies, x => Assert.Empty(x.Headline));
     }
 }

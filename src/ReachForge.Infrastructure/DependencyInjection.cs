@@ -1,6 +1,5 @@
 using Azure.Identity;
 using Azure.Storage.Blobs;
-using Azure.Security.KeyVault.Secrets;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,11 +13,8 @@ using ReachForge.Infrastructure.Identity;
 using ReachForge.Infrastructure.Jobs;
 using ReachForge.Infrastructure.Media;
 using ReachForge.Infrastructure.Persistence;
-using ReachForge.Infrastructure.Reporting;
 using ReachForge.Infrastructure.Web;
 using ReachForge.Application.Ai;
-using ReachForge.Infrastructure.Security;
-using ReachForge.Social;
 
 namespace ReachForge.Infrastructure;
 
@@ -34,7 +30,6 @@ public static class DependencyInjection
     {
         services.AddReachForgeApplication();
         services.AddReachForgeAi(configuration);
-        services.AddReachForgeSocial(configuration);
 
         // DB は SQLite（Windows 版・1社で使う）
         var connection = configuration.GetConnectionString("ReachForge") ?? "Data Source=reachforge.local.db";
@@ -53,7 +48,6 @@ public static class DependencyInjection
             .SetApplicationName("ReachForge")
             .PersistKeysToDbContext<ReachForgeDbContext>();
 
-        // OAuth の state 等の一時保管：複数インスタンスでは Redis
         // 画面へのリアルタイム通知（AI ジョブの進捗・受信箱）：Redis があれば Pub/Sub で Web・Worker 間に届ける
         services.AddSingleton<Realtime.RealtimeBus>();
         if (configuration.GetConnectionString("Redis") is { Length: > 0 } redis)
@@ -68,18 +62,6 @@ public static class DependencyInjection
         {
             services.AddDistributedMemoryCache();
             services.AddSingleton<IRealtimeNotifier, Realtime.LocalRealtimeNotifier>();
-        }
-        services.AddScoped<IOAuthStateStore, DistributedOAuthStateStore>();
-
-        // SNS トークン：Key Vault（本番）または DB に暗号化保存
-        if (configuration["Secrets:KeyVaultUri"] is { Length: > 0 } vaultUri)
-        {
-            services.AddSingleton(new SecretClient(new Uri(vaultUri), new DefaultAzureCredential()));
-            services.AddScoped<ICredentialStore, KeyVaultCredentialStore>();
-        }
-        else
-        {
-            services.AddScoped<ICredentialStore, EncryptedDbCredentialStore>();
         }
 
         services.AddScoped<AccountService>();
@@ -159,8 +141,6 @@ public static class DependencyInjection
         services.AddScoped<IWebPageFetcher, SafeWebPageFetcher>();
 
         // ---- レポート（F-10）・メール ----
-        services.Configure<ReportOptions>(configuration.GetSection(ReportOptions.SectionName));
-        services.AddSingleton<IReportPdfRenderer, QuestPdfReportRenderer>();
         services.Configure<EmailOptions>(configuration.GetSection(EmailOptions.SectionName));
         if (configuration.GetSection(EmailOptions.SectionName).Get<EmailOptions>() is { IsConfigured: true })
         {

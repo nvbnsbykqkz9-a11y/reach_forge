@@ -9,8 +9,7 @@ namespace ReachForge.Application.Services;
 
 public sealed record UsageBreakdown(string Label, int Credits);
 
-public sealed record UsageSummary(CreditAccount Account, IReadOnlyList<UsageBreakdown> ByFeature, int XPostsThisPeriod,
-    decimal EstimatedSnsCostUsd, DateOnly? ProjectedExhaustion);
+public sealed record UsageSummary(CreditAccount Account, IReadOnlyList<UsageBreakdown> ByFeature, DateOnly? ProjectedExhaustion);
 
 /// <summary>ワークスペース・ブランド設定・利用量（F-02 / F-13 / SCR-04 / SCR-14）。</summary>
 public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, ICreditService credits, TimeProvider clock)
@@ -19,6 +18,13 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
         db.Workspaces.FirstAsync(w => w.Id == tenant.WorkspaceId, ct);
 
     public Task<Tenant> TenantAsync(CancellationToken ct) => db.Tenants.FirstAsync(t => t.Id == tenant.TenantId, ct);
+
+    /// <summary>テナントのタイムゾーン（画面の日時の表示に使う）。</summary>
+    public async Task<TimeZoneInfo> TenantTimeZoneAsync(CancellationToken ct)
+    {
+        var id = await db.Tenants.Where(t => t.Id == tenant.TenantId).Select(t => t.TimeZoneId).FirstOrDefaultAsync(ct);
+        return CreditResetService.FindTimeZone(id);
+    }
 
     public async Task<BrandProfile> GetBrandAsync(CancellationToken ct) =>
         await db.BrandProfiles.FirstOrDefaultAsync(b => b.WorkspaceId == tenant.WorkspaceId, ct)
@@ -84,9 +90,6 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
         return product;
     }
 
-    public async Task<IReadOnlyList<Campaign>> CampaignsAsync(CancellationToken ct) =>
-        await db.Campaigns.Where(c => c.WorkspaceId == tenant.WorkspaceId).OrderBy(c => c.Name).ToListAsync(ct);
-
     public async Task<UsageSummary> UsageAsync(CancellationToken ct)
     {
         var account = await credits.GetAccountAsync(ct);
@@ -102,15 +105,8 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
             .OrderByDescending(x => x.Credits)
             .ToList();
 
-        var xPosts = await db.PostVariants
-            .Where(v => v.Platform == SocialPlatform.X && v.Status == VariantStatus.Published && v.PublishedAt >= since)
-            .Select(v => new { v.Body, v.UrlCostAcknowledged })
-            .ToListAsync(ct);
-        var x = Domain.Platforms.PlatformCatalog.Get(SocialPlatform.X);
-        var snsCost = xPosts.Sum(p => Domain.Platforms.PostText.ContainsUrl(p.Body) ? x.CostPerPostWithUrlUsd!.Value : x.CostPerPostUsd!.Value);
-
         var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        return new UsageSummary(account, byFeature, xPosts.Count, snsCost, account.ProjectedExhaustionDate(today));
+        return new UsageSummary(account, byFeature, account.ProjectedExhaustionDate(today));
     }
 
     public static string TaskLabel(AiTaskType t) => t switch

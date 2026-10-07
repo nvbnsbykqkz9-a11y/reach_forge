@@ -16,7 +16,7 @@ public sealed class TimeDisplay(TenantScopes scopes, TimeProvider clock)
     public async Task<TimeZoneInfo> ZoneAsync()
     {
         if (_tz is not null) return _tz;
-        _loading ??= scopes.RunAsync(sp => sp.GetRequiredService<SchedulingService>().TenantTimeZoneAsync(CancellationToken.None));
+        _loading ??= scopes.RunAsync(sp => sp.GetRequiredService<WorkspaceService>().TenantTimeZoneAsync(CancellationToken.None));
         return _tz = await _loading;
     }
 

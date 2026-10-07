@@ -1,0 +1,29 @@
+@* つくったものの一覧（LP ごと） *@
+@inject TimeDisplay Time
+
+<div class="d-flex flex-column gap-2">
+    @foreach (var p in Projects)
+    {
+        <MudPaper Class="pa-3 rf-card" Elevation="0" Outlined="true">
+            <div class="d-flex align-center flex-wrap gap-2">
+                <MudLink Href="@($"/lp/{p.Id}")" Typo="Typo.subtitle1" Style="flex:1;min-width:200px"><b>@p.Title</b></MudLink>
+                @if (p.Status == LpProjectStatus.Failed)
+                {
+                    <MudChip T="string" Size="Size.Small" Color="Color.Error">つくれませんでした</MudChip>
+                }
+                <MudText Typo="Typo.caption">@Time.Short(p.CreatedAt)</MudText>
+            </div>
+            <div class="d-flex flex-wrap gap-3 mt-1">
+                @foreach (var platform in p.Platforms)
+                {
+                    <span class="mud-typography-caption"><span class="rf-sns-dot" style="background:@RfSns.Color(platform)" aria-hidden="true"></span>@PlatformCatalog.Get(platform).DisplayName</span>
+                }
+                @if (p.VideoJobId is not null) { <span class="mud-typography-caption">＋ 縦型の動画</span> }
+            </div>
+        </MudPaper>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<LpProject> Projects { get; set; } = [];
+}

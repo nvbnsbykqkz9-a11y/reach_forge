@@ -28,7 +28,7 @@ public sealed record DesktopServerOptions(DesktopPaths Paths, int Port, string? 
 /// <summary>
 /// Windows 版の本体：Web 版と同じアプリ（ReachForge.Web）を、デスクトップアプリと同じプロセスの中で起動する。
 /// https://localhost:{Port} だけで待ち受け（外部からは接続できない）、起動ごとに作る秘密の値（LaunchToken）で自動ログインする。
-/// 予約投稿・指標の取得・受信箱の取り込みなどの定期処理も同じプロセスで動く。ログはデータフォルダーの logs に残す。
+/// 動画づくりなどのジョブも同じプロセスで動く。ログはデータフォルダーの logs に残す。
 /// </summary>
 public sealed class DesktopServer : IAsyncDisposable
 {
@@ -137,7 +137,7 @@ public sealed class DesktopServer : IAsyncDisposable
     }
 
     /// <summary>
-    /// ポートが空いているか確かめる。SNS アプリに登録したコールバック URL が変わらないよう、空いていなくても別のポートには逃げない。
+    /// ポートが空いているか確かめる（ブラウザの保存した設定が変わらないよう、空いていなくても別のポートには逃げない）。
     /// </summary>
     internal static void EnsurePortIsFree(int port)
     {
@@ -150,8 +150,7 @@ public sealed class DesktopServer : IAsyncDisposable
         catch (SocketException)
         {
             throw new DesktopStartupException(
-                $"ポート {port} を別のアプリが使っています。ReachForge がすでに起動していないか確認するか、設定（desktop.json の Port）を変えてください。" +
-                "ポートを変えた場合は、SNS アプリに登録したコールバック URL も変える必要があります。");
+                $"ポート {port} を別のアプリが使っています。ReachForge がすでに起動していないか確認するか、設定（desktop.json の Port）を変えてください。");
         }
     }
 

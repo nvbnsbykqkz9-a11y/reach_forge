@@ -162,14 +162,12 @@ public static class ReachForgeApp
         app.UseAuthentication();
         app.UseRateLimiter();
         app.UseAuthorization();
-        app.UseMiddleware<IdempotencyMiddleware>();
         app.UseAntiforgery();
 
         app.MapStaticAssets();
         app.MapAccountEndpoints();
-        app.MapReachForgeApi();
         app.MapMediaEndpoints();
-        app.MapWebhookEndpoints();
+        app.MapLpEndpoints();
         app.MapDefaultEndpoints();
         app.MapDesktopEndpoints();
         app.MapHub<RealtimeHub>(RealtimeHub.Path);

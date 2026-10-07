@@ -135,13 +135,6 @@ public sealed class AiSafetyBlockedException(string category)
     public string Category { get; } = category;
 }
 
-/// <summary>広告文の依頼（SNS・目的・伝えたいこと）。</summary>
-public sealed record AdCopyRequest(SocialPlatform Platform, AdObjective Objective, string Theme, string? LinkUrl);
-
-/// <summary>広告文の案（本文・見出し・説明・ボタン）。</summary>
-public sealed record AdCopyCandidate(string PrimaryText, string Headline, string Description, string CallToAction,
-    Domain.Guardrails.GuardrailReport? Guardrail = null);
-
 /// <summary>広告文の長さの上限（各社の入力欄の上限・推奨）。</summary>
 public sealed record AdCopyLimits(int PrimaryText, int Headline, int Description)
 {
@@ -150,12 +143,20 @@ public sealed record AdCopyLimits(int PrimaryText, int Headline, int Description
         SocialPlatform.TikTok => new(100, 0, 0),
         SocialPlatform.X => new(280, 70, 0),
         SocialPlatform.YouTube => new(90, 40, 90),
+        SocialPlatform.Line => new(75, 20, 0),
         _ => new(125, 40, 30),
     };
 }
 
-/// <summary>広告文をつくる（LLM の構造化出力）。景表法・薬機法の規制表現と、ブランドの NG ワードは使わない。</summary>
-public interface IAdCopyWriter
+/// <summary>LP からつくった、1つの SNS 向けの文章（広告文の案3つ・投稿文・ハッシュタグ）とガードレールの結果。</summary>
+public sealed record LpCreative(IReadOnlyList<LpAdCopy> AdCopies, string PostText, IReadOnlyList<string> Hashtags,
+    Domain.Guardrails.GuardrailReport Guardrail);
+
+/// <summary>
+/// LP の内容から、SNS ごとの広告文と投稿文をつくる（LLM の構造化出力）。数値・効果は LP に書かれたものだけを使い、
+/// 景表法・薬機法の規制表現とブランドの NG ワードは使わない。各社の文字数の上限に収める。
+/// </summary>
+public interface ILpCreativeWriter
 {
-    Task<IReadOnlyList<AdCopyCandidate>> WriteAsync(Services.BrandContext brand, AdCopyRequest request, CancellationToken ct);
+    Task<LpCreative> WriteAsync(Services.BrandContext brand, WebPage page, SocialPlatform platform, CancellationToken ct);
 }

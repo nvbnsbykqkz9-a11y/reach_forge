@@ -52,7 +52,6 @@ public sealed class AccountService(
             {
                 TenantId = tenant.Id,
                 Name = string.IsNullOrWhiteSpace(cmd.WorkspaceName) ? cmd.CompanyName.Trim() : cmd.WorkspaceName.Trim(),
-                ApprovalSteps = 0, // 1人で始める場合は承認なし。メンバーを招待したら設定で有効にする
             };
             db.Tenants.Add(tenant);
             db.Workspaces.Add(workspace);

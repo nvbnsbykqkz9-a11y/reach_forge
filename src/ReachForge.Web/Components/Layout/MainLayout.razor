@@ -76,21 +76,7 @@
         <nav aria-label="メインナビゲーション">
             <MudNavMenu Class="pt-2">
                 <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Home">ホーム</MudNavLink>
-                <MudNavGroup Title="つくる" Icon="@Icons.Material.Rounded.AutoAwesome" IconColor="Color.Secondary" Expanded="true">
-                    @foreach (var c in RfSns.Creatable)
-                    {
-                        <MudNavLink Href="@RfSns.CreateHref(c.Platform)">
-                            <span class="rf-sns-dot" style="background:@RfSns.Color(c.Platform)" aria-hidden="true"></span>@c.DisplayName
-                        </MudNavLink>
-                    }
-                </MudNavGroup>
-                <MudNavLink Href="/inbox" Icon="@Icons.Material.Rounded.Inbox">
-                    受信箱
-                    @if (State.OpenInbox > 0)
-                    {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2" aria-label="@($"未対応 {State.OpenInbox}件")">@(State.OpenInbox > 99 ? "99+" : State.OpenInbox)</MudChip>
-                    }
-                </MudNavLink>
+                <MudNavLink Href="/lp" Icon="@Icons.Material.Rounded.Collections">つくったもの</MudNavLink>
                 <MudNavLink Href="/settings" Icon="@Icons.Material.Rounded.Settings">設定</MudNavLink>
                 <AuthorizeView Policy="@OpsAccess.Policy">
                     <MudNavLink Href="/ops" Icon="@Icons.Material.Rounded.MonitorHeart">運用</MudNavLink>
@@ -100,16 +86,6 @@
     </MudDrawer>
 
     <MudMainContent>
-        @if (State.PublishingPaused)
-        {
-            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Square="true" Class="rf-paused-banner">
-                すべての予約投稿を一時停止しています。再開するまでSNSへの投稿は行われません。
-                @if (RolePolicy.Can(Tenant.Role, Permission.PauseAllPublishing))
-                {
-                    <MudButton Variant="Variant.Outlined" Color="Color.Inherit" Size="Size.Small" Class="ml-4" OnClick="ResumeAsync">再開する</MudButton>
-                }
-            </MudAlert>
-        }
         <main id="main" class="rf-main" tabindex="-1">
             @Body
         </main>
@@ -133,10 +109,10 @@
         State.Changed += OnChanged;
         await Time.ZoneAsync();
         await State.RefreshAsync();
-        // 受信箱の新着・AI ジョブの完了（クレジット残量）をナビ・トップバーへすぐに反映する
+        // AI ジョブの完了（クレジット残量）をトップバーへすぐに反映する
         var (tenantId, workspaceId) = (Tenant.TenantId, Tenant.WorkspaceId);
         _realtime = Realtime.Subscribe(e => e.TenantId == tenantId && e.WorkspaceId == workspaceId
-            && e is InboxUpdatedEvent or JobProgressEvent { Status: AiJobStatus.Succeeded or AiJobStatus.Failed or AiJobStatus.Canceled }
+            && e is JobProgressEvent { Status: AiJobStatus.Succeeded or AiJobStatus.Failed or AiJobStatus.Canceled }
                 ? InvokeAsync(State.RefreshAsync)
                 : Task.CompletedTask);
         _memberships = await Scopes.RunAsync(sp => sp.GetRequiredService<ReachForge.Infrastructure.Identity.AccountService>()
@@ -144,20 +120,6 @@
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
-
-    private async Task ResumeAsync()
-    {
-        try
-        {
-            await Scopes.RunAsync(sp => sp.GetRequiredService<SchedulingService>().SetPausedAsync(false, CancellationToken.None));
-            await State.RefreshAsync();
-            Snackbar.Add("予約投稿を再開しました", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Show(ex);
-        }
-    }
 
     private IDisposable? _realtime;
 

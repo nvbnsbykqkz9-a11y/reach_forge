@@ -11,9 +11,9 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Common;
 using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
+using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
 using ReachForge.Infrastructure.Identity;
-using ReachForge.Infrastructure.Security;
 
 namespace ReachForge.Infrastructure.Persistence;
 
@@ -33,37 +33,19 @@ public sealed class ReachForgeDbContext(
 
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<Workspace> Workspaces => Set<Workspace>();
-    public DbSet<Channel> Channels => Set<Channel>();
     public DbSet<BrandProfile> BrandProfiles => Set<BrandProfile>();
     public DbSet<Product> Products => Set<Product>();
-    public DbSet<Campaign> Campaigns => Set<Campaign>();
-    public DbSet<MasterPost> MasterPosts => Set<MasterPost>();
-    public DbSet<PostVariant> PostVariants => Set<PostVariant>();
-    public DbSet<ApprovalAction> ApprovalActions => Set<ApprovalAction>();
     public DbSet<MediaAsset> MediaAssets => Set<MediaAsset>();
     public DbSet<AiGeneration> AiGenerations => Set<AiGeneration>();
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
-    public DbSet<PostMetric> PostMetrics => Set<PostMetric>();
-    public DbSet<PostMetricRollup> PostMetricRollups => Set<PostMetricRollup>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<CreditAccount> CreditAccounts => Set<CreditAccount>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AiJob> AiJobs => Set<AiJob>();
-    public DbSet<ChannelMetric> ChannelMetrics => Set<ChannelMetric>();
-    public DbSet<Report> Reports => Set<Report>();
-    public DbSet<InboxMessage> InboxMessages => Set<InboxMessage>();
-    public DbSet<KnowledgeEntry> KnowledgeEntries => Set<KnowledgeEntry>();
-    public DbSet<InboxAlert> InboxAlerts => Set<InboxAlert>();
-    public DbSet<AbTest> AbTests => Set<AbTest>();
-    public DbSet<TrendIdea> TrendIdeas => Set<TrendIdea>();
-    public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<PromptTemplate> PromptTemplates => Set<PromptTemplate>();
-    public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
-    public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
-    public DbSet<AdAccount> AdAccounts => Set<AdAccount>();
-    public DbSet<AdCampaign> AdCampaigns => Set<AdCampaign>();
+    public DbSet<LpProject> LpProjects => Set<LpProject>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -83,7 +65,6 @@ public sealed class ReachForgeDbContext(
     {
         base.OnModelCreating(b); // Identity のテーブル
         b.Entity<AppUser>().HasIndex(u => u.TenantId);
-        b.Entity<ChannelSecret>().HasIndex(x => x.ChannelId);
         b.Entity<WorkspaceMember>().HasIndex(x => new { x.WorkspaceId, x.UserId }).IsUnique();
         b.Entity<WorkspaceMember>().HasIndex(x => x.UserId);
         b.Entity<Invitation>().HasIndex(x => x.TokenHash).IsUnique();
@@ -97,14 +78,6 @@ public sealed class ReachForgeDbContext(
 
         b.Entity<Workspace>().Property(x => x.Name).HasMaxLength(200);
 
-        b.Entity<Channel>(e =>
-        {
-            e.Property(x => x.ExternalAccountId).HasMaxLength(128);
-            e.Property(x => x.CredentialSecretRef).HasMaxLength(256);
-            e.HasIndex(x => new { x.TenantId, x.Platform, x.ExternalAccountId });
-            e.HasIndex(x => x.WorkspaceId);
-        });
-
         b.Entity<BrandProfile>(e =>
         {
             e.HasIndex(x => x.WorkspaceId).IsUnique();
@@ -113,24 +86,6 @@ public sealed class ReachForgeDbContext(
             e.Property(x => x.FewShotExamples).HasConversion(Json<List<FewShotExample>>(), JsonComparer<List<FewShotExample>>());
         });
 
-        b.Entity<PostVariant>(e =>
-        {
-            e.HasIndex(x => new { x.Status, x.NextAttemptAt });
-            e.HasIndex(x => x.MasterPostId);
-            e.HasIndex(x => new { x.WorkspaceId, x.Status });
-            e.Property(x => x.PlatformOptions).HasConversion(Json<Dictionary<string, string>>(),
-                JsonComparer<Dictionary<string, string>>());
-            e.Property(x => x.GuardrailFindings).HasConversion(Json<List<GuardrailFinding>>(),
-                JsonComparer<List<GuardrailFinding>>());
-            e.Property(x => x.AbGroup).HasMaxLength(8);
-            e.Ignore(x => x.HasGuardrailErrors);
-            e.Ignore(x => x.IdempotencyKey);
-        });
-
-        b.Entity<PostMetric>().HasIndex(x => new { x.PostVariantId, x.CapturedAt });
-        b.Entity<PostMetric>().HasIndex(x => x.CapturedAt);
-        b.Entity<PostMetricRollup>().HasIndex(x => new { x.PostVariantId, x.Month }).IsUnique();
-        b.Entity<ChannelMetric>().HasIndex(x => new { x.ChannelId, x.Date }).IsUnique();
         b.Entity<MediaAsset>(e =>
         {
             e.HasIndex(x => new { x.WorkspaceId, x.DerivationKey });
@@ -145,28 +100,6 @@ public sealed class ReachForgeDbContext(
         b.Entity<AuditLog>().HasIndex(x => x.CreatedAt);
         b.Entity<AiGeneration>().HasIndex(x => new { x.TenantId, x.CreatedAt });
         b.Entity<CreditAccount>().HasIndex(x => x.TenantId).IsUnique();
-        b.Entity<Workspace>().Ignore(x => x.RequiresApproval);
-        b.Entity<Workspace>().Property(x => x.Reports).HasConversion(Json<ReportSettings>(), JsonComparer<ReportSettings>());
-        b.Entity<Report>().HasIndex(x => new { x.WorkspaceId, x.CreatedAt });
-        b.Entity<Workspace>().Property(x => x.Inbox).HasConversion(Json<InboxSettings>(), JsonComparer<InboxSettings>());
-        b.Entity<InboxMessage>(e =>
-        {
-            e.HasIndex(x => new { x.ChannelId, x.ExternalId }).IsUnique();
-            e.HasIndex(x => new { x.WorkspaceId, x.Status, x.ReceivedAt });
-            e.Property(x => x.ExternalId).HasMaxLength(200);
-            e.Ignore(x => x.RequiresHuman);
-            e.Ignore(x => x.IsOpen);
-        });
-        b.Entity<KnowledgeEntry>().HasIndex(x => x.WorkspaceId);
-        b.Entity<InboxAlert>().HasIndex(x => new { x.WorkspaceId, x.Status });
-        b.Entity<AbTest>().HasIndex(x => new { x.WorkspaceId, x.Status });
-        b.Entity<TrendIdea>().HasIndex(x => new { x.WorkspaceId, x.Status, x.GeneratedOn });
-        b.Entity<ApiKey>(e =>
-        {
-            e.HasIndex(x => x.SecretHash).IsUnique();
-            e.Property(x => x.SecretHash).HasMaxLength(64);
-            e.Property(x => x.Prefix).HasMaxLength(16);
-        });
         b.Entity<PromptTemplate>(e =>
         {
             e.HasIndex(x => new { x.Key, x.Version }).IsUnique();
@@ -174,29 +107,17 @@ public sealed class ReachForgeDbContext(
             e.Property(x => x.Note).HasMaxLength(500);
             e.Property(x => x.Evaluation).HasConversion(Json<PromptEvalResult?>());
         });
-        b.Entity<AdAccount>(e =>
+        b.Entity<LpProject>(e =>
         {
-            e.HasIndex(x => new { x.WorkspaceId, x.Network, x.ExternalAccountId }).IsUnique();
-            e.Property(x => x.ExternalAccountId).HasMaxLength(128);
-            e.Property(x => x.Name).HasMaxLength(256);
-            e.Property(x => x.Currency).HasMaxLength(8);
-            e.Property(x => x.CredentialSecretRef).HasMaxLength(512);
-            e.Property(x => x.Extra).HasConversion(Json<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
-        });
-        b.Entity<AdCampaign>(e =>
-        {
-            e.HasIndex(x => new { x.WorkspaceId, x.Platform });
-            e.HasIndex(x => x.Status);
-            e.Property(x => x.Name).HasMaxLength(256);
-            e.Property(x => x.Currency).HasMaxLength(8);
-            e.Property(x => x.DailyBudget).HasPrecision(18, 2);
-            e.Property(x => x.Targeting).HasConversion(Json<AdTargeting>(), JsonComparer<AdTargeting>());
-            e.Property(x => x.Creative).HasConversion(Json<AdCreative>(), JsonComparer<AdCreative>());
-            e.Property(x => x.ExternalIds).HasConversion(Json<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
-            e.Property(x => x.Results).HasConversion(Json<AdResults?>(), JsonComparer<AdResults?>());
-            e.Property(x => x.LastError).HasMaxLength(2000);
-            e.Property(x => x.ReviewNote).HasMaxLength(2000);
+            e.HasIndex(x => x.WorkspaceId);
+            e.Property(x => x.Url).HasMaxLength(2048);
+            e.Property(x => x.Title).HasMaxLength(500);
+            e.Property(x => x.Error).HasMaxLength(2000);
             e.Property(x => x.CreatedBy).HasMaxLength(256);
+            e.Property(x => x.Platforms).HasConversion(Json<List<SocialPlatform>>(), JsonComparer<List<SocialPlatform>>());
+            e.Property(x => x.SourceImageAssetIds).HasConversion(Json<List<Guid>>(), JsonComparer<List<Guid>>());
+            e.Property(x => x.Outputs).HasConversion(Json<Dictionary<SocialPlatform, LpPlatformOutput>>(),
+                JsonComparer<Dictionary<SocialPlatform, LpPlatformOutput>>());
         });
         b.Entity<AppSetting>(e =>
         {
@@ -205,14 +126,6 @@ public sealed class ReachForgeDbContext(
             e.Property(x => x.Value).HasMaxLength(AppSetting.MaxValueLength);
             e.Property(x => x.UpdatedBy).HasMaxLength(256);
         });
-        b.Entity<IdempotencyRecord>(e =>
-        {
-            e.HasIndex(x => new { x.Scope, x.Key }).IsUnique();
-            e.HasIndex(x => x.CreatedAt);
-            e.Property(x => x.Key).HasMaxLength(128);
-            e.Property(x => x.Scope).HasMaxLength(100);
-        });
-        b.Entity<Campaign>().HasIndex(x => new { x.WorkspaceId, x.Code }).IsUnique();
     }
 
     private static readonly MethodInfo s_applyFilter =
@@ -273,17 +186,6 @@ public sealed class ReachForgeDbContext(
             if (!changed) continue;
             var j = entry.Entity;
             events.Add(new JobProgressEvent(j.TenantId, j.WorkspaceId, j.Id, j.TaskType, j.Status, j.Stage));
-        }
-        var inbox = ChangeTracker.Entries<InboxMessage>()
-            .Where(e => e.State is EntityState.Added or EntityState.Modified)
-            .Select(e => (e.Entity.TenantId, e.Entity.WorkspaceId, Added: e.State == EntityState.Added))
-            .Concat(ChangeTracker.Entries<InboxAlert>().Where(e => e.State == EntityState.Added)
-                .Select(e => (e.Entity.TenantId, e.Entity.WorkspaceId, Added: false)))
-            .GroupBy(x => (x.TenantId, x.WorkspaceId));
-        foreach (var g in inbox)
-        {
-            var alert = ChangeTracker.Entries<InboxAlert>().Any(e => e.State == EntityState.Added && e.Entity.WorkspaceId == g.Key.WorkspaceId);
-            events.Add(new InboxUpdatedEvent(g.Key.TenantId, g.Key.WorkspaceId, g.Count(x => x.Added), alert));
         }
         return events;
     }

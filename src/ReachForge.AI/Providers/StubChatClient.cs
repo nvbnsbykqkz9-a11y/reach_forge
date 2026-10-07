@@ -5,7 +5,6 @@ using Microsoft.Extensions.AI;
 using ReachForge.AI.Prompts;
 using ReachForge.AI.Routing;
 using ReachForge.Application.Ai;
-using ReachForge.Domain.Analytics;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
 
@@ -28,18 +27,11 @@ public sealed class StubChatClient : IChatClient
             CopyStubPayload p when p.Base is not null && p.Fix is not null =>
                 Serialize(new CopyBatch([Refine(p.Base, p.Fix.Value)])),
             CopyStubPayload p => Serialize(new CopyBatch(Copies(p))),
-            VariantStubPayload p => Serialize(Variant(p)),
             JudgeStubPayload p => Serialize(Judge(p)),
-            DigestStubPayload p => Serialize(new DigestResult(Digest(p))),
-            ReportStubPayload p => Serialize(Report(p.Input)),
-            ClassifyStubPayload p => Serialize(Classify(p.Text)),
-            AbStubPayload p => Serialize(new AbVariantDraft(AbVariant(p.Body, p.Variable))),
             BrandStubPayload p => Serialize(Brand(p.Input)),
-            TrendStubPayload p => Serialize(Ideas(p)),
-            AdCopyStubPayload p => Serialize(AdCopies(p)),
+            LpCreativeStubPayload p => Serialize(LpCreativeOf(p)),
             ScriptStubPayload p => Serialize(Script(p)),
             LandingPageStubPayload p => Serialize(LandingPage(p)),
-            ReplyStubPayload p => Serialize(Replies(p.Request)),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
                 : $"{PostText.Truncate(p.Hint, 40)}を表したイメージ",
@@ -130,32 +122,6 @@ public sealed class StubChatClient : IChatClient
         _ => c,
     };
 
-    private static VariantDraft Variant(VariantStubPayload p)
-    {
-        var r = p.Request;
-        var c = PlatformCatalog.Get(r.Platform);
-        var tags = r.Hashtags.Take(Math.Max(c.RecommendedHashtags.Max, 0)).ToArray();
-        var core = r.Body.Trim();
-        var link = p.Link is null ? "" : $"\n{p.Link}";
-        string body = r.Platform switch
-        {
-            SocialPlatform.X => $"{r.Headline}\n{FirstSentences(core, 1)}{link}",
-            SocialPlatform.Instagram => $"{r.Headline}\n\n{core}\n\n{r.Cta}\n▶ 詳しくはプロフィールのリンクから",
-            SocialPlatform.Threads => $"{FirstSentences(core, 2)}\nみなさんはどう楽しみますか？{link}",
-            SocialPlatform.Line => $"【{r.Headline}】\n{FirstSentences(core, 1)}\n{r.Cta}{link}",
-            SocialPlatform.Facebook => $"{r.Headline}\n\n{core}\n\n{r.Cta}{link}",
-            SocialPlatform.TikTok => $"{r.Headline}（冒頭2秒のフック）\n{FirstSentences(core, 1)}",
-            SocialPlatform.YouTube => $"{core}\n\n{r.Cta}{link}",
-            SocialPlatform.LinkedIn => $"{r.Headline}\n\n{core}\n\n私たちが大切にしていること：お客様の体験です。{link}",
-            SocialPlatform.Pinterest => $"{r.Headline}｜{FirstSentences(core, 1)}{link}",
-            _ => core,
-        };
-        if (r.Platform == SocialPlatform.YouTube && !tags.Contains("Shorts")) tags = ["Shorts", .. tags.Take(2)];
-        var title = c.MaxTitleLength is { } max ? PostText.Truncate(r.Headline, max) : null;
-        if (c.TargetBodyLength is { } target) body = PostText.Truncate(body, Math.Max(target, PostText.Length(link) + 20));
-        return new VariantDraft(body, tags, title);
-    }
-
     private static JudgeResult Judge(JudgeStubPayload p)
     {
         var score = 4.0;
@@ -166,53 +132,6 @@ public sealed class StubChatClient : IChatClient
         score += len is >= 40 and <= 200 ? 0.3 : -0.2;
         if (p.Brand.Tone.EmojiLevel == 0 && text.Any(char.IsSurrogate)) score -= 0.4;
         return new JudgeResult(Math.Round(Math.Clamp(score, 1, 5), 1), "ブランドの口調・必須表記・長さを評価しました");
-    }
-
-    /// <summary>根拠データの値をそのまま引用する決定的なレポート（検証を通る形）。</summary>
-    private static InsightDraft Report(ReportWriterInput input)
-    {
-        ReportFact? Find(string label) => input.Facts.FirstOrDefault(f => f.Label == label);
-        ClaimDraft Claim(string text, params ReportFact?[] facts) =>
-            new(text, facts.Where(f => f is not null).Select(f => f!.Id).ToArray());
-
-        var imp = Find("表示回数");
-        var impChange = Find("表示回数（比較期間比）");
-        var er = Find("反応の割合");
-        var top = input.Facts.FirstOrDefault(f => f.Label.StartsWith("上位1位", StringComparison.Ordinal));
-        var best = Find("反応が多い曜日・時刻");
-        var ai = Find("AI生成投稿の反応の割合");
-        var manual = Find("手動投稿の反応の割合");
-        var topPost = input.TopPosts.FirstOrDefault();
-        var bottom = input.BottomPosts.FirstOrDefault();
-
-        var summary = new List<ClaimDraft>
-        {
-            Claim($"表示回数は{imp?.Value ?? "—"}回{(impChange is null ? "" : $"（比較期間比{impChange.Value}）")}でした。", imp, impChange),
-            Claim($"反応の割合は{er?.Value ?? "—"}です。", er),
-        };
-        if (top is not null) summary.Add(Claim($"{top.Label.Split('の')[0]}の投稿が最も反応を集めました（{top.Value}）。", top));
-        var good = new List<ClaimDraft>();
-        if (topPost is not null && top is not null)
-        {
-            good.Add(Claim($"{topPost.Platform}の{(topPost.HasImage ? "画像付き" : "文章中心の")}投稿が好調でした（{top.Value}）。", top));
-        }
-        if (ai is not null && manual is not null)
-        {
-            good.Add(Claim($"AI生成の投稿は反応の割合{ai.Value}、手動の投稿は{manual.Value}でした。", ai, manual));
-        }
-        var issues = new List<ClaimDraft>();
-        if (bottom is not null)
-        {
-            issues.Add(Claim($"{bottom.Platform}の「{bottom.Title}」は反応が少なめでした。投稿の時間帯が合っていない可能性があります。",
-                input.Facts.FirstOrDefault(f => f.Label.StartsWith("最下位", StringComparison.Ordinal)) ?? er));
-        }
-        var actions = new List<ClaimDraft>
-        {
-            Claim(best is null ? "反応が多い時間帯に合わせて予約しましょう。" : $"{best.Value.Split('（')[0]}に合わせて予約しましょう。", best ?? er),
-            Claim("反応が良かった投稿の切り口で、画像付きの投稿を1本つくりましょう。", top ?? er),
-            Claim("反応が少なかった投稿は、冒頭の一文を短くして再投稿を試しましょう。", er),
-        };
-        return new InsightDraft([.. summary], [.. good], [.. issues], [.. actions]);
     }
 
     /// <summary>LP のタイトル・説明から決定的な企画をつくる（画像は順に割り当てる）。</summary>
@@ -256,39 +175,23 @@ public sealed class StubChatClient : IChatClient
         return new ScriptDraft($"{theme}のショート動画", [.. picked.Select(l => new SceneDraft(l.Item1, l.Item2, per))]);
     }
 
-    /// <summary>伝えたいことから決定的に作る広告文の案（3つ）。</summary>
-    private static AdCopyBatch AdCopies(AdCopyStubPayload p)
+    /// <summary>LP のタイトル・説明から決定的に作る、SNS 向けの広告文（3案）と投稿文。</summary>
+    private static LpCreativeDraft LpCreativeOf(LpCreativeStubPayload p)
     {
-        var limits = AdCopyLimits.For(p.Request.Platform);
-        var theme = PostText.Truncate(p.Request.Theme.Trim(), 40);
-        var cta = p.Request.Objective == Domain.Entities.AdObjective.Traffic ? "LEARN_MORE" : "SHOP_NOW";
+        var limits = AdCopyLimits.For(p.Platform);
+        var c = PlatformCatalog.Get(p.Platform);
+        var product = PostText.Truncate((p.Page.Title.Split('|', '｜', '-')[0]).Trim() is { Length: > 0 } t ? t : p.BrandName, 20);
+        var about = PostText.Truncate(p.Page.Description is { Length: > 0 } d ? d : product, 40);
         string Fit(string text, int max) => max == 0 ? "" : PostText.Truncate(text, max);
-        return new AdCopyBatch([
-            new(Fit($"{theme}。{p.BrandName}がお届けします。くわしくはこちらから。", limits.PrimaryText), Fit(theme, limits.Headline),
-                Fit($"{p.BrandName}のおすすめ", limits.Description), cta),
-            new(Fit($"気になっていた方へ。{theme}をはじめました。ぜひのぞいてみてください。", limits.PrimaryText),
-                Fit($"{p.BrandName}の{theme}", limits.Headline), Fit("いまだけの楽しみ", limits.Description), cta),
-            new(Fit($"毎日をちょっと楽しく。{p.BrandName}の{theme}。", limits.PrimaryText), Fit("いまチェック", limits.Headline),
-                Fit(theme, limits.Description), "LEARN_MORE"),
-        ]);
-    }
-
-    /// <summary>業種の言葉を含む話題ほど関連度を高くする決定的な採点。</summary>
-    private static IdeaBatch Ideas(TrendStubPayload p)
-    {
-        var industry = p.Brand.Profile.Industry;
-        var food = industry.Contains("カフェ") || industry.Contains("飲食");
-        string[] foodWords = ["コーヒー", "さつまいも", "ハロウィン", "クリスマス", "バレンタイン", "お月見", "七夕", "ポッキー", "冬至"];
-        return new IdeaBatch([.. p.Candidates.Select(c =>
-        {
-            var hit = food && foodWords.Any(w => c.Topic.Contains(w));
-            var relevance = Math.Round((hit ? 0.8 : 0.45) + (c.Topic.Length % 5) / 50.0, 2);
-            var name = p.Brand.Profile.BrandName;
-            return new IdeaDraft(c.Topic, relevance, hit ? "カルーセル" : "画像1枚",
-                [$"{c.Topic}限定の楽しみ方を紹介", $"スタッフの{c.Topic}エピソード", $"{name}で{c.Topic}を過ごす提案"],
-                hit ? $"{industry}と相性がよく、お客様の関心が高い話題です" : "季節感を伝えられる話題です",
-                Domain.Engagement.SensitiveTopicFilter.IsSensitive(c.Topic), hit ? 5 : 2);
-        })]);
+        var tags = new[] { p.BrandName.Replace(" ", ""), product.Replace(" ", ""), "おすすめ", "期間限定", "新商品" }
+            .Take(Math.Max(0, c.RecommendedHashtags.Max)).ToArray();
+        return new LpCreativeDraft(
+        [
+            new(Fit($"{product}。{about}", limits.PrimaryText), Fit(product, limits.Headline), Fit($"{p.BrandName}のおすすめ", limits.Description), "LEARN_MORE"),
+            new(Fit($"気になっていた方へ。{product}をチェックしてみませんか。", limits.PrimaryText), Fit($"{p.BrandName}の{product}", limits.Headline),
+                Fit("くわしくはページで", limits.Description), "SHOP_NOW"),
+            new(Fit($"毎日をちょっと楽しく。{p.BrandName}の{product}。", limits.PrimaryText), Fit("いまチェック", limits.Headline), Fit(about, limits.Description), "LEARN_MORE"),
+        ], PostText.Truncate($"{product}のご紹介です。{about}", Math.Min(c.MaxBodyLength, 200)), tags);
     }
 
     /// <summary>ページの文章から決定的に作るブランドの下書き（FAQ は「Q／A」形式の行だけを拾う）。</summary>
@@ -317,46 +220,6 @@ public sealed class StubChatClient : IChatClient
             appeal, [.. BuildTags(industry, name.Length is > 0 and <= 12 ? name : null, [])], industry == "化粧品" ? ["シワが消える", "必ず痩せる"] : ["No.1"],
             [.. faqs.Take(5)]);
     }
-
-    /// <summary>書き出しを問いかけに、または最後の行を具体的な呼びかけに変える。</summary>
-    private static string AbVariant(string body, Domain.Entities.AbVariable variable)
-    {
-        var lines = body.Split('\n').ToList();
-        if (variable == Domain.Entities.AbVariable.Hook)
-        {
-            lines[0] = "知っていましたか？" + lines[0];
-            return string.Join('\n', lines);
-        }
-        lines[^1] = "今週末までに、ぜひお店で試してみてください！";
-        return string.Join('\n', lines);
-    }
-
-    private static ClassificationDraft Classify(string text)
-    {
-        var l = Domain.Engagement.InboxHeuristics.Classify(text);
-        return new ClassificationDraft(l.Sentiment.ToString(), l.Intent.ToString(), l.Urgency.ToString(), l.Sensitive.ToString(), l.Language);
-    }
-
-    /// <summary>参考情報（FAQ）の回答を使った決定的な返信案。</summary>
-    private static ReplyBatch Replies(ReplyRequest r)
-    {
-        var polite = r.Brand.Profile.Tone.Casualness < 50;
-        var thanks = polite ? "お問い合わせありがとうございます。" : "コメントありがとうございます！";
-        var replies = new List<ReplyDraftItem>();
-        if (r.Knowledge.FirstOrDefault() is { } hit)
-        {
-            replies.Add(new ReplyDraftItem($"{thanks}{hit.Entry.Answer}", ["K1"]));
-            replies.Add(new ReplyDraftItem($"{hit.Entry.Answer}{(polite ? "お待ちしております。" : "お待ちしています☕")}", ["K1"]));
-        }
-        replies.Add(new ReplyDraftItem(polite
-            ? $"{thanks}確認のうえ、あらためてご連絡いたします。"
-            : $"{thanks}確認してお返事しますね。", []));
-        if (replies.Count < 3) replies.Add(new ReplyDraftItem(polite ? "ご来店を心よりお待ちしております。" : "またお店でお会いできるのを楽しみにしています！", []));
-        return new ReplyBatch([.. replies.Take(3)]);
-    }
-
-    private static string Digest(DigestStubPayload p) =>
-        $"{p.Headline.TrimEnd('。')}を伝え、{(p.Body.Contains("店舗") ? "来店" : "反応")}を促す投稿";
 
     private static string[] BuildTags(string theme, string? product, IEnumerable<string> preferred)
     {

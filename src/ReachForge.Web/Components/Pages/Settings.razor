@@ -24,16 +24,6 @@
         <MudItem xs="12" sm="6" md="4">
             <MudCard Class="rf-card" Elevation="0" Outlined="true">
                 <MudCardContent>
-                    <MudIcon Icon="@Icons.Material.Rounded.AppSettingsAlt" Color="Color.Primary" aria-hidden="true" />
-                    <MudText Typo="Typo.h6">SNSアプリの設定</MudText>
-                    <MudText Typo="Typo.body2">SNS 連携に使うアプリの ID・シークレット、デモ接続</MudText>
-                </MudCardContent>
-                <MudCardActions><MudButton Href="/settings/sns-apps" Variant="Variant.Text" Color="Color.Primary">開く</MudButton></MudCardActions>
-            </MudCard>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="4">
-            <MudCard Class="rf-card" Elevation="0" Outlined="true">
-                <MudCardContent>
                     <MudIcon Icon="@Icons.Material.Rounded.AutoAwesome" Color="Color.Primary" aria-hidden="true" />
                     <MudText Typo="Typo.h6">生成AIの設定</MudText>
                     <MudText Typo="Typo.body2">Claude・OpenAI・Google の API キーと、使えるかの確認</MudText>
@@ -47,8 +37,7 @@
 @code {
     private static readonly (string Href, string Icon, string Title, string Text)[] Items =
     [
-        ("/settings/channels", Icons.Material.Rounded.Link, "SNS連携", "SNSアカウントの接続・再接続・解除"),
         ("/settings/brand", Icons.Material.Rounded.Palette, "ブランド", "話し方・NGワード・商品などAIに伝えるブランド情報"),
-        ("/settings/usage", Icons.Material.Rounded.Toll, "プラン・利用量", "クレジット残量と機能別の内訳、SNS費用"),
+        ("/settings/usage", Icons.Material.Rounded.Toll, "プラン・利用量", "クレジット残量と機能別の内訳"),
     ];
 }

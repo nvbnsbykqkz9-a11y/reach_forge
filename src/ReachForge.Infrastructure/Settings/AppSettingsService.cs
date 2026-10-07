@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReachForge.Application.Abstractions;
-using ReachForge.Application.Ads;
 using ReachForge.Domain.Common;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
@@ -14,12 +13,8 @@ namespace ReachForge.Infrastructure.Settings;
 public sealed record SettingsField(string Key, string Label, bool Secret = false, bool IsSwitch = false, string? Help = null,
     bool Optional = false);
 
-/// <summary>
-/// 設定のまとまり：SNS ごとのアプリ（Facebook と Instagram は同じ Meta のアプリ）、または生成 AI のプロバイダ。
-/// <paramref name="Platforms"/> はコールバック URL を表示する SNS（生成 AI は空）。<paramref name="CallbackPaths"/> はそのほかのコールバック（広告）。
-/// </summary>
-public sealed record SettingsGroup(string Id, string Name, IReadOnlyList<SocialPlatform> Platforms, string DeveloperUrl,
-    IReadOnlyList<SettingsField> Fields, string Guide, IReadOnlyList<string>? CallbackPaths = null);
+/// <summary>設定のまとまり（生成 AI のプロバイダ）。</summary>
+public sealed record SettingsGroup(string Id, string Name, string DeveloperUrl, IReadOnlyList<SettingsField> Fields, string Guide);
 
 public enum SettingSource
 {
@@ -37,80 +32,34 @@ public enum SettingSource
 public sealed record SettingStatus(SettingsField Field, SettingSource Source, string? Value);
 
 /// <summary>
-/// SNS アプリの ID・シークレットと生成 AI の API キーを画面から設定する（運用者・Windows 版のオーナー）。値は AppSettings 表に保存し、
-/// シークレットは Data Protection で暗号化する。保存するとすぐに読み直して、連携・投稿・生成に使われる。
+/// 生成 AI の API キーを画面から設定する（運用者・Windows 版のオーナー）。値は AppSettings 表に保存し、
+/// シークレットは Data Protection で暗号化する。保存するとすぐに読み直して、生成に使われる。
 /// シークレットは画面に返さない（入力欄が空なら変更しない）。変更は監査ログに残す（値は残さない）。
 /// </summary>
 public sealed class AppSettingsService(DbContextOptions<ReachForgeDbContext> dbOptions, IDataProtectionProvider protection,
     IConfiguration configuration, AppSettingsReloader reloader, TimeProvider clock)
 {
-    public const string UseMockKey = "Social:UseMock";
-
-    public static readonly IReadOnlyList<SettingsGroup> SnsApps =
-    [
-        new("x", "X", [SocialPlatform.X], "https://developer.x.com/en/portal/dashboard",
-            [new("Social:X:ClientId", "Client ID"), new("Social:X:ClientSecret", "Client Secret", Secret: true)],
-            "Developer Portal でアプリを作成し、User authentication settings で OAuth 2.0（Web App）を有効にして、コールバック URL を登録します。"),
-        new("meta", "Facebook・Instagram（Meta）", [SocialPlatform.Facebook, SocialPlatform.Instagram], "https://developers.facebook.com/apps/",
-            [new("Social:Meta:AppId", "アプリ ID"), new("Social:Meta:AppSecret", "app secret", Secret: true),
-             new("Social:Meta:WebhookVerifyToken", "Webhook の確認トークン（任意）", Secret: true, Help: "受信箱の Webhook を使う場合だけ", Optional: true)],
-            "Meta for Developers で「ビジネス」タイプのアプリを作成し、Facebook ログイン for Business を追加して、有効な OAuth リダイレクト URI にコールバック URL を登録します。" +
-            "広告も出す場合は、Marketing API を追加し、広告のコールバック URL も登録します（ads_management の権限はアプリの審査が必要です）。",
-            [AdNetworks.CallbackPath(AdNetwork.Meta)]),
-        new("threads", "Threads", [SocialPlatform.Threads], "https://developers.facebook.com/apps/",
-            [new("Social:Threads:AppId", "Threads アプリ ID"), new("Social:Threads:AppSecret", "Threads app secret", Secret: true)],
-            "Meta for Developers で Threads API のユースケースを追加し、リダイレクト URI にコールバック URL を登録します。"),
-        new("tiktok", "TikTok", [SocialPlatform.TikTok], "https://developers.tiktok.com/apps/",
-            [new("Social:TikTok:ClientKey", "Client key"), new("Social:TikTok:ClientSecret", "Client secret", Secret: true),
-             new("Social:TikTok:Audited", "審査（Content Posting API の audit）を通過した", IsSwitch: true, Help: "通過するまでは投稿が「自分のみ」になります"),
-             new("Social:TikTok:Desktop", "デスクトップアプリとして登録した", IsSwitch: true, Help: "Windows 版でデスクトップ用に登録した場合")],
-            "TikTok for Developers でアプリを作成し、Login Kit と Content Posting API を追加して、リダイレクト URI にコールバック URL を登録します。"),
-        new("youtube", "YouTube（Google）", [SocialPlatform.YouTube], "https://console.cloud.google.com/apis/credentials",
-            [new("Social:YouTube:ClientId", "クライアント ID"), new("Social:YouTube:ClientSecret", "クライアント シークレット", Secret: true)],
-            "Google Cloud で YouTube Data API v3 を有効にし、OAuth クライアント ID（ウェブ アプリケーション）を作成して、承認済みのリダイレクト URI にコールバック URL を登録します。"),
-    ];
-
-    /// <summary>有料広告のアプリ（広告を出す場合だけ）。Meta は SNS 連携と同じアプリを使う。</summary>
-    public static readonly IReadOnlyList<SettingsGroup> AdApps =
-    [
-        new("tiktok-ads", "TikTok 広告（TikTok API for Business）", [], "https://business-api.tiktok.com/portal/apps",
-            [new("Ads:TikTok:AppId", "App ID"), new("Ads:TikTok:Secret", "Secret", Secret: true)],
-            "TikTok API for Business で開発者登録してアプリを作成し（投稿用の TikTok for Developers とは別）、広告の管理の権限を選んで、Advertiser redirect URL にコールバック URL を登録します。",
-            [AdNetworks.CallbackPath(AdNetwork.TikTok)]),
-        new("x-ads", "X 広告（Ads API）", [], "https://developer.x.com/en/portal/dashboard",
-            [new("Ads:X:ConsumerKey", "API Key（Consumer Key）"), new("Ads:X:ConsumerSecret", "API Key Secret", Secret: true)],
-            "Ads API の利用申請が承認されたアプリで、User authentication settings の OAuth 1.0a を有効にし、Callback URL にコールバック URL を登録します。",
-            [AdNetworks.CallbackPath(AdNetwork.X)]),
-        new("google-ads", "Google 広告（YouTube の広告）", [], "https://ads.google.com/aw/apicenter",
-            [new("Ads:Google:DeveloperToken", "開発者トークン", Secret: true),
-             new("Ads:Google:LoginCustomerId", "MCC のお客様 ID（任意）", Help: "クライアント センター経由で操作するときだけ（数字だけ）", Optional: true),
-             new("Ads:Google:ClientId", "OAuth クライアント ID（任意）", Help: "空なら YouTube の設定のものを使います", Optional: true),
-             new("Ads:Google:ClientSecret", "OAuth クライアント シークレット（任意）", Secret: true, Optional: true)],
-            "Google 広告の API センターで開発者トークンを発行し、Google Cloud で Google Ads API を有効にして、OAuth クライアントの承認済みのリダイレクト URI にコールバック URL を登録します。",
-            [AdNetworks.CallbackPath(AdNetwork.Google)]),
-    ];
-
     /// <summary>生成 AI のプロバイダ（設定のキーは AI:Providers:{名前}）。モデルは空なら既定のモデルを使う。</summary>
     public static readonly IReadOnlyList<SettingsGroup> AiProviders =
     [
-        new("anthropic", "Claude（Anthropic）", [], "https://console.anthropic.com/settings/keys",
+        new("anthropic", "Claude（Anthropic）", "https://console.anthropic.com/settings/keys",
             [new("AI:Providers:anthropic:ApiKey", "API キー", Secret: true),
              new("AI:Providers:anthropic:Model", "モデル（任意）", Help: "空なら既定のモデル", Optional: true)],
-            "投稿文の作成・SNS 別の変換・採点・レポート・受信箱の分類・LP 動画の企画に使います（主に使う AI）。"),
-        new("openai", "OpenAI", [], "https://platform.openai.com/api-keys",
+            "広告文・投稿文の作成、LP 動画の企画に使います（主に使う AI）。"),
+        new("openai", "OpenAI", "https://platform.openai.com/api-keys",
             [new("AI:Providers:openai:ApiKey", "API キー", Secret: true),
              new("AI:Providers:openai:Model", "文章のモデル（任意）", Help: "Claude が使えないときの代わりに使う", Optional: true)],
-            "画像の生成・編集、ナレーションの音声合成、動画生成（Sora）に使います。文章は Claude の代わりとしても使います。"),
-        new("google", "Google（Gemini API）", [], "https://aistudio.google.com/apikey",
+            "ナレーションの音声合成、動画生成（Sora）に使います。文章は Claude の代わりとしても使います。"),
+        new("google", "Google（Gemini API）", "https://aistudio.google.com/apikey",
             [new("AI:Providers:google:ApiKey", "API キー", Secret: true),
              new("AI:Providers:google:Model", "動画のモデル（任意）", Help: "空なら既定のモデル（Veo）", Optional: true)],
             "動画生成（Veo）に使います（画像に動きをつける・文章から動画・LP 動画の冒頭）。"),
     ];
 
     private static readonly HashSet<string> s_keys =
-        new(All.SelectMany(a => a.Fields).Select(f => f.Key).Append(UseMockKey), StringComparer.OrdinalIgnoreCase);
+        new(All.SelectMany(a => a.Fields).Select(f => f.Key), StringComparer.OrdinalIgnoreCase);
 
-    public static IEnumerable<SettingsGroup> All => SnsApps.Concat(AdApps).Concat(AiProviders);
+    public static IEnumerable<SettingsGroup> All => AiProviders;
 
     private ReachForgeDbContext Db(string user) =>
         new(dbOptions, new MutableTenantContext { IsSystem = true, UserName = user }, null, clock);
@@ -130,8 +79,6 @@ public sealed class AppSettingsService(DbContextOptions<ReachForgeDbContext> dbO
             return new SettingStatus(f, source, f.Secret ? null : value);
         }, StringComparer.OrdinalIgnoreCase);
     }
-
-    public bool UseMock => configuration.GetValue(UseMockKey, false);
 
     /// <summary>
     /// 保存する。シークレットは空なら変更しない。シークレットでない項目は空にすると画面での設定を消す（設定ファイルの値に戻る）。

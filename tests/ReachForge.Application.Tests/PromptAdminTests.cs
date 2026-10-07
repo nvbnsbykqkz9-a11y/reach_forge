@@ -70,7 +70,7 @@ public class PromptAdminTests
         await admin.PublishAsync(draft.Id, Ops, CancellationToken.None);
         await using (var scope = f.Scope())
         {
-            var result = await f.Get<StudioService>(scope).GenerateCopiesAsync(new CopyRequest
+            var result = await f.Get<ICopyGenerationService>(scope).GenerateAsync(new CopyRequest
             {
                 WorkspaceId = DemoSeeder.WorkspaceId, Objective = PostObjective.Awareness, Theme = "秋の新作",
             }, CancellationToken.None);
@@ -123,7 +123,7 @@ public class PromptAdminTests
     {
         await using var f = await AppFixture.CreateAsync();
         var admin = f.Services.GetRequiredService<PromptAdminService>();
-        var active = (await admin.VersionsAsync(PromptKeys.Digest, CancellationToken.None)).Single();
+        var active = (await admin.VersionsAsync(PromptKeys.BrandDiagnosis, CancellationToken.None)).Single();
         await Assert.ThrowsAsync<DomainException>(() => admin.UpdateDraftAsync(active.Id, "変更", "", Ops, CancellationToken.None));
 
         var result = new PromptEvalResult(f.Clock.GetUtcNow(), "stub", 20, 4.2, 1, 0, 0, true, "ok");

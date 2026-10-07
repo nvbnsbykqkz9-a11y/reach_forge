@@ -3,13 +3,10 @@ namespace ReachForge.Application.Abstractions;
 /// <summary>キュー名（Service Bus のキュー名と同じ）。</summary>
 public static class WorkQueues
 {
-    /// <summary>WebhookProcessJob（14章：受信イベントの分類・格納・炎上検知。5回失敗で DLQ）。</summary>
-    public const string Webhooks = "webhooks";
-
-    /// <summary>AiGenerationJob（14章：画像・動画・レポートの生成）。本文は AiJob の ID。</summary>
+    /// <summary>AiGenerationJob（14章：画像・動画の生成）。本文は AiJob の ID。</summary>
     public const string AiJobs = "ai-jobs";
 
-    public static readonly IReadOnlyList<string> All = [Webhooks, AiJobs];
+    public static readonly IReadOnlyList<string> All = [AiJobs];
 
     /// <summary>この回数失敗したメッセージはデッドレターキューへ移す（14章）。</summary>
     public const int MaxDeliveryCount = 5;

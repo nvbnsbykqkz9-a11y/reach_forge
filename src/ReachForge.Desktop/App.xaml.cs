@@ -11,7 +11,7 @@ namespace ReachForge.Desktop;
 
 /// <summary>
 /// Windows 版の本体。Web 版と同じアプリをこのプロセスの中で起動して WebView2 で表示し、
-/// ウィンドウを閉じてもタスクトレイに残って予約投稿・指標の取得・受信箱の取り込みを続ける。終了はトレイのメニューから。
+/// ウィンドウを閉じてもタスクトレイに残って動画づくりを続ける。終了はトレイのメニューから。
 /// </summary>
 public partial class App : System.Windows.Application
 {
@@ -91,7 +91,7 @@ public partial class App : System.Windows.Application
     private void OnServerStopped()
     {
         if (_exiting) return;
-        _window?.ShowError("ReachForge の処理が停止しました。予約投稿は止まっています。");
+        _window?.ShowError("ReachForge の処理が停止しました。つくっている途中の動画は止まっています。");
         _tray?.Notify("ReachForge が停止しました", "画面を開いて「もう一度起動する」を押してください。");
     }
 
@@ -109,7 +109,7 @@ public partial class App : System.Windows.Application
         if (_exiting || !Settings.KeepRunningInTray) return false;
         if (!Settings.TrayNoticeShown)
         {
-            _tray?.Notify("ReachForge は動作を続けています", "予約投稿を続けるため、タスクトレイに残っています。終了はトレイのアイコンから選べます。");
+            _tray?.Notify("ReachForge は動作を続けています", "つくっている動画を仕上げるため、タスクトレイに残っています。終了はトレイのアイコンから選べます。");
             Settings = Settings with { TrayNoticeShown = true };
             Settings.Save(Paths.Settings);
         }

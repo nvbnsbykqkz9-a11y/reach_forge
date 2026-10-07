@@ -1,9 +1,14 @@
 @page "/"
-@* ホーム（初心者向け）：SNS を選んで投稿・広告をつくる入り口と、最近の投稿。はじめての人には最初にやることを案内する *@
+@* ホーム：LP の URL から、選んだ SNS 向けの広告文・投稿文・画像と縦型の動画をまとめてつくる。
+   SNS とはつながない。できたものはダウンロード・コピーして、利用者が各 SNS に手動でアップロードする *@
 @inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject AppState State
+@inject NavigationManager Nav
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject ILogger<Dashboard> Log
 @inject Microsoft.Extensions.Options.IOptions<ReachForge.AI.AiOptions> Ai
 
 <PageTitle>ホーム｜ReachForge</PageTitle>
@@ -12,129 +17,183 @@
     <MudText Typo="Typo.h4" tabindex="-1">@Greeting、@(Tenant.UserName)さん</MudText>
 </div>
 
-@if (_channels is null)
+@if (!AiReady)
 {
-    <MudProgressLinear Indeterminate="true" />
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        いまは AI の API キーが未設定のため、お試しの文章でつくります。
+        <MudLink Href="/settings/ai">「設定 → 生成AIの設定」</MudLink>でキーを入れると、AI が LP を読んで文章をつくります。
+    </MudAlert>
 }
-else
-{
-    @if (!AiReady || _channels.Count == 0)
+
+<MudText Typo="Typo.h5" Class="mb-1">LP から広告・動画をつくる</MudText>
+<MudText Typo="Typo.body1" Class="mb-4">
+    お店・商品のページ（LP）の URL を入れるだけで、SNS ごとの広告文・投稿文・画像と、縦型の動画をつくります。
+    できたものはダウンロードして、各 SNS に自分でアップロードしてください。
+</MudText>
+
+<ol class="rf-steps" aria-label="つくる手順">
+    @foreach (var (label, i) in s_steps.Select((l, i) => (l, i + 1)))
     {
-        <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
-            <MudText Typo="Typo.h6">はじめにやること</MudText>
-            <MudList T="string" Dense="true" Class="mt-1" aria-label="はじめにやること">
-                <MudListItem T="string" Icon="@(AiReady ? Icons.Material.Rounded.CheckCircle : Icons.Material.Rounded.RadioButtonUnchecked)"
-                             IconColor="@(AiReady ? Color.Success : Color.Default)" Href="/settings/ai">
-                    1. 生成AI の API キーを設定する（文章・画像・動画づくりに使います）
-                </MudListItem>
-                <MudListItem T="string" Icon="@(_channels.Count > 0 ? Icons.Material.Rounded.CheckCircle : Icons.Material.Rounded.RadioButtonUnchecked)"
-                             IconColor="@(_channels.Count > 0 ? Color.Success : Color.Default)" Href="/settings/channels">
-                    2. 使う SNS とつなぐ
-                </MudListItem>
-            </MudList>
-        </MudPaper>
+        <li aria-current="@(_step == i ? "step" : null)" class="@(i < _step ? "rf-step-done" : "")">
+            <span class="rf-step-num" aria-hidden="true">@(i < _step ? "✓" : i.ToString())</span>@label
+        </li>
     }
+</ol>
 
-    <MudText Typo="Typo.h6" Class="mb-2">どの SNS でつくりますか？</MudText>
-    <MudGrid>
-        @foreach (var c in RfSns.Creatable)
-        {
-            var channel = _channels.FirstOrDefault(x => x.Platform == c.Platform);
-            <MudItem xs="12" sm="6" md="4" lg="3">
-                <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true" Style="height:100%">
-                    <div class="d-flex align-center">
-                        <span class="rf-sns-dot rf-sns-dot-lg" style="background:@RfSns.Color(c.Platform)" aria-hidden="true"></span>
-                        <MudText Typo="Typo.h6">@c.DisplayName</MudText>
-                    </div>
-                    <MudText Typo="Typo.body2" Class="mt-1" Style="min-height:3em">@RfSns.Intro(c.Platform)</MudText>
-                    <MudText Typo="Typo.caption" Class="d-block mt-1" Style="color:var(--rf-color-text-secondary)">
-                        @(channel is null ? "まだつないでいません" : $"{channel.DisplayName} と連携中")
-                    </MudText>
-                    <MudButton Href="@RfSns.CreateHref(c.Platform)" Variant="@(channel is null ? Variant.Outlined : Variant.Filled)" Color="Color.Primary"
-                               FullWidth="true" Class="mt-3" aria-label="@($"{c.DisplayName} で投稿・広告をつくる")">
-                        @(channel is null ? "つないで始める" : "投稿・広告をつくる")
-                    </MudButton>
+<MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+    @switch (_step)
+    {
+        case 1:
+            <MudText Typo="Typo.h6">LP の URL を入れてください</MudText>
+            <div class="d-flex flex-wrap gap-2 align-start mt-2">
+                <MudTextField T="string" @bind-Value="_url" Label="LP の URL" Variant="Variant.Outlined" InputType="InputType.Url" Placeholder="https://"
+                              Immediate="true" Style="min-width:280px;flex:1" OnKeyUp="@(e => e.Key == "Enter" ? LoadAsync() : Task.CompletedTask)" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Class="mt-1" StartIcon="@Icons.Material.Rounded.Download"
+                           Disabled="@(_busy || string.IsNullOrWhiteSpace(_url))" OnClick="LoadAsync">@(_busy ? "読み込み中…" : "読み込む")</MudButton>
+            </div>
+            @if (_page is { } lp)
+            {
+                <MudPaper Class="pa-3 mt-4" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.subtitle1"><b>@lp.Title</b></MudText>
+                    @if (lp.Description.Length > 0) { <MudText Typo="Typo.body2">@lp.Description</MudText> }
+                    <MudText Typo="Typo.caption" Style="word-break:break-all">@lp.Url</MudText>
                 </MudPaper>
-            </MudItem>
-        }
-    </MudGrid>
 
-    <MudGrid Class="mt-4">
-        <MudItem xs="12" md="8">
-            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
-                <MudText Typo="Typo.h6">最近の投稿</MudText>
-                @if (_recent is { Count: > 0 })
+                <MudText Typo="Typo.subtitle1" Class="mt-4">広告・動画に使う画像を選んでください（@(_images.Count)／@LpStudioService.MaxImages 枚）</MudText>
+                @if (lp.ImageList.Count == 0)
                 {
-                    <MudList T="string" Dense="true" aria-label="最近の投稿">
-                        @foreach (var p in _recent)
+                    <MudText Typo="Typo.body2">この LP には使える画像が見つかりませんでした。文章と、文字だけの動画をつくります。</MudText>
+                }
+                else
+                {
+                    <div class="rf-media-grid mt-2" role="group" aria-label="使う画像を選ぶ">
+                        @foreach (var img in lp.ImageList.Take(12))
                         {
-                            <MudListItem T="string" Href="@p.Url" Target="_blank">
-                                <div class="d-flex align-center gap-2">
-                                    <span class="rf-sns-dot" style="background:@RfSns.Color(p.Platform)" aria-hidden="true"></span>
-                                    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@PostText.Truncate(p.Body, 60)</span>
-                                    <MudChip T="string" Size="Size.Small" Color="@StatusColor(p.Status)">@StatusLabel(p.Status)</MudChip>
-                                    <MudText Typo="Typo.caption" Style="white-space:nowrap">@Time.Short(p.At)</MudText>
-                                </div>
-                                @if (p.Status == VariantStatus.Failed && p.Error is not null)
-                                {
-                                    <MudText Typo="Typo.caption" Color="Color.Error" Class="d-block">@p.Error</MudText>
-                                }
-                            </MudListItem>
+                            var url = img.Url.ToString();
+                            var on = _images.Contains(url);
+                            <button type="button" class="rf-media-pick @(on ? "rf-media-pick-on" : "")" aria-pressed="@(on ? "true" : "false")"
+                                    aria-label="@(img.Alt ?? Path.GetFileName(img.Url.AbsolutePath))" @onclick="() => Toggle(url)">
+                                <img src="@url" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px" />
+                                @if (on) { <span class="rf-media-order">@(_images.IndexOf(url) + 1)</span> }
+                            </button>
                         }
-                    </MudList>
+                    </div>
+                    <MudCheckBox T="bool" @bind-Value="_rights" Class="mt-2" Color="Color.Primary"
+                                 Label="選んだ画像を広告・動画に使う権利があります（自社の LP の画像など）" />
                 }
-                else
+                <div class="d-flex justify-end mt-4">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" EndIcon="@Icons.Material.Rounded.ArrowForward"
+                               Disabled="@(_images.Count > 0 && !_rights)" OnClick="() => _step = 2">次へ：SNS を選ぶ</MudButton>
+                </div>
+                @if (_images.Count > 0 && !_rights)
                 {
-                    <MudText Typo="Typo.body2" Class="mt-2">まだ投稿がありません。上の SNS から1件つくってみましょう。</MudText>
+                    <MudText Typo="Typo.caption" Class="d-block mt-1" Style="text-align:right">画像を使う権利の確認にチェックを入れてください</MudText>
                 }
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" md="4">
-            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
-                <MudText Typo="Typo.h6">受信箱</MudText>
-                <MudText Typo="Typo.body1" Class="mt-1">
-                    @(State.OpenInbox > 0 ? $"返信を待っているコメント・メッセージが {State.OpenInbox} 件あります。" : "返信待ちのコメント・メッセージはありません。")
-                </MudText>
-                <MudButton Href="/inbox" Variant="Variant.Text" Color="Color.Primary" Class="mt-2">受信箱を開く</MudButton>
-            </MudPaper>
-            <MudPaper Class="pa-4 rf-card mt-4" Elevation="0" Outlined="true">
-                <MudText Typo="Typo.h6">広告</MudText>
-                @if (_ads is { Count: > 0 })
+            }
+            break;
+
+        case 2:
+            <MudText Typo="Typo.h6">どの SNS 向けにつくりますか？（いくつでも）</MudText>
+            <div class="d-flex flex-wrap gap-2 mt-3" role="group" aria-label="つくる SNS">
+                @foreach (var p in LpStudioService.Supported)
                 {
-                    @foreach (var ad in _ads)
-                    {
-                        <div class="d-flex align-center gap-2 mt-2">
-                            <span class="rf-sns-dot" style="background:@RfSns.Color(ad.Platform)" aria-hidden="true"></span>
-                            <MudLink Href="@($"{RfSns.CreateHref(ad.Platform)}?tab=ad")" Typo="Typo.body2" Style="flex:1;min-width:0">@ad.Name</MudLink>
-                            <MudChip T="string" Size="Size.Small" Color="@RfAdWizard.StatusColor(ad.Status)">@RfAdWizard.StatusLabel(ad.Status)</MudChip>
-                        </div>
-                    }
+                    var on = _platforms.Contains(p);
+                    <button type="button" class="rf-choice rf-choice-inline" aria-pressed="@(on ? "true" : "false")" @onclick="() => TogglePlatform(p)">
+                        <span class="rf-sns-dot" style="background:@RfSns.Color(p)" aria-hidden="true"></span>
+                        <b>@PlatformCatalog.Get(p).DisplayName</b>
+                    </button>
                 }
-                else
-                {
-                    <MudText Typo="Typo.body2" Class="mt-1">SNS の画面の「広告を出す」から、有料広告を出せます（お試しもできます）。</MudText>
-                }
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+            </div>
+            <MudText Typo="Typo.caption" Class="d-block mt-2">
+                SNS ごとに、広告文の案3つ・投稿文とハッシュタグ・その SNS のサイズの画像をつくります（YouTube は動画だけ）。
+            </MudText>
+
+            <MudDivider Class="my-4" />
+            <MudSwitch T="bool" @bind-Value="_video" Color="Color.Primary" Label="縦型の動画もつくる（Instagram のリール・TikTok・YouTube ショートなどに使えます）" />
+            @if (_video)
+            {
+                <div class="d-flex flex-wrap gap-4 align-center mt-2">
+                    <MudSelect T="int" @bind-Value="_seconds" Label="長さ" Variant="Variant.Outlined" Dense="true" Style="max-width:160px">
+                        @foreach (var sec in new[] { 15, 20, 30 }) { <MudSelectItem T="int" Value="sec">@sec 秒</MudSelectItem> }
+                    </MudSelect>
+                    <MudSwitch T="bool" @bind-Value="_narration" Color="Color.Primary" Label="ナレーション（AI の声）を入れる" />
+                </div>
+            }
+            <div class="d-flex justify-space-between mt-4">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" OnClick="() => _step = 1">戻る</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" EndIcon="@Icons.Material.Rounded.ArrowForward"
+                           Disabled="@(_platforms.Count == 0)" OnClick="() => _step = 3">次へ：確認</MudButton>
+            </div>
+            break;
+
+        case 3:
+            <MudText Typo="Typo.h6">この内容でつくります</MudText>
+            <table class="rf-summary mt-3">
+                <tbody>
+                    <tr><th scope="row">LP</th><td style="word-break:break-all">@(_page?.Title)<br /><span class="mud-typography-caption">@(_page?.Url)</span></td></tr>
+                    <tr><th scope="row">SNS</th><td>@string.Join("・", _platforms.Select(p => PlatformCatalog.Get(p).DisplayName))</td></tr>
+                    <tr><th scope="row">画像</th><td>@(_images.Count == 0 ? "使わない" : $"LP の画像 {_images.Count}枚を、SNS ごとのサイズにします")</td></tr>
+                    <tr><th scope="row">動画</th><td>@(_video ? $"縦型 {_seconds}秒{(_narration ? "・ナレーションあり" : "")}" : "つくらない")</td></tr>
+                    <tr><th scope="row">クレジット</th><td>約 <b>@Credits</b>（残り @(State.Credits?.Available ?? 0)）</td></tr>
+                </tbody>
+            </table>
+            <MudText Typo="Typo.caption" Class="d-block mt-2">文章と画像は1分ほどでできます。動画はそのあと数分かけてつくります（画面を閉じても続きます）。</MudText>
+            <div class="d-flex justify-space-between mt-4">
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" Disabled="_busy" OnClick="() => _step = 2">戻る</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Rounded.AutoAwesome"
+                           Disabled="_busy" OnClick="CreateAsync">@(_busy ? "つくっています…" : "つくる")</MudButton>
+            </div>
+            @if (_busy)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mt-3" />
+                <MudText Typo="Typo.caption">AI が LP を読んで、SNS ごとの文章と画像をつくっています。</MudText>
+            }
+            break;
+    }
+</MudPaper>
+
+@if (_recent is { Count: > 0 })
+{
+    <div class="d-flex align-center mt-8 mb-2">
+        <MudText Typo="Typo.h6">最近つくったもの</MudText>
+        <MudSpacer />
+        <MudButton Href="/lp" Variant="Variant.Text" Color="Color.Primary">すべて見る</MudButton>
+    </div>
+    <RfLpList Projects="_recent" />
 }
 
 @code {
-    private HomeService Home => Scoped<HomeService>();
+    private static readonly string[] s_steps = ["LP を読み込む", "SNS を選ぶ", "確認してつくる"];
 
-    private IReadOnlyList<Channel>? _channels;
-    private IReadOnlyList<RecentPost>? _recent;
-    private IReadOnlyList<AdCampaign>? _ads;
+    private LpStudioService Lp => Scoped<LpStudioService>();
+
+    private int _step = 1;
+    private string? _url;
+    private WebPage? _page;
+    private List<string> _images = [];
+    private bool _rights;
+    private List<SocialPlatform> _platforms = [SocialPlatform.Instagram, SocialPlatform.X, SocialPlatform.Facebook];
+    private bool _video = true, _narration = true;
+    private int _seconds = 20;
+    private bool _busy;
+    private IReadOnlyList<LpProject>? _recent;
 
     /// <summary>文章をつくる AI（Claude または OpenAI）のキーがあるか。</summary>
     private bool AiReady => Ai.Value.Providers.Any(p => p.Value.Type is ReachForge.AI.AiProviderType.Anthropic or ReachForge.AI.AiProviderType.OpenAI
                                                        && !string.IsNullOrWhiteSpace(p.Value.ApiKey));
 
+    private LpProjectRequest Request => new()
+    {
+        Url = _page?.Url.ToString() ?? _url ?? "", Platforms = _platforms, ImageUrls = _images, RightsConfirmed = _rights,
+        MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration,
+    };
+
+    private int Credits => LpStudioService.EstimateCredits(Request);
+
     protected override async Task OnInitializedAsync()
     {
-        _channels = await Home.ChannelsAsync(CancellationToken.None);
-        _recent = await Home.RecentPostsAsync(10, CancellationToken.None);
-        _ads = await Scoped<AdService>().RecentAsync(5, CancellationToken.None);
+        await Time.ZoneAsync();
+        _recent = await Lp.ListAsync(5, CancellationToken.None);
     }
 
     private string Greeting
@@ -146,20 +205,61 @@ else
         }
     }
 
-    private static string StatusLabel(VariantStatus s) => s switch
+    private async Task LoadAsync()
     {
-        VariantStatus.Published => "投稿済み",
-        VariantStatus.Publishing => "投稿中",
-        VariantStatus.Scheduled => "投稿待ち",
-        VariantStatus.Failed => "失敗",
-        _ => "下書き",
-    };
+        if (string.IsNullOrWhiteSpace(_url)) return;
+        _busy = true;
+        try
+        {
+            _page = await Lp.PreviewAsync(_url.Trim(), CancellationToken.None);
+            _images = _page.ImageList.Take(Math.Min(2, LpStudioService.MaxImages)).Select(i => i.Url.ToString()).ToList();
+            _rights = false;
+        }
+        catch (Exception ex)
+        {
+            _page = null;
+            Snackbar.Show(ex, Log);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 
-    private static Color StatusColor(VariantStatus s) => s switch
+    private void Toggle(string url)
     {
-        VariantStatus.Published => Color.Success,
-        VariantStatus.Failed => Color.Error,
-        VariantStatus.Scheduled or VariantStatus.Publishing => Color.Info,
-        _ => Color.Default,
-    };
+        if (_images.Remove(url)) return;
+        if (_images.Count >= LpStudioService.MaxImages)
+        {
+            Snackbar.Add($"画像は{LpStudioService.MaxImages}枚まで選べます", Severity.Warning);
+            return;
+        }
+        _images.Add(url);
+    }
+
+    private void TogglePlatform(SocialPlatform p)
+    {
+        if (!_platforms.Remove(p)) _platforms.Add(p);
+    }
+
+    private async Task CreateAsync()
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync("つくりますか？", $"約 {Credits} クレジットを使います。", yesText: "つくる", cancelText: "やめる");
+        if (ok != true) return;
+        _busy = true;
+        try
+        {
+            var project = await Lp.CreateAsync(Request with { Platforms = LpStudioService.Supported.Where(_platforms.Contains).ToList() }, CancellationToken.None);
+            await State.RefreshAsync();
+            Nav.NavigateTo($"/lp/{project.Id}");
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex, Log);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
 }

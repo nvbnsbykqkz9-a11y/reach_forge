@@ -28,7 +28,7 @@ public sealed class DesktopHostTests : IDisposable
         var paths = new DesktopPaths(_root).EnsureCreated();
         Assert.True(Directory.Exists(paths.Media));
         Assert.True(Directory.Exists(Path.GetDirectoryName(paths.Database)));
-        Assert.Contains("\"TikTok\"", File.ReadAllText(paths.UserConfig));
+        Assert.Contains("\"anthropic\"", File.ReadAllText(paths.UserConfig));
 
         File.WriteAllText(paths.UserConfig, "{ \"mine\": true }");
         paths.EnsureCreated();

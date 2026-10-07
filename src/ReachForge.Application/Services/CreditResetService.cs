@@ -18,7 +18,7 @@ public sealed class CreditResetService(IAppDbContext db, ITenantContext tenant, 
         var reset = 0;
         foreach (var account in await db.CreditAccounts.ToListAsync(ct))
         {
-            var tz = SchedulingService.FindTimeZone(zones.GetValueOrDefault(account.TenantId, "Asia/Tokyo"));
+            var tz = FindTimeZone(zones.GetValueOrDefault(account.TenantId, "Asia/Tokyo"));
             var local = TimeZoneInfo.ConvertTime(now, tz);
             var periodStart = new DateOnly(local.Year, local.Month, 1);
             if (account.PeriodStart >= periodStart) continue;
@@ -31,4 +31,7 @@ public sealed class CreditResetService(IAppDbContext db, ITenantContext tenant, 
         await db.SaveChangesAsync(ct);
         return reset;
     }
+
+    public static TimeZoneInfo FindTimeZone(string? id) =>
+        TimeZoneInfo.TryFindSystemTimeZoneById(id ?? "Asia/Tokyo", out var tz) ? tz : TimeZoneInfo.Utc;
 }

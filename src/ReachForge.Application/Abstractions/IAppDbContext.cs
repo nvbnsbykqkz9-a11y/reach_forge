@@ -9,33 +9,17 @@ public interface IAppDbContext
 {
     DbSet<Tenant> Tenants { get; }
     DbSet<Workspace> Workspaces { get; }
-    DbSet<AdAccount> AdAccounts { get; }
-    DbSet<AdCampaign> AdCampaigns { get; }
-    DbSet<Channel> Channels { get; }
+    DbSet<LpProject> LpProjects { get; }
     DbSet<BrandProfile> BrandProfiles { get; }
     DbSet<Product> Products { get; }
-    DbSet<Campaign> Campaigns { get; }
-    DbSet<MasterPost> MasterPosts { get; }
-    DbSet<PostVariant> PostVariants { get; }
-    DbSet<ApprovalAction> ApprovalActions { get; }
     DbSet<MediaAsset> MediaAssets { get; }
     DbSet<AiGeneration> AiGenerations { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }
-    DbSet<PostMetric> PostMetrics { get; }
-    DbSet<PostMetricRollup> PostMetricRollups { get; }
     DbSet<AuditLog> AuditLogs { get; }
     DbSet<CreditAccount> CreditAccounts { get; }
     DbSet<WorkspaceMember> WorkspaceMembers { get; }
     DbSet<Invitation> Invitations { get; }
     DbSet<AiJob> AiJobs { get; }
-    DbSet<ChannelMetric> ChannelMetrics { get; }
-    DbSet<Report> Reports { get; }
-    DbSet<InboxMessage> InboxMessages { get; }
-    DbSet<KnowledgeEntry> KnowledgeEntries { get; }
-    DbSet<InboxAlert> InboxAlerts { get; }
-    DbSet<AbTest> AbTests { get; }
-    DbSet<TrendIdea> TrendIdeas { get; }
-    DbSet<ApiKey> ApiKeys { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

@@ -283,58 +283,37 @@ public class MediaServiceTests
     }
 
     [Fact]
-    public async Task Outpaint_job_replaces_variant_image()
-    {
-        await using var f = await AppFixture.CreateAsync();
-        Guid variantId, sourceId;
-        await using (var scope = f.Scope())
-        {
-            var source = await UploadAsync(f, scope);
-            sourceId = source.Id;
-            var db = f.Get<IAppDbContext>(scope);
-            var channel = await db.Channels.FirstAsync(c => c.Platform == SocialPlatform.Instagram);
-            var post = new MasterPost { WorkspaceId = channel.WorkspaceId, Title = "t", CoreMessage = "本文" };
-            db.MasterPosts.Add(post);
-            var v = PostVariant.Create(post, channel, "本文", []);
-            v.SetMedia([source.Id], requiresApproval: true);
-            v.Submit();
-            v.Approve();
-            db.PostVariants.Add(v);
-            await db.SaveChangesAsync();
-            variantId = v.Id;
-            var job = await f.Get<MediaService>(scope).EnqueueOutpaintAsync(
-                new OutpaintJobRequest(source.Id, SocialPlatform.Instagram, v.Id), CancellationToken.None);
-            await RunJobAsync(f, job.Id);
-        }
-
-        await using (var scope = f.Scope())
-        {
-            var db = f.Get<IAppDbContext>(scope);
-            var v = await db.PostVariants.SingleAsync(x => x.Id == variantId);
-            var asset = await db.MediaAssets.SingleAsync(m => m.Id == v.MediaAssetIds[0]);
-            Assert.Equal((MediaSource.AiEdited, sourceId), (asset.Source, asset.ParentAssetId!.Value));
-            Assert.Equal(AspectMethod.Outpaint, v.AspectMethod);
-            Assert.Equal(VariantStatus.Approved, v.Status); // 承認の流れは廃止したため、画像が変わっても再承認にしない
-            Assert.Equal(1495, (await db.CreditAccounts.SingleAsync()).Balance);
-        }
-    }
-
-    [Fact]
-    public async Task Media_in_use_cannot_be_deleted()
+    public async Task Outpaint_job_makes_a_platform_image_from_the_source()
     {
         await using var f = await AppFixture.CreateAsync();
         await using var scope = f.Scope();
-        var asset = await UploadAsync(f, scope);
-        var db = f.Get<IAppDbContext>(scope);
-        var channel = await db.Channels.FirstAsync();
-        var post = new MasterPost { WorkspaceId = channel.WorkspaceId, Title = "t", CoreMessage = "本文" };
-        db.MasterPosts.Add(post);
-        var v = PostVariant.Create(post, channel, "本文", []);
-        v.SetMedia([asset.Id], requiresApproval: false);
-        db.PostVariants.Add(v);
-        await db.SaveChangesAsync();
+        var source = await UploadAsync(f, scope);
+        var job = await f.Get<MediaService>(scope).EnqueueOutpaintAsync(
+            new OutpaintJobRequest(source.Id, SocialPlatform.Instagram, null), CancellationToken.None);
+        await RunJobAsync(f, job.Id);
 
-        await Assert.ThrowsAsync<DomainException>(() => f.Get<MediaService>(scope).DeleteAsync(asset.Id, CancellationToken.None));
+        await using var check = f.Scope();
+        var db = f.Get<IAppDbContext>(check);
+        var done = await db.AiJobs.SingleAsync(j => j.Id == job.Id);
+        var asset = await db.MediaAssets.SingleAsync(m => m.Id == done.ResultAssetIds[0]);
+        Assert.Equal((MediaSource.AiEdited, source.Id), (asset.Source, asset.ParentAssetId!.Value));
+        Assert.Equal(1495, (await db.CreditAccounts.SingleAsync()).Balance);
+    }
+
+    [Fact]
+    public async Task Deleting_media_removes_its_derivatives()
+    {
+        await using var f = await AppFixture.CreateAsync();
+        await using var scope = f.Scope();
+        var media = f.Get<MediaService>(scope);
+        var asset = await UploadAsync(f, scope);
+        var derived = await media.DeriveForPlatformAsync(asset, SocialPlatform.Instagram, AspectMethod.SmartCrop, CancellationToken.None);
+        await f.Get<IAppDbContext>(scope).SaveChangesAsync();
+        await media.DeleteAsync(asset.Id, CancellationToken.None);
+
+        await using var check = f.Scope();
+        var db = f.Get<IAppDbContext>(check);
+        Assert.False(await db.MediaAssets.AnyAsync(m => m.Id == asset.Id || m.Id == derived.Id));
     }
 
     [Fact]
@@ -352,41 +331,5 @@ public class MediaServiceTests
 
         f.Clock.Advance(TimeSpan.FromMinutes(6));
         Assert.Null(AppMediaUrlSigner.Validate(protection, token, f.Clock));
-    }
-
-    [Fact]
-    public async Task Variants_get_platform_specific_images()
-    {
-        await using var f = await AppFixture.CreateAsync();
-        await using var scope = f.Scope();
-        var asset = await UploadAsync(f, scope, 1200, 1200);
-        var studio = f.Get<StudioService>(scope);
-        var post = await studio.SaveMasterPostAsync(new SaveMasterPost
-        {
-            Title = "秋限定ラテ", Objective = PostObjective.Traffic, CoreMessage = "秋限定ラテが登場します。", MediaAssetIds = [asset.Id],
-        }, CancellationToken.None);
-        var channels = await f.Get<ChannelService>(scope).ListAsync(CancellationToken.None);
-        var variants = await studio.GenerateVariantsAsync(post.Id, channels.Select(c => c.Id).ToList(), new VariantOptions(),
-            CancellationToken.None);
-
-        var db = f.Get<IAppDbContext>(scope);
-        foreach (var v in variants)
-        {
-            var image = await db.MediaAssets.SingleAsync(m => m.Id == Assert.Single(v.MediaAssetIds));
-            var c = PlatformCatalog.Get(v.Platform);
-            Assert.Equal(c.ImageAspect.Value, image.AspectRatio, 2);
-            Assert.Equal(asset.Id, image.ParentAssetId);
-        }
-        // LINE はプレビュー用のサムネイルも作る
-        var line = variants.Single(v => v.Platform == SocialPlatform.Line);
-        Assert.True(await db.MediaAssets.AnyAsync(m => m.ParentAssetId == line.MediaAssetIds[0] && m.DerivationKey == MediaService.ThumbnailKey));
-
-        // 比率変換の方法を「余白」に変える → 別の派生画像になる
-        var x = variants.Single(v => v.Platform == SocialPlatform.X);
-        var before = x.MediaAssetIds[0];
-        Assert.Null(await studio.ChangeAspectMethodAsync(x.Id, AspectMethod.Pad, CancellationToken.None));
-        Assert.NotEqual(before, (await db.PostVariants.SingleAsync(v => v.Id == x.Id)).MediaAssetIds[0]);
-        // 「AIで広げる」はジョブになる
-        Assert.NotNull(await studio.ChangeAspectMethodAsync(x.Id, AspectMethod.Outpaint, CancellationToken.None));
     }
 }

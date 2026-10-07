@@ -42,10 +42,6 @@
         {
             <MudText Typo="Typo.caption" Class="d-block mt-1">訴求軸（参考）：@string.Join("／", d.AppealPoints)</MudText>
         }
-        @if (d.Faqs.Count > 0)
-        {
-            <MudCheckBox T="bool" @bind-Value="_pick.Faqs" Label="@($"よくある質問 {d.Faqs.Count}件を受信箱の返信の根拠に登録")" />
-        }
         <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-2" OnClick="ApplyAsync">選んだ項目を反映</MudButton>
         <MudText Typo="Typo.caption" Class="d-block mt-1">反映後、画面右上の「保存する」で確定します（版が上がります）。</MudText>
     }
@@ -53,7 +49,6 @@
 
 @code {
     private BrandDiagnosisService Diagnosis => Scoped<BrandDiagnosisService>();
-    private InboxService InboxSvc => Scoped<InboxService>();
 
     [Parameter, EditorRequired] public BrandProfile Brand { get; set; } = default!;
     [Parameter] public EventCallback OnApplied { get; set; }
@@ -66,7 +61,6 @@
         public bool Hashtags { get; set; } = true;
         public bool NgWords { get; set; } = true;
         public bool Colors { get; set; } = true;
-        public bool Faqs { get; set; } = true;
     }
 
     private string? _url, _text, _warning;
@@ -114,21 +108,6 @@
         if (_pick.Hashtags) Brand.PreferredHashtags = [.. Brand.PreferredHashtags.Concat(d.Hashtags).Distinct()];
         if (_pick.NgWords) Brand.NgWords = [.. Brand.NgWords.Concat(d.NgWordSuggestions).Distinct()];
         if (_pick.Colors && d.Colors.Count > 0) Brand.BrandColors = [.. d.Colors];
-        if (_pick.Faqs && d.Faqs.Count > 0)
-        {
-            try
-            {
-                var existing = (await InboxSvc.KnowledgeAsync(CancellationToken.None)).Select(k => k.Question).ToHashSet();
-                foreach (var f in d.Faqs.Where(f => !existing.Contains(f.Question)))
-                {
-                    await InboxSvc.SaveKnowledgeAsync(null, f.Question, f.Answer, allowAutoReply: false, CancellationToken.None);
-                }
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Show(ex);
-            }
-        }
         await OnApplied.InvokeAsync();
         Snackbar.Add("下書きを反映しました。内容を確認して「保存する」を押してください", Severity.Info);
         _draft = null;

@@ -49,10 +49,7 @@ public sealed class BrandDiagnosisService(
             }
         }
 
-        var posts = (await db.PostVariants.AsNoTracking()
-                .Where(v => v.WorkspaceId == tenant.WorkspaceId && v.Status == VariantStatus.Published)
-                .Select(v => new { v.Body, v.PublishedAt }).ToListAsync(ct))
-            .OrderByDescending(v => v.PublishedAt).Take(50).Select(v => v.Body).ToList();
+        IReadOnlyList<string> posts = [];
 
         var cost = CreditTable.Cost(CreditOperation.CopyGeneration);
         await using var hold = await credits.HoldAsync(cost, ct);

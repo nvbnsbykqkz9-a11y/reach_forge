@@ -50,7 +50,7 @@ public sealed class TrayIcon : IDisposable
         return key?.GetValue(RunValue) is string;
     }
 
-    /// <summary>サインイン時にトレイだけで起動する（予約投稿を続けるため）。管理者権限は不要（利用者ごとの設定）。</summary>
+    /// <summary>サインイン時にトレイだけで起動する（動画づくりを続けるため）。管理者権限は不要（利用者ごとの設定）。</summary>
     private static void SetAutoStart(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKey);

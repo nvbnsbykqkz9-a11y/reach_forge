@@ -1,10 +1,11 @@
 using System.Net;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 using Microsoft.AspNetCore.Mvc.Testing.Handlers;
+using Microsoft.Extensions.DependencyInjection;
+using ReachForge.Application.Abstractions;
+using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Persistence;
 
 namespace ReachForge.Web.Tests;
@@ -31,7 +32,7 @@ public class RealtimeTests
         .Build();
 
     [Fact]
-    public async Task Webhook_ingestion_is_pushed_to_connected_clients()
+    public async Task Job_progress_is_pushed_only_to_the_same_workspace()
     {
         await using var app = new WebFixture();
         _ = app.Server; // サーバーを起動する
@@ -43,20 +44,15 @@ public class RealtimeTests
 
         await using var connection = Connect(app, cookies);
         var received = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
-        connection.On<JsonElement>("inboxUpdated", e => received.TrySetResult(e));
+        connection.On<JsonElement>("jobProgress", e => received.TrySetResult(e));
         await connection.StartAsync();
 
-        const string body = """
-            {"object":"instagram","entry":[{"id":"demo-instagram","changes":[{"field":"comments",
-              "value":{"id":"rt-1","text":"予約はできますか？","from":{"id":"u1","username":"rt_user"},"media":{"id":"m1"}}}]}]}
-            """;
-        var signed = new StringContent(body, Encoding.UTF8, "application/json");
-        signed.Headers.Add("X-Hub-Signature-256",
-            "sha256=" + Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes("meta-secret"), Encoding.UTF8.GetBytes(body))));
-        Assert.Equal(HttpStatusCode.OK, (await app.CreateClient().PostAsync("/api/v1/webhooks/meta", signed)).StatusCode);
+        var notifier = app.Services.GetRequiredService<IRealtimeNotifier>();
+        var jobId = Guid.NewGuid();
+        notifier.Publish(new JobProgressEvent(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), AiTaskType.Video, AiJobStatus.Running, AiJobStage.Generating));
+        notifier.Publish(new JobProgressEvent(DemoSeeder.TenantId, DemoSeeder.WorkspaceId, jobId, AiTaskType.Video, AiJobStatus.Running, AiJobStage.Generating));
 
         var e = await received.Task.WaitAsync(TimeSpan.FromSeconds(15));
-        Assert.Equal(DemoSeeder.WorkspaceId, e.GetProperty("workspaceId").GetGuid());
-        Assert.Equal(1, e.GetProperty("newMessages").GetInt32());
+        Assert.Equal(jobId, e.GetProperty("jobId").GetGuid()); // 別のワークスペースの出来事は届かない
     }
 }

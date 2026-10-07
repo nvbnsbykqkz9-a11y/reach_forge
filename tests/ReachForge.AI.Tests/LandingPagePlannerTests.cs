@@ -14,7 +14,7 @@ namespace ReachForge.AI.Tests;
 /// <summary>LP から作る集客動画の企画（訴求の整理・絵コンテ）と、その出力の確認。</summary>
 public class LandingPagePlannerTests
 {
-    private static readonly BrandContext Brand = new(new BrandProfile { BrandName = "ほっこりカフェ", NgWords = ["激安"], MustPhrases = [] }, [], null);
+    private static readonly BrandContext Brand = new(new BrandProfile { BrandName = "ほっこりカフェ", NgWords = ["激安"], MustPhrases = [] }, []);
 
     private static WebPage Page(int images = 2) => new(new Uri("https://example.com/lp"), "秋限定さつまいもラテ | ほっこりカフェ", "期間限定",
         "さつまいもラテ 680円（税込）。１，２８０円のセットもあります。", [],

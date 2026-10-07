@@ -37,7 +37,7 @@ public sealed class CopyGenerationService(
         await using var hold = await credits.HoldAsync(cost, ct);
         CheckInput(request.Theme, request.AdditionalInstructions);
 
-        var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, request.CampaignId, ct);
+        var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, ct);
         var system = await prompts.RenderAsync(PromptKeys.Copy, PromptLibrary.BrandValues(ctx), ct);
         var generation = StartGeneration(request, system, ctx);
         List<ChatMessage> messages =
@@ -55,7 +55,7 @@ public sealed class CopyGenerationService(
         await using var hold = await credits.HoldAsync(cost, ct);
         CheckInput(candidate.Body, null);
 
-        var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, request.CampaignId, ct);
+        var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, ct);
         var system = await prompts.RenderAsync(PromptKeys.Copy, PromptLibrary.BrandValues(ctx), ct);
         var refine = await prompts.RenderAsync(PromptKeys.CopyRefine, PromptLibrary.RefineValues(candidate, fix), ct);
         var generation = StartGeneration(request, refine, ctx);

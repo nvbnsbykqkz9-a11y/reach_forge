@@ -1,0 +1,34 @@
+@page "/lp"
+@* つくったもの（LP ごとの一覧） *@
+@inherits RfComponentBase
+@inject TimeDisplay Time
+
+<PageTitle>つくったもの｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">つくったもの</MudText>
+    <MudButton Href="/" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add">新しくつくる</MudButton>
+</div>
+
+@if (_projects is null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (_projects.Count == 0)
+{
+    <RfEmptyState Title="まだありません" Message="ホームで LP の URL を入れると、広告・動画をつくれます。" ActionText="つくる" ActionHref="/" />
+}
+else
+{
+    <RfLpList Projects="_projects" />
+}
+
+@code {
+    private IReadOnlyList<LpProject>? _projects;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        _projects = await Scoped<LpStudioService>().ListAsync(200, CancellationToken.None);
+    }
+}

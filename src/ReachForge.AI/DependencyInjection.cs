@@ -28,8 +28,6 @@ public static class DependencyInjection
         services.AddScoped<IPromptCatalog, PromptCatalog>();
         services.AddScoped<IModelRouter, ConfigDrivenModelRouter>();
         services.AddScoped<ICopyGenerationService, CopyGenerationService>();
-        services.AddScoped<IVariantGenerationService, VariantGenerationService>();
-        services.AddScoped<IApprovalSummaryService, ApprovalSummaryService>();
         services.AddSingleton<IImageGeneratorFactory, ImageGeneratorFactory>();
         services.AddScoped<IImageGenerationService, ImageGenerationService>();
         // 動画生成（Sora / Veo）：依頼と状態の確認は短く、動画の取得は大きいため長めにする。再試行は代替プロバイダで行う
@@ -37,13 +35,8 @@ public static class DependencyInjection
         services.AddSingleton<IVideoGeneratorFactory, VideoGeneratorFactory>();
         services.AddScoped<IVideoGenerationService, VideoGenerationService>();
         services.AddScoped<IAltTextGenerator, AltTextGenerator>();
-        services.AddScoped<IReportWriter, ReportWriter>();
-        services.AddScoped<IInboxClassifier, InboxClassifier>();
-        services.AddScoped<IReplySuggester, ReplySuggester>();
-        services.AddScoped<IAbVariantGenerator, AbVariantGenerator>();
         services.AddScoped<IBrandAnalyzer, BrandAnalyzer>();
-        services.AddScoped<ITrendIdeaWriter, TrendIdeaWriter>();
-        services.AddScoped<IAdCopyWriter, AdCopyWriter>();
+        services.AddScoped<ILpCreativeWriter, LpCreativeWriter>();
         services.AddScoped<IVideoScriptWriter, VideoScriptWriter>();
         services.AddScoped<ILandingPageVideoPlanner, LandingPageVideoPlanner>();
         services.AddScoped<ITextToSpeech, TextToSpeechService>();

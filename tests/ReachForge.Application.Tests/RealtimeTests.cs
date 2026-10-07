@@ -40,19 +40,6 @@ public class RealtimeTests
         Assert.All(job, e => Assert.Equal(Infrastructure.Persistence.DemoSeeder.WorkspaceId, e.WorkspaceId));
     }
 
-    [Fact]
-    public async Task Inbox_ingestion_publishes_an_update()
-    {
-        var recorder = new Recorder();
-        await using var f = await AppFixture.CreateAsync(configure: s => s.AddSingleton<IRealtimeNotifier>(recorder));
-        await using var scope = f.Scope(c => c.IsSystem = true);
-        f.Clock.Advance(TimeSpan.FromHours(1));
-        var r = await f.Get<InboxService>(scope).PollDueAsync(CancellationToken.None);
-        Assert.True(r.Ingested > 0);
-        var e = Assert.Single(recorder.Events.OfType<InboxUpdatedEvent>().Where(x => x.NewMessages > 0).Take(1));
-        Assert.Equal(Infrastructure.Persistence.DemoSeeder.WorkspaceId, e.WorkspaceId);
-    }
-
     public static string? Redis => Environment.GetEnvironmentVariable("RF_TEST_REDIS");
 
     [Fact]

@@ -49,7 +49,6 @@ public sealed class RealtimeHubForwarder(RealtimeBus bus, IHubContext<RealtimeHu
             return e switch
             {
                 JobProgressEvent job => clients.SendAsync("jobProgress", job, cancellationToken: CancellationToken.None),
-                InboxUpdatedEvent inbox => clients.SendAsync("inboxUpdated", inbox, cancellationToken: CancellationToken.None),
                 _ => Task.CompletedTask,
             };
         });

@@ -271,27 +271,11 @@ public sealed class MediaService(
         return asset;
     }
 
-    /// <summary>この画像（または派生画像）を使っている投稿バリアント。</summary>
-    public async Task<IReadOnlyList<PostVariant>> UsagesAsync(Guid id, CancellationToken ct)
-    {
-        var family = await db.MediaAssets.Where(m => m.Id == id || m.ParentAssetId == id).Select(m => m.Id).ToListAsync(ct);
-        return (await db.PostVariants.Where(v => v.WorkspaceId == tenant.WorkspaceId).ToListAsync(ct))
-            .Where(v => v.MediaAssetIds.Any(family.Contains))
-            .ToList();
-    }
-
-    /// <summary>削除する。公開前の投稿で使用中の場合は削除できない（誤って画像のない投稿にしないため）。</summary>
+    /// <summary>削除する（派生画像も消す）。</summary>
     public async Task DeleteAsync(Guid id, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
         var asset = await GetAsync(id, ct);
-        var inUse = (await UsagesAsync(id, ct))
-            .Where(v => v.Status is not (VariantStatus.Published or VariantStatus.Canceled or VariantStatus.Failed))
-            .ToList();
-        if (inUse.Count > 0)
-        {
-            throw new DomainException(ErrorCodes.Validation, $"この画像は公開前の投稿 {inUse.Count}件で使われているため削除できません。先に投稿から外してください。");
-        }
         var family = await db.MediaAssets.Where(m => m.Id == id || m.ParentAssetId == id).ToListAsync(ct);
         foreach (var m in family)
         {

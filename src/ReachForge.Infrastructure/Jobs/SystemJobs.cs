@@ -7,7 +7,7 @@ using ReachForge.Application.Services;
 namespace ReachForge.Infrastructure.Jobs;
 
 /// <summary>
-/// 定期ジョブの定義（14章）。分析・レポート・A/B テスト・ネタ帳の機能は削除したため、それらのジョブ（指標の取得・レポート・A/B の判定・話題の調査）は登録しない。
+/// 定期ジョブの定義（14章）。SNS とはつながないため、クレジットの付与と古いデータの削除だけを行う。
 /// <paramref name="Cron"/> は <see cref="JobOptions.TimeZone"/>（既定 JST）で解釈する。
 /// 実行内容はどれも「期限が来たものだけを処理する」冪等な処理で、取りこぼしても次の周期で追いつく。
 /// </summary>
@@ -20,36 +20,16 @@ public static class SystemJobCatalog
 {
     public static readonly IReadOnlyList<SystemJob> All =
     [
-        new("token-refresh", "TokenRefreshJob", "0 3 * * *", 3, async (sp, ct) =>
-        {
-            var (refreshed, reauth) = await sp.GetRequiredService<ChannelTokenService>().RefreshExpiringAsync(ct);
-            return refreshed + reauth > 0 ? $"{refreshed} refreshed, {reauth} need reconnection" : null;
-        }),
-        // チャネルごとの間隔（5〜15分）は InboxService.PollInterval で判定する
-        new("inbox-poll", "InboxPollJob", "* * * * *", 0, async (sp, ct) =>
-        {
-            var r = await sp.GetRequiredService<InboxService>().PollDueAsync(ct);
-            return r.Ingested + r.Failed > 0
-                ? $"{r.Ingested} new from {r.Channels} channel(s), {r.AutoHandled} handled automatically, {r.Failed} failed"
-                : null;
-        }),
         new("credit-reset", "CreditResetJob", "0 * * * *", 0, async (sp, ct) =>
         {
             var n = await sp.GetRequiredService<CreditResetService>().ResetDueAsync(ct);
             return n > 0 ? $"{n} account(s) reset" : null;
         }),
-        // 有料広告の状態（審査・配信・終了）と成果を各社から読み直す
-        new("ad-sync", "AdSyncJob", "*/30 * * * *", 0, async (sp, ct) =>
-        {
-            var r = await sp.GetRequiredService<AdService>().SyncDueAsync(ct);
-            return r.Synced + r.Failed > 0 ? $"{r.Synced} ad(s) synced, {r.Failed} failed" : null;
-        }),
         new("data-retention", "DataRetentionJob", "0 2 * * *", 0, async (sp, ct) =>
         {
             var r = await sp.GetRequiredService<DataRetentionService>().PurgeAsync(ct);
             return r.Total > 0
-                ? $"deleted {r.Idempotency} idempotency, {r.AuditLogs} audit, {r.AiJobs} AI job, {r.TrendIdeas} idea, {r.Invitations} invitation row(s); "
-                  + $"rolled up {r.PostMetricsRolledUp} post metric(s)"
+                ? $"deleted {r.AuditLogs} audit, {r.AiJobs} AI job, {r.Invitations} invitation row(s)"
                 : null;
         }),
     ];
