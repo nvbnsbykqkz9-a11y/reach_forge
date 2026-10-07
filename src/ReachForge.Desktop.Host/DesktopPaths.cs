@@ -18,7 +18,10 @@ public sealed class DesktopPaths(string root)
     public string Certificate => Path.Combine(Root, "certs", "localhost.pfx");
     public string Settings => Path.Combine(Root, "desktop.json");
 
-    /// <summary>利用者が編集する設定（API キー・SNS アプリの設定など）。アプリが起動時に読み込む（変更は再起動で反映）。</summary>
+    /// <summary>
+    /// 利用者が編集する細かな設定。アプリが起動時に読み込む（変更は再起動で反映）。
+    /// 生成 AI の API キーと SNS アプリの設定は画面（設定 → 生成AIの設定／SNSアプリの設定）で入力するのが基本。
+    /// </summary>
     public string UserConfig => Path.Combine(Root, "appsettings.user.json");
 
     /// <summary>WebView2 のプロファイル（Cookie など）。</summary>

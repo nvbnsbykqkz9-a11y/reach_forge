@@ -1,0 +1,182 @@
+@* 画面から変える設定のまとまり（SNS アプリ・生成 AI のプロバイダ）。シークレットは画面に出さず、空欄なら変更しない *@
+@inherits RfComponentBase
+@inject WebTenantContext Tenant
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@using ReachForge.Infrastructure.Settings
+
+<MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true" id="@Group.Id">
+    <div class="d-flex align-center gap-2">
+        <MudText Typo="Typo.h6">@Group.Name</MudText>
+        <MudSpacer />
+        <MudChip T="string" Size="Size.Small" Color="@(State == "設定済み" ? Color.Success : State == "未設定" ? Color.Default : Color.Warning)">@State</MudChip>
+    </div>
+    <MudText Typo="Typo.body2" Class="mt-1">@Group.Guide</MudText>
+    <MudLink Href="@Group.DeveloperUrl" Target="_blank" Typo="Typo.body2">@(Group.Platforms.Count > 0 ? "開発者サイトを開く" : "API キーの発行ページを開く")</MudLink>
+
+    @if (Group.Platforms.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle2" Class="mt-3">登録するコールバック URL</MudText>
+        @foreach (var platform in Group.Platforms)
+        {
+            var url = $"{Nav.BaseUri}api/v1/oauth/callback/{platform}";
+            <div class="d-flex align-center gap-1">
+                <code style="font-size:.85rem;word-break:break-all">@url</code>
+                <MudIconButton Icon="@Icons.Material.Rounded.ContentCopy" Size="Size.Small" aria-label="@($"{PlatformCatalog.Get(platform).DisplayName} のコールバック URL をコピー")"
+                               OnClick="() => CopyAsync(url)" />
+            </div>
+        }
+    }
+
+    @foreach (var f in Group.Fields)
+    {
+        var status = Status.GetValueOrDefault(f.Key);
+        if (f.IsSwitch)
+        {
+            <MudSwitch T="bool" Value="@(_switches.GetValueOrDefault(f.Key))" ValueChanged="v => { _switches[f.Key] = v; _dirty = true; }" Color="Color.Primary"
+                       Class="mt-2" Label="@f.Label" Disabled="@(!CanManage)" />
+            @if (f.Help is not null) { <MudText Typo="Typo.caption" Class="d-block">@f.Help</MudText> }
+        }
+        else
+        {
+            <MudTextField T="string" Label="@f.Label" Variant="Variant.Outlined" Class="mt-3" Disabled="@(!CanManage)"
+                          InputType="@(f.Secret ? InputType.Password : InputType.Text)" autocomplete="off"
+                          Placeholder="@(f.Secret && status?.Source != SettingSource.None ? "設定済み（変更するときだけ入力）" : null)"
+                          HelperText="@Helper(f, status)"
+                          Value="@_values.GetValueOrDefault(f.Key)" ValueChanged="v => { _values[f.Key] = v; _dirty = true; }" />
+        }
+    }
+    <div class="d-flex gap-2 mt-3 flex-wrap align-center">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanManage || _busy)" OnClick="SaveAsync">保存する</MudButton>
+        @if (Check is not null)
+        {
+            <MudButton Variant="Variant.Outlined" Disabled="@(_busy || State == "未設定")" OnClick="CheckAsync">接続を確認</MudButton>
+        }
+        @if (Group.Fields.Any(f => Status.GetValueOrDefault(f.Key)?.Source == SettingSource.Screen))
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@(!CanManage || _busy)" OnClick="ClearAsync">この画面での設定を消す</MudButton>
+        }
+    </div>
+    @if (_check is { } check)
+    {
+        <MudAlert Severity="@(check.Ok ? Severity.Success : Severity.Error)" Dense="true" Class="mt-2">@check.Message</MudAlert>
+    }
+</MudPaper>
+
+@code {
+    private AppSettingsService Settings => Scoped<AppSettingsService>();
+
+    [Parameter, EditorRequired] public SettingsGroup Group { get; set; } = default!;
+    [Parameter, EditorRequired] public IReadOnlyDictionary<string, SettingStatus> Status { get; set; } = default!;
+    [Parameter] public bool CanManage { get; set; }
+
+    /// <summary>保存・削除のあと（親が状態を読み直す）。</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>接続の確認（生成 AI の API キーなど）。指定したときだけボタンを出す。</summary>
+    [Parameter] public Func<SettingsGroup, Task<(bool Ok, string Message)>>? Check { get; set; }
+
+    private readonly Dictionary<string, string?> _values = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> _switches = new(StringComparer.OrdinalIgnoreCase);
+    private (bool Ok, string Message)? _check;
+    private bool _busy;
+
+    /// <summary>入力中か（ほかのカードの保存で画面が読み直されても、入力中の値は消さない）。</summary>
+    private bool _dirty;
+
+    protected override void OnParametersSet()
+    {
+        if (!_dirty) Populate();
+    }
+
+    private void Populate()
+    {
+        _values.Clear();
+        _switches.Clear();
+        foreach (var f in Group.Fields)
+        {
+            var s = Status.GetValueOrDefault(f.Key);
+            if (f.IsSwitch) _switches[f.Key] = bool.TryParse(s?.Value, out var b) && b;
+            else if (!f.Secret) _values[f.Key] = s?.Value;
+        }
+    }
+
+    private static string? Helper(SettingsField f, SettingStatus? s) => s?.Source switch
+    {
+        SettingSource.File => "設定ファイル・環境変数で設定済み（ここで入力すると上書きします）",
+        SettingSource.Screen when f.Secret => "この画面で設定済み",
+        _ => f.Help,
+    };
+
+    /// <summary>必須の項目（任意・スイッチを除く）がそろっていれば設定済み。</summary>
+    private string State
+    {
+        get
+        {
+            var required = Group.Fields.Where(f => !f.IsSwitch && !f.Optional).ToList();
+            var set = required.Count(f => Status.GetValueOrDefault(f.Key)?.Source is SettingSource.File or SettingSource.Screen);
+            return set == required.Count ? "設定済み" : set == 0 ? "未設定" : "一部未設定";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _check = null;
+        try
+        {
+            var values = Group.Fields.ToDictionary(f => f.Key,
+                f => f.IsSwitch ? (_switches.GetValueOrDefault(f.Key) ? "true" : "false") : _values.GetValueOrDefault(f.Key));
+            await Settings.SaveAsync(values, Tenant.UserName, CancellationToken.None);
+            await OnChanged.InvokeAsync();
+            _dirty = false;
+            Populate();
+            Snackbar.Add($"{Group.Name} の設定を保存しました。", Severity.Success);
+            if (Check is not null) await CheckAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task CheckAsync()
+    {
+        if (Check is null) return;
+        _busy = true;
+        try
+        {
+            _check = await Check(Group);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync("設定を消しますか？",
+            $"{Group.Name} のこの画面での設定を消します。設定ファイルに値がなければ、この機能は使えなくなります。",
+            yesText: "消す", cancelText: "やめる");
+        if (ok != true) return;
+        await Settings.ClearAsync(Group, Tenant.UserName, CancellationToken.None);
+        _check = null;
+        await OnChanged.InvokeAsync();
+        _dirty = false;
+        Populate();
+        Snackbar.Add("設定を消しました", Severity.Success);
+    }
+
+    private async Task CopyAsync(string text)
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        Snackbar.Add("コピーしました", Severity.Info);
+    }
+}

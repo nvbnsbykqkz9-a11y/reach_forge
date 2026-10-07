@@ -20,7 +20,7 @@ public class SnsAppSettingsTests
         await using var app = new WebFixture(new Dictionary<string, string?> { ["Social:UseMock"] = "false" });
         app.CreateClient().Dispose(); // 起動する
         var services = app.Services;
-        var settings = services.GetRequiredService<SnsAppSettingsService>();
+        var settings = services.GetRequiredService<AppSettingsService>();
         var options = services.GetRequiredService<IOptions<SocialOptions>>();
         var connectors = services.GetServices<IChannelConnector>().ToList();
         bool Connectable(SocialPlatform p) => connectors.Any(c => c.Supports(p));
@@ -58,16 +58,35 @@ public class SnsAppSettingsTests
         Assert.Equal(("client-2", "secret-1"), (options.Value.X.ClientId, options.Value.X.ClientSecret));
 
         // デモ接続の切り替えもすぐ反映する
-        await settings.SaveAsync(new Dictionary<string, string?> { [SnsAppSettingsService.UseMockKey] = "true" }, "owner@example.com", CancellationToken.None);
+        await settings.SaveAsync(new Dictionary<string, string?> { [AppSettingsService.UseMockKey] = "true" }, "owner@example.com", CancellationToken.None);
         Assert.True(Connectable(SocialPlatform.TikTok));
 
         // 画面での設定を消すと元に戻る
-        await settings.ClearAsync(SnsAppSettingsService.Apps.Single(a => a.Id == "x"), "owner@example.com", CancellationToken.None);
+        await settings.ClearAsync(AppSettingsService.SnsApps.Single(a => a.Id == "x"), "owner@example.com", CancellationToken.None);
         Assert.True(string.IsNullOrEmpty(options.Value.X.ClientId)); // 設定ファイルの値（空）に戻る
         Assert.DoesNotContain(connectors.Where(c => c is not ReachForge.Social.Mock.DemoChannelConnector), c => c.Supports(SocialPlatform.X));
 
         await Assert.ThrowsAsync<ReachForge.Domain.Common.DomainException>(() => settings.SaveAsync(
             new Dictionary<string, string?> { ["ConnectionStrings:ReachForge"] = "x" }, "owner@example.com", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Ai_api_key_saved_on_screen_is_used_without_restart()
+    {
+        await using var app = new WebFixture();
+        app.CreateClient().Dispose();
+        var settings = app.Services.GetRequiredService<AppSettingsService>();
+        var ai = app.Services.GetRequiredService<IOptions<ReachForge.AI.AiOptions>>();
+        Assert.False(ai.Value.Providers.TryGetValue("anthropic", out var before) && before.IsConfigured);
+
+        await settings.SaveAsync(new Dictionary<string, string?> { ["AI:Providers:anthropic:ApiKey"] = "sk-ant-test" },
+            "owner@example.com", CancellationToken.None);
+        Assert.Equal("sk-ant-test", ai.Value.Providers["anthropic"].ApiKey);
+        Assert.True(ai.Value.Providers["anthropic"].IsConfigured);
+        Assert.Equal("claude-opus-5-5", ai.Value.Providers["anthropic"].Model); // モデルは設定ファイルの既定のまま
+        var status = await settings.StatusAsync(CancellationToken.None);
+        Assert.Equal(SettingSource.Screen, status["AI:Providers:anthropic:ApiKey"].Source);
+        Assert.Null(status["AI:Providers:anthropic:ApiKey"].Value);
     }
 
     [Fact]
@@ -90,6 +109,7 @@ public class SnsAppSettingsTests
         await using var desktop = new WebFixture(new Dictionary<string, string?> { ["Desktop:Enabled"] = "true" });
         var local = desktop.Browser();
         await WebFixture.LoginAsync(local, "owner@example.com");
+        Assert.Equal(HttpStatusCode.OK, (await local.GetAsync("/settings/ai")).StatusCode);
         var page = await local.GetAsync("/settings/sns-apps");
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         var html = await page.Content.ReadAsStringAsync();

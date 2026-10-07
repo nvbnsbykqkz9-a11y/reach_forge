@@ -4,9 +4,6 @@
 @inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject ISnackbar Snackbar
-@inject IDialogService Dialogs
-@inject NavigationManager Nav
-@inject IJSRuntime JS
 @using ReachForge.Infrastructure.Settings
 
 <PageTitle>SNSアプリの設定｜ReachForge</PageTitle>
@@ -33,56 +30,10 @@
 </MudPaper>
 
 <MudGrid>
-    @foreach (var app in SnsAppSettingsService.Apps)
+    @foreach (var app in AppSettingsService.SnsApps)
     {
-        var state = AppState(app);
         <MudItem xs="12" lg="6">
-            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true" id="@app.Id">
-                <div class="d-flex align-center gap-2">
-                    <MudText Typo="Typo.h6">@app.Name</MudText>
-                    <MudSpacer />
-                    <MudChip T="string" Size="Size.Small" Color="@(state == "設定済み" ? Color.Success : state == "未設定" ? Color.Default : Color.Warning)">@state</MudChip>
-                </div>
-                <MudText Typo="Typo.body2" Class="mt-1">@app.Guide</MudText>
-                <MudLink Href="@app.DeveloperUrl" Target="_blank" Typo="Typo.body2">開発者サイトを開く</MudLink>
-
-                <MudText Typo="Typo.subtitle2" Class="mt-3">登録するコールバック URL</MudText>
-                @foreach (var platform in app.Platforms)
-                {
-                    var url = CallbackUrl(platform);
-                    <div class="d-flex align-center gap-1">
-                        <code style="font-size:.85rem;word-break:break-all">@url</code>
-                        <MudIconButton Icon="@Icons.Material.Rounded.ContentCopy" Size="Size.Small" aria-label="@($"{PlatformCatalog.Get(platform).DisplayName} のコールバック URL をコピー")"
-                                       OnClick="() => CopyAsync(url)" />
-                    </div>
-                }
-
-                @foreach (var f in app.Fields)
-                {
-                    var status = _status.GetValueOrDefault(f.Key);
-                    if (f.IsSwitch)
-                    {
-                        <MudSwitch T="bool" Value="@(_switches.GetValueOrDefault(f.Key))" ValueChanged="v => _switches[f.Key] = v" Color="Color.Primary"
-                                   Class="mt-2" Label="@f.Label" Disabled="@(!CanManage)" />
-                        @if (f.Help is not null) { <MudText Typo="Typo.caption" Class="d-block">@f.Help</MudText> }
-                    }
-                    else
-                    {
-                        <MudTextField T="string" Label="@f.Label" Variant="Variant.Outlined" Class="mt-3" Disabled="@(!CanManage)"
-                                      InputType="@(f.Secret ? InputType.Password : InputType.Text)" autocomplete="off"
-                                      Placeholder="@(f.Secret && status?.Source != SettingSource.None ? "設定済み（変更するときだけ入力）" : null)"
-                                      HelperText="@Helper(f, status)"
-                                      Value="@_values.GetValueOrDefault(f.Key)" ValueChanged="v => _values[f.Key] = v" />
-                    }
-                }
-                <div class="d-flex gap-2 mt-3">
-                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanManage || _busy)" OnClick="() => SaveAsync(app)">保存する</MudButton>
-                    @if (app.Fields.Any(f => _status.GetValueOrDefault(f.Key)?.Source == SettingSource.Screen))
-                    {
-                        <MudButton Variant="Variant.Text" Color="Color.Error" Disabled="@(!CanManage || _busy)" OnClick="() => ClearAsync(app)">この画面での設定を消す</MudButton>
-                    }
-                </div>
-            </MudPaper>
+            <RfSettingsGroupCard Group="app" Status="_status" CanManage="CanManage" OnChanged="LoadAsync" />
         </MudItem>
     }
 </MudGrid>
@@ -91,13 +42,10 @@
 </MudText>
 
 @code {
-    private SnsAppSettingsService Settings => Scoped<SnsAppSettingsService>();
+    private AppSettingsService Settings => Scoped<AppSettingsService>();
 
-    private IReadOnlyDictionary<string, SnsFieldStatus> _status = new Dictionary<string, SnsFieldStatus>();
-    private readonly Dictionary<string, string?> _values = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, bool> _switches = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyDictionary<string, SettingStatus> _status = new Dictionary<string, SettingStatus>();
     private bool _useMock;
-    private bool _busy;
 
     private bool CanManage => RolePolicy.Can(Tenant.Role, Permission.ManageChannels);
 
@@ -107,78 +55,13 @@
     {
         _status = await Settings.StatusAsync(CancellationToken.None);
         _useMock = Settings.UseMock;
-        _values.Clear();
-        _switches.Clear();
-        foreach (var (key, s) in _status)
-        {
-            if (s.Field.IsSwitch) _switches[key] = bool.TryParse(s.Value, out var b) && b;
-            else if (!s.Field.Secret) _values[key] = s.Value;
-        }
-    }
-
-    private string CallbackUrl(SocialPlatform platform) => $"{Nav.BaseUri}api/v1/oauth/callback/{platform}";
-
-    private static string? Helper(SnsAppField f, SnsFieldStatus? s) => s?.Source switch
-    {
-        SettingSource.File => "設定ファイル・環境変数で設定済み（ここで入力すると上書きします）",
-        SettingSource.Screen when f.Secret => "この画面で設定済み",
-        _ => f.Help,
-    };
-
-    /// <summary>状態：ID とシークレット（必須の2項目）がそろっていれば設定済み。</summary>
-    private string AppState(SnsApp app)
-    {
-        var required = app.Fields.Where(f => !f.IsSwitch && f.Help is null).ToList();
-        var set = required.Count(f => _status.GetValueOrDefault(f.Key)?.Source is SettingSource.File or SettingSource.Screen);
-        return set == required.Count ? "設定済み" : set == 0 ? "未設定" : "一部未設定";
-    }
-
-    private async Task SaveAsync(SnsApp app)
-    {
-        _busy = true;
-        try
-        {
-            var values = new Dictionary<string, string?>();
-            foreach (var f in app.Fields)
-            {
-                values[f.Key] = f.IsSwitch ? (_switches.GetValueOrDefault(f.Key) ? "true" : "false") : _values.GetValueOrDefault(f.Key);
-            }
-            await Settings.SaveAsync(values, Tenant.UserName, CancellationToken.None);
-            await LoadAsync();
-            Snackbar.Add($"{app.Name} の設定を保存しました。SNS連携の画面から連携できます。", Severity.Success);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Show(ex);
-        }
-        finally
-        {
-            _busy = false;
-        }
-    }
-
-    private async Task ClearAsync(SnsApp app)
-    {
-        var ok = await Dialogs.ShowMessageBoxAsync("設定を消しますか？",
-            $"{app.Name} のこの画面での設定を消します。連携済みのアカウントは、トークンの更新や投稿ができなくなる場合があります。",
-            yesText: "消す", cancelText: "やめる");
-        if (ok != true) return;
-        await Settings.ClearAsync(app, Tenant.UserName, CancellationToken.None);
-        await LoadAsync();
-        Snackbar.Add("設定を消しました", Severity.Success);
     }
 
     private async Task SetDemoAsync(bool on)
     {
-        await Settings.SaveAsync(new Dictionary<string, string?> { [SnsAppSettingsService.UseMockKey] = on ? "true" : "false" },
+        await Settings.SaveAsync(new Dictionary<string, string?> { [AppSettingsService.UseMockKey] = on ? "true" : "false" },
             Tenant.UserName, CancellationToken.None);
         _useMock = on;
         Snackbar.Add(on ? "デモ接続を使えるようにしました" : "デモ接続を止めました", Severity.Success);
-    }
-
-    private async Task CopyAsync(string text)
-    {
-        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-        Snackbar.Add("コピーしました", Severity.Info);
     }
 }

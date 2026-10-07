@@ -30,7 +30,7 @@ Development 環境では次の状態で起動します。
 | approver@example.com | 承認者 |
 | viewer@example.com | 閲覧者 |
 
-実際の生成AIを使う場合（User Secrets または環境変数）：
+実際の生成AIを使う場合は、**「設定 → 生成AIの設定」（`/settings/ai`）** で Claude（Anthropic）・OpenAI・Google の API キーを入力します（運用者のみ。Windows 版はオーナー）。保存するとすぐに使われ（再起動不要）、「接続を確認」で各社のモデル一覧を取得してキーが使えるかを確かめます（生成はしないので利用料はかからない）。キーは暗号化して DB に保存し、画面には表示しません。User Secrets・環境変数でも設定でき、画面の値が優先します：
 
 ```bash
 dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:ApiKey" "<key>"
@@ -47,7 +47,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 | データ | `%LOCALAPPDATA%\ReachForge`：DB（SQLite）・メディア・ログ（14日分）・証明書・設定。アプリを更新・アンインストールしても残る。DB は起動時にマイグレーションで新しい版にそろえる（`ReachForge.Migrations.Sqlite`） |
 | ログイン | 起動ごとに作る秘密の値で、最初に登録した利用者（オーナー）として自動ログインする。初回は登録画面でワークスペースを作る |
 | 常駐 | ウィンドウを閉じてもタスクトレイに残り、予約投稿・指標の取得・受信箱の取り込みを続ける。終了はトレイのメニューから。「Windows の起動時に開始」も選べる |
-| 設定 | SNS アプリの ID・シークレットとデモ接続は画面の「設定 → SNSアプリの設定」で入力する（すぐ反映）。生成AI の API キーはトレイの「設定ファイル（API キー）を開く」で `appsettings.user.json` を編集し、アプリを再起動する（トレイの「終了」→ 起動）。SNS のトークンの暗号鍵は Windows の DPAPI で利用者ごとに保護する |
+| 設定 | 生成AI の API キーは「設定 → 生成AIの設定」、SNS アプリの ID・シークレットとデモ接続は「設定 → SNSアプリの設定」で入力する（どちらもすぐ反映）。それ以外の細かな設定はトレイの「設定ファイルを開く」で `appsettings.user.json` を編集し、アプリを再起動する。キー・シークレット・SNS のトークンは暗号化して保存し、暗号鍵は Windows の DPAPI で利用者ごとに保護する |
 | HTTPS | SNS の OAuth は HTTPS のコールバックを求めるため、初回に `localhost` 用の自己署名証明書を作り、アプリの画面だけがこの証明書を信頼する（OS の信頼ストアには入れない） |
 
 SNS アプリに登録するコールバック URL：`https://localhost:47120/api/v1/oauth/callback/<X|Facebook|Instagram|Threads|TikTok|YouTube>`

@@ -21,7 +21,7 @@ public sealed class TrayIcon : IDisposable
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add("ReachForge を開く", null, (_, _) => app.ShowWindow());
         menu.Items.Add(new WinForms.ToolStripSeparator());
-        menu.Items.Add("設定ファイル（API キー）を開く", null, (_, _) => App.OpenExternal(app.Paths.UserConfig));
+        menu.Items.Add("設定ファイルを開く（上級者向け）", null, (_, _) => App.OpenExternal(app.Paths.UserConfig));
         menu.Items.Add("データフォルダーを開く", null, (_, _) => App.OpenInExplorer(app.Paths.Root));
         menu.Items.Add(autoStart);
         menu.Items.Add(new WinForms.ToolStripSeparator());

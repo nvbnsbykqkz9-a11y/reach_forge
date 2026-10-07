@@ -13,7 +13,7 @@ public class AccessibilityTests(E2EFixture app)
     public static readonly string[] Pages =
     [
         "/", "/studio", "/media", "/ideas", "/campaigns", "/calendar", "/approvals", "/inbox", "/analytics",
-        "/settings", "/settings/brand", "/settings/channels", "/settings/members", "/settings/usage", "/settings/api-keys", "/settings/sns-apps", "/ops", "/ops/prompts",
+        "/settings", "/settings/brand", "/settings/channels", "/settings/members", "/settings/usage", "/settings/api-keys", "/settings/sns-apps", "/settings/ai", "/ops", "/ops/prompts",
     ];
 
     private static readonly AxeRunOptions s_wcag = new()

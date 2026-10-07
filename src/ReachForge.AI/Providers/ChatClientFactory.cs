@@ -13,10 +13,11 @@ public interface IChatClientFactory
 
 public sealed class ChatClientFactory(ILoggerFactory loggerFactory) : IChatClientFactory, IDisposable
 {
-    private readonly ConcurrentDictionary<(string, string), IChatClient> _clients = new();
+    private readonly ConcurrentDictionary<(string, string, string), IChatClient> _clients = new();
 
+    /// <summary>API キーを画面で変えたら新しいクライアントを作る（キーの指紋も再利用の条件にする）。</summary>
     public IChatClient Get(string providerName, AiProviderOptions options, string modelId) =>
-        _clients.GetOrAdd((providerName, modelId), _ => Build(options, modelId));
+        _clients.GetOrAdd((providerName, modelId, AiKeyChecker.Fingerprint(options.ApiKey)), _ => Build(options, modelId));
 
     private IChatClient Build(AiProviderOptions options, string modelId)
     {

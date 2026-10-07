@@ -1,0 +1,62 @@
+@page "/settings/ai"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = OpsAccess.Policy)]
+@* 生成 AI の API キー（運用者・Windows 版のオーナー）。保存するとすぐに生成に使われる。キーは画面に出さない *@
+@inherits RfComponentBase
+@inject WebTenantContext Tenant
+@using ReachForge.Infrastructure.Settings
+@using ReachForge.AI
+
+<PageTitle>生成AIの設定｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">生成AIの設定</MudText>
+</div>
+<MudText Typo="Typo.body2" Class="mb-4" Style="color:var(--rf-color-text-secondary)">
+    生成 AI の各社で発行した API キーを入力します。保存するとすぐに使われ、「接続を確認」でキーが使えるかを確かめます（生成はしないので利用料はかかりません）。
+    キーは暗号化して保存し、この画面には表示しません。AI の利用料は各社から直接請求されます。
+</MudText>
+
+@if (!CanManage)
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">この設定はオーナーと管理者だけが変更できます。</MudAlert>
+}
+@if (!AnyChatModel)
+{
+    <MudAlert Severity="Severity.Warning" Class="mb-4">
+        文章を作る AI（Claude または OpenAI）のキーがありません。投稿文の作成などは、決まった文面を返す簡易版（お試し用）で動きます。
+    </MudAlert>
+}
+
+<MudGrid>
+    @foreach (var provider in AppSettingsService.AiProviders)
+    {
+        <MudItem xs="12" lg="4">
+            <RfSettingsGroupCard Group="provider" Status="_status" CanManage="CanManage" OnChanged="LoadAsync" Check="CheckAsync" />
+        </MudItem>
+    }
+</MudGrid>
+<MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">
+    どの作業にどの AI を使うか（優先順・代替）は設定ファイルの AI:Routes で決まります。設定ファイル・環境変数で設定したキーもここで上書きできます。
+</MudText>
+
+@code {
+    private AppSettingsService Settings => Scoped<AppSettingsService>();
+    private AiKeyChecker Checker => Scoped<AiKeyChecker>();
+
+    private IReadOnlyDictionary<string, SettingStatus> _status = new Dictionary<string, SettingStatus>();
+
+    private bool CanManage => RolePolicy.Can(Tenant.Role, Permission.ManageChannels);
+
+    private bool AnyChatModel => new[] { "AI:Providers:anthropic:ApiKey", "AI:Providers:openai:ApiKey" }
+        .Any(k => _status.GetValueOrDefault(k)?.Source is SettingSource.File or SettingSource.Screen);
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => _status = await Settings.StatusAsync(CancellationToken.None);
+
+    private async Task<(bool Ok, string Message)> CheckAsync(SettingsGroup provider)
+    {
+        var result = await Checker.CheckAsync(provider.Id, CancellationToken.None);
+        return (result.Ok, result.Message);
+    }
+}

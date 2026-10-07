@@ -12,10 +12,10 @@ public interface IImageGeneratorFactory
 
 public sealed class ImageGeneratorFactory(IServiceProvider services) : IImageGeneratorFactory
 {
-    private readonly ConcurrentDictionary<(string, string), IImageGenerator> _generators = new();
+    private readonly ConcurrentDictionary<(string, string, string), IImageGenerator> _generators = new();
 
     public IImageGenerator Get(string providerName, AiProviderOptions options, string modelId) =>
-        _generators.GetOrAdd((providerName, modelId), _ => options.Type switch
+        _generators.GetOrAdd((providerName, modelId, AiKeyChecker.Fingerprint(options.ApiKey)), _ => options.Type switch
         {
             AiProviderType.Stub => new StubImageGenerator(services.GetRequiredService<IImageProcessor>()),
             AiProviderType.OpenAI => new OpenAI.Images.ImageClient(modelId, options.ApiKey).AsIImageGenerator(),
