@@ -1,6 +1,5 @@
+@inherits RfComponentBase
 @* ブランド診断（F-02）：URL・紹介文・過去の投稿から AI が下書きをつくり、選んだ項目だけを反映する *@
-@inject BrandDiagnosisService Diagnosis
-@inject InboxService InboxSvc
 @inject AppState State
 @inject ISnackbar Snackbar
 
@@ -53,6 +52,9 @@
 </MudPaper>
 
 @code {
+    private BrandDiagnosisService Diagnosis => Scoped<BrandDiagnosisService>();
+    private InboxService InboxSvc => Scoped<InboxService>();
+
     [Parameter, EditorRequired] public BrandProfile Brand { get; set; } = default!;
     [Parameter] public EventCallback OnApplied { get; set; }
 

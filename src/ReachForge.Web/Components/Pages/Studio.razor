@@ -1,13 +1,6 @@
 @page "/studio"
-@inject TrendService Trends
+@inherits RfComponentBase
 @using ReachForge.Domain.Analytics
-@inject StudioService StudioSvc
-@inject MediaService MediaSvc
-@inject ChannelService Channels
-@inject WorkspaceService Workspaces
-@inject ApprovalService Approvals
-@inject SchedulingService Scheduling
-@inject IBrandContextProvider BrandContext
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject AppState State
@@ -344,6 +337,15 @@
 }
 
 @code {
+    private TrendService Trends => Scoped<TrendService>();
+    private StudioService StudioSvc => Scoped<StudioService>();
+    private MediaService MediaSvc => Scoped<MediaService>();
+    private ChannelService Channels => Scoped<ChannelService>();
+    private WorkspaceService Workspaces => Scoped<WorkspaceService>();
+    private ApprovalService Approvals => Scoped<ApprovalService>();
+    private SchedulingService Scheduling => Scoped<SchedulingService>();
+    private IBrandContextProvider BrandContext => Scoped<IBrandContextProvider>();
+
     private static readonly (int Step, string Label)[] Steps = [(1, "内容をつくる"), (2, "SNSごとに整える"), (3, "確認して予約")];
 
     [SupplyParameterFromQuery(Name = "theme")] public string? ThemeQuery { get; set; }

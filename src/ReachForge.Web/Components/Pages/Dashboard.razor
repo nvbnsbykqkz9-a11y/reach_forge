@@ -1,5 +1,5 @@
 @page "/"
-@inject DashboardService DashboardSvc
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject ISnackbar Snackbar
@@ -115,6 +115,8 @@ else
 }
 
 @code {
+    private DashboardService DashboardSvc => Scoped<DashboardService>();
+
     private DashboardSummary? _summary;
 
     private string Greeting

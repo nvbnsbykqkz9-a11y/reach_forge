@@ -1,6 +1,6 @@
 @page "/calendar"
+@inherits RfComponentBase
 @using ReachForge.Domain.Analytics
-@inject SchedulingService Scheduling
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject AppState State
@@ -137,6 +137,8 @@
 </MudGrid>
 
 @code {
+    private SchedulingService Scheduling => Scoped<SchedulingService>();
+
     [SupplyParameterFromQuery(Name = "view")] public string? ViewQuery { get; set; }
 
     private string _view = "week";

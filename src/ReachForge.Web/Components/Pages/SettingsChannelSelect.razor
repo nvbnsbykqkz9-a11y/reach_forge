@@ -1,6 +1,6 @@
 @page "/settings/channels/select/{Key}"
+@inherits RfComponentBase
 @using ReachForge.Application.Social
-@inject ChannelService ChannelSvc
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
@@ -32,6 +32,8 @@ else
 }
 
 @code {
+    private ChannelService ChannelSvc => Scoped<ChannelService>();
+
     [Parameter] public string Key { get; set; } = "";
     private PendingSelection? _selection;
 

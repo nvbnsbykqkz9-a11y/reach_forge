@@ -1,6 +1,5 @@
+@inherits RfComponentBase
 @* 非同期処理の進捗：段階表示「待機中 → 生成中 → 確認中 → 完了」、経過時間、残り時間の目安、キャンセル（RF-UX-001 5.4 / 8.3） *@
-@implements IAsyncDisposable
-@inject MediaService Media
 @inject ISnackbar Snackbar
 
 <MudPaper Class="pa-3 rf-ai-surface" Elevation="0" role="status" aria-live="polite">
@@ -29,6 +28,8 @@
 </MudPaper>
 
 @code {
+    private MediaService Media => Scoped<MediaService>();
+
     [Parameter, EditorRequired] public Guid JobId { get; set; }
     [Parameter] public string Title { get; set; } = "画像を作成中";
     [Parameter] public int EstimatedSeconds { get; set; } = 40;
@@ -76,10 +77,11 @@
         }
     }
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask DisposeAsyncCore()
     {
         await _cts.CancelAsync();
         _timer?.Dispose();
         _cts.Dispose();
+        await base.DisposeAsyncCore();
     }
 }

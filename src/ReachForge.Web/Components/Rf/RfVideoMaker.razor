@@ -1,6 +1,5 @@
+@inherits RfComponentBase
 @* ショート動画（F-05 ③ テンプレート合成）：画像＋テロップ＋ナレーション。実行前に推定クレジットと所要時間を確認する *@
-@inject MediaService Media
-@inject VideoService Videos
 @inject AppState State
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
@@ -41,6 +40,9 @@
 </MudPaper>
 
 @code {
+    private MediaService Media => Scoped<MediaService>();
+    private VideoService Videos => Scoped<VideoService>();
+
     [Parameter] public string? DefaultTheme { get; set; }
     [Parameter] public EventCallback<Guid> OnCreated { get; set; }
 

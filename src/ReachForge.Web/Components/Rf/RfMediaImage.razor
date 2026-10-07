@@ -1,5 +1,5 @@
+@inherits RfComponentBase
 @* 画像・動画の表示（期限付き URL を解決する）。AI 生成物には ✦ バッジを付ける（RF-UX-001 6.1 原則1） *@
-@inject MediaService Media
 <div class="rf-media @Class" style="@Style">
     @if (_url is not null && _kind == MediaKind.Video)
     {
@@ -28,6 +28,8 @@
 </div>
 
 @code {
+    private MediaService Media => Scoped<MediaService>();
+
     [Parameter, EditorRequired] public Guid AssetId { get; set; }
     [Parameter] public string? Alt { get; set; }
     [Parameter] public bool ShowAiBadge { get; set; }

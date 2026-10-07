@@ -1,5 +1,5 @@
+@inherits RfComponentBase
 @* 投稿に使う画像を選ぶ（アップロード・AI 生成・メディアライブラリから）。最大 Max 枚、順序付き *@
-@inject MediaService Media
 @inject ISnackbar Snackbar
 
 <div>
@@ -42,6 +42,8 @@
 </div>
 
 @code {
+    private MediaService Media => Scoped<MediaService>();
+
     [Parameter] public List<Guid> Selected { get; set; } = [];
     [Parameter] public EventCallback<List<Guid>> SelectedChanged { get; set; }
     [Parameter] public int Max { get; set; } = 4;

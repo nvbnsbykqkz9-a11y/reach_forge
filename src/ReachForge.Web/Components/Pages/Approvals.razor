@@ -1,5 +1,5 @@
 @page "/approvals"
-@inject ApprovalService ApprovalSvc
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject AppState State
@@ -124,6 +124,8 @@ else
 }
 
 @code {
+    private ApprovalService ApprovalSvc => Scoped<ApprovalService>();
+
     private static readonly string[] RejectReasons = ["表現の修正", "画像の差し替え", "日時の変更", "その他"];
 
     private IReadOnlyList<ApprovalQueueItem> _queue = [];

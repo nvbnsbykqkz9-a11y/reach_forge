@@ -1,5 +1,5 @@
 @page "/settings/api-keys"
-@inject ApiKeyService Keys
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject IDialogService Dialogs
@@ -66,6 +66,8 @@ else
 }
 
 @code {
+    private ApiKeyService Keys => Scoped<ApiKeyService>();
+
     private IReadOnlyList<ApiKey> _keys = [];
     private string? _name, _secret;
     private Role _role = Role.Viewer;

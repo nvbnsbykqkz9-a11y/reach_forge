@@ -187,6 +187,8 @@ tests/
 
 依存方向は Domain ← Application ← (AI / Social / Infrastructure) ← (Web / Worker)。外部 AI・SNS はすべてインタフェース越しに利用します。
 
+Blazor Server の DI スコープはサーキット（タブを開いている間）単位のため、DB を使う画面・部品は `RfComponentBase`（OwningComponentBase）を継承して画面ごとのスコープからサービスを取得し（`Scoped<T>()`）、閉じたときに DbContext を破棄します。サーキット単位の `AppState`・レイアウトは `TenantScopes` で処理ごとに新しいスコープを使います。
+
 ## 実装状況（初期リリース範囲）
 
 | 機能 | 状況 | 補足 |

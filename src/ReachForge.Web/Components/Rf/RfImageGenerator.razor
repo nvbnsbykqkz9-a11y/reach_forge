@@ -1,5 +1,5 @@
+@inherits RfComponentBase
 @* AI 画像生成パネル（F-04）。実行前に推定クレジットを表示し、生成はジョブとして非同期に進める *@
-@inject MediaService Media
 @inject AppState State
 @inject ISnackbar Snackbar
 
@@ -31,6 +31,8 @@
 </MudPaper>
 
 @code {
+    private MediaService Media => Scoped<MediaService>();
+
     [Parameter] public string? DefaultPrompt { get; set; }
     [Parameter] public SocialPlatform AspectFor { get; set; } = SocialPlatform.Instagram;
     [Parameter] public EventCallback<IReadOnlyList<Guid>> OnGenerated { get; set; }

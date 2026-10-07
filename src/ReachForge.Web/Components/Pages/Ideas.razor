@@ -1,5 +1,5 @@
 @page "/ideas"
-@inject TrendService Trends
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject NavigationManager Nav
@@ -60,6 +60,8 @@ else
 }
 
 @code {
+    private TrendService Trends => Scoped<TrendService>();
+
     private IReadOnlyList<TrendIdea>? _ideas;
     private bool _busy;
     private bool CanEdit => RolePolicy.Can(Tenant.Role, Permission.Generate);

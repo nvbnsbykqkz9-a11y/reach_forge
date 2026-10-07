@@ -1,5 +1,5 @@
 @page "/campaigns"
-@inject CampaignService CampaignSvc
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject NavigationManager Nav
@@ -115,6 +115,8 @@ else
 }
 
 @code {
+    private CampaignService CampaignSvc => Scoped<CampaignService>();
+
     private static readonly string[] s_steps = ["目的", "期間", "対象SNS", "目標"];
     private IReadOnlyList<CampaignSummary>? _items;
     private bool _wizard;

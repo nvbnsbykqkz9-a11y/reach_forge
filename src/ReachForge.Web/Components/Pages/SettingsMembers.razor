@@ -1,5 +1,5 @@
 @page "/settings/members"
-@inject MemberService Members
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject NavigationManager Nav
@@ -92,6 +92,8 @@
 </MudGrid>
 
 @code {
+    private MemberService Members => Scoped<MemberService>();
+
     private IReadOnlyList<WorkspaceMember> _members = [];
     private IReadOnlyList<Invitation> _pending = [];
     private string _email = "";

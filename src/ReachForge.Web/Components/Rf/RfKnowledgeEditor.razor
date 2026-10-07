@@ -1,5 +1,5 @@
+@inherits RfComponentBase
 @* よくある質問（返信案の根拠）と受信箱の自動対応の設定（F-09） *@
-@inject InboxService InboxSvc
 @inject ISnackbar Snackbar
 
 <MudText Typo="Typo.body2" Class="mb-3">
@@ -42,6 +42,8 @@
 }
 
 @code {
+    private InboxService InboxSvc => Scoped<InboxService>();
+
     [Parameter] public bool CanEdit { get; set; }
 
     private sealed class Row

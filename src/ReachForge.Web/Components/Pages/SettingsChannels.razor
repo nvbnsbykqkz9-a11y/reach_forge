@@ -1,5 +1,5 @@
 @page "/settings/channels"
-@inject ChannelService ChannelSvc
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject ISnackbar Snackbar
@@ -110,6 +110,8 @@
 </MudText>
 
 @code {
+    private ChannelService ChannelSvc => Scoped<ChannelService>();
+
     private IReadOnlyList<Channel> _channels = [];
     private SocialPlatform? _credentialPlatform;
     private IReadOnlyList<ReachForge.Application.Social.CredentialField> _credentialFields = [];

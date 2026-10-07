@@ -1,5 +1,5 @@
 @page "/settings/usage"
-@inject WorkspaceService Workspaces
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 
 <PageTitle>プラン・利用量｜ReachForge</PageTitle>
@@ -54,6 +54,8 @@
 }
 
 @code {
+    private WorkspaceService Workspaces => Scoped<WorkspaceService>();
+
     private UsageSummary? _usage;
 
     protected override async Task OnInitializedAsync() => _usage = await Workspaces.UsageAsync(CancellationToken.None);

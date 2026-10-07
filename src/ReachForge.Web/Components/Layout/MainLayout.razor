@@ -4,9 +4,8 @@
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject NavigationManager Nav
-@inject SchedulingService Scheduling
+@inject TenantScopes Scopes
 @inject ISnackbar Snackbar
-@inject ReachForge.Infrastructure.Identity.AccountService Accounts
 @inject Microsoft.Extensions.Options.IOptions<AuthOptions> Auth
 
 <MudThemeProvider Theme="Theme.RfTheme.Default" @bind-IsDarkMode="_dark" />
@@ -140,7 +139,8 @@
         State.Changed += OnChanged;
         await Time.ZoneAsync();
         await State.RefreshAsync();
-        _memberships = await Accounts.MembershipsAsync(Tenant.UserId, CancellationToken.None);
+        _memberships = await Scopes.RunAsync(sp => sp.GetRequiredService<ReachForge.Infrastructure.Identity.AccountService>()
+            .MembershipsAsync(Tenant.UserId, CancellationToken.None));
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
@@ -149,7 +149,7 @@
     {
         try
         {
-            await Scheduling.SetPausedAsync(false, CancellationToken.None);
+            await Scopes.RunAsync(sp => sp.GetRequiredService<SchedulingService>().SetPausedAsync(false, CancellationToken.None));
             await State.RefreshAsync();
             Snackbar.Add("予約投稿を再開しました", Severity.Success);
         }

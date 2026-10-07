@@ -1,7 +1,6 @@
 @page "/media"
-@inject WorkspaceService Workspaces
+@inherits RfComponentBase
 @using System.Text.Json
-@inject MediaService Media
 @inject WebTenantContext Tenant
 @inject TimeDisplay Time
 @inject ISnackbar Snackbar
@@ -125,6 +124,9 @@
 </MudGrid>
 
 @code {
+    private WorkspaceService Workspaces => Scoped<WorkspaceService>();
+    private MediaService Media => Scoped<MediaService>();
+
     private MediaFilter _filter = MediaFilter.All;
     private IReadOnlyList<MediaAsset> _items = [];
     private List<Guid> _picked = [];

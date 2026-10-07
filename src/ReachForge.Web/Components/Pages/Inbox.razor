@@ -1,6 +1,5 @@
 @page "/inbox"
-@implements IAsyncDisposable
-@inject InboxService InboxSvc
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject AppState State
 @inject TimeDisplay Time
@@ -206,6 +205,8 @@
 </div>
 
 @code {
+    private InboxService InboxSvc => Scoped<InboxService>();
+
     private InboxView _view = InboxView.All;
     private readonly HashSet<SocialPlatform> _platforms = [.. PlatformCatalog.InitialRelease.Select(c => c.Platform)];
     private string _assignee = "any";
@@ -407,11 +408,11 @@
         }
     }
 
-    public ValueTask DisposeAsync()
+    protected override async ValueTask DisposeAsyncCore()
     {
-        _cts.Cancel();
+        await _cts.CancelAsync();
         _timer?.Dispose();
         _cts.Dispose();
-        return ValueTask.CompletedTask;
+        await base.DisposeAsyncCore();
     }
 }

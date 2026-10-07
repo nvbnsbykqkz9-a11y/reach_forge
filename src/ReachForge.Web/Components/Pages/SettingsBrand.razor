@@ -1,5 +1,5 @@
 @page "/settings/brand"
-@inject WorkspaceService Workspaces
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject ISnackbar Snackbar
 
@@ -93,6 +93,8 @@
 }
 
 @code {
+    private WorkspaceService Workspaces => Scoped<WorkspaceService>();
+
     [SupplyParameterFromQuery(Name = "tab")] public string? TabQuery { get; set; }
 
     private int _tab;

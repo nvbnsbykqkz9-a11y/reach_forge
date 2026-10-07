@@ -1,9 +1,5 @@
 @page "/campaigns/{Id:guid}"
-@inject CampaignService CampaignSvc
-@inject AbTestService AbTests
-@inject StudioService Studio
-@inject ChannelService Channels
-@inject MediaService Media
+@inherits RfComponentBase
 @inject WebTenantContext Tenant
 @inject AppState State
 @inject TimeDisplay Time
@@ -177,6 +173,12 @@ else
 }
 
 @code {
+    private CampaignService CampaignSvc => Scoped<CampaignService>();
+    private AbTestService AbTests => Scoped<AbTestService>();
+    private StudioService Studio => Scoped<StudioService>();
+    private ChannelService Channels => Scoped<ChannelService>();
+    private MediaService Media => Scoped<MediaService>();
+
     [Parameter] public Guid Id { get; set; }
 
     private CampaignSummary? _summary;
