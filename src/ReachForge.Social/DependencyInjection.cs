@@ -3,8 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using ReachForge.Application.Ads;
 using ReachForge.Application.Social;
 using ReachForge.Domain.Enums;
+using ReachForge.Social.Ads;
 using ReachForge.Social.Inbox;
 using ReachForge.Social.Insights;
 using ReachForge.Social.Line;
@@ -88,6 +90,20 @@ public static class DependencyInjection
                 new MockInsightsReader(platform, sp.GetService<TimeProvider>() ?? TimeProvider.System));
         }
         services.AddSingleton<IChannelConnector, DemoChannelConnector>();
+
+        // 有料広告（各社の広告 API）。広告の作成は二重につくらないよう再試行しない（ServiceDefaults の標準ハンドラ）
+        services.Configure<AdsOptions>(configuration.GetSection(AdsOptions.SectionName));
+        services.AddSingleton<IOptions<AdsOptions>>(sp => new LiveOptions<AdsOptions>(sp.GetRequiredService<IOptionsMonitor<AdsOptions>>()));
+        services.AddHttpClient(TikTokAdAdapter.HttpClientName, (sp, c) =>
+                c.BaseAddress = new Uri(sp.GetRequiredService<IOptions<AdsOptions>>().Value.TikTok.ApiBaseUrl))
+            .ForLargeUploads();
+        services.AddHttpClient(XAdAdapter.HttpClientName).ForLargeUploads();
+        services.AddHttpClient(GoogleAdAdapter.HttpClientName);
+        services.AddSingleton<IAdNetworkAdapter, MetaAdAdapter>();
+        services.AddSingleton<IAdNetworkAdapter, TikTokAdAdapter>();
+        services.AddSingleton<IAdNetworkAdapter, XAdAdapter>();
+        services.AddSingleton<IAdNetworkAdapter, GoogleAdAdapter>();
+        services.AddSingleton<IAdNetworkFactory, AdNetworkFactory>();
         return services;
     }
 

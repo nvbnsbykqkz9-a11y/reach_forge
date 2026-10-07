@@ -37,6 +37,20 @@
         </MudItem>
     }
 </MudGrid>
+
+<MudText Typo="Typo.h5" Class="mt-8 mb-1">広告のアプリ（有料広告を出す場合だけ）</MudText>
+<MudText Typo="Typo.body2" Class="mb-3" Style="color:var(--rf-color-text-secondary)">
+    「つくる → 広告を出す」で有料広告を出すときに使います。Facebook・Instagram の広告は、上の Meta のアプリをそのまま使います。
+    デモ接続がオンなら、設定がなくても「お試しの広告アカウント」で流れを試せます（実際には出稿・請求されません）。
+</MudText>
+<MudGrid>
+    @foreach (var app in AppSettingsService.AdApps)
+    {
+        <MudItem xs="12" lg="6">
+            <RfSettingsGroupCard Group="app" Status="_status" CanManage="CanManage" OnChanged="LoadAsync" />
+        </MudItem>
+    }
+</MudGrid>
 <MudText Typo="Typo.caption" Class="d-block mt-4" Style="color:var(--rf-color-text-tertiary)">
     LINE 公式アカウントはアプリの設定は不要です（SNS連携の画面でチャネル ID・シークレットを入力します）。設定ファイル・環境変数で設定した値もここで上書きできます。
 </MudText>

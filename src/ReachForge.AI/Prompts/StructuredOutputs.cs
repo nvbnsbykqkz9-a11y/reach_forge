@@ -44,3 +44,7 @@ public sealed record LandingSceneDraft(string Role, string Caption, string Narra
 
 public sealed record LandingPlanDraft(string Title, string Product, string Target, string[] Benefits, string Offer, string CallToAction,
     LandingSceneDraft[] Scenes, string PostText, string[] Hashtags, string HookMotion);
+
+public sealed record AdCopyDraft(string PrimaryText, string? Headline, string? Description, string? CallToAction);
+
+public sealed record AdCopyBatch(AdCopyDraft[] Candidates);

@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<AiJobProcessor>();
         services.AddScoped<DashboardService>();
         services.AddScoped<HomeService>();
+        services.AddScoped<AdService>();
         services.AddScoped<AnalyticsService>();
         services.AddScoped<ReportService>();
         services.AddScoped<InboxService>();

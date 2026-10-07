@@ -97,6 +97,24 @@ else
                 </MudText>
                 <MudButton Href="/inbox" Variant="Variant.Text" Color="Color.Primary" Class="mt-2">受信箱を開く</MudButton>
             </MudPaper>
+            <MudPaper Class="pa-4 rf-card mt-4" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6">広告</MudText>
+                @if (_ads is { Count: > 0 })
+                {
+                    @foreach (var ad in _ads)
+                    {
+                        <div class="d-flex align-center gap-2 mt-2">
+                            <span class="rf-sns-dot" style="background:@RfSns.Color(ad.Platform)" aria-hidden="true"></span>
+                            <MudLink Href="@($"{RfSns.CreateHref(ad.Platform)}?tab=ad")" Typo="Typo.body2" Style="flex:1;min-width:0">@ad.Name</MudLink>
+                            <MudChip T="string" Size="Size.Small" Color="@RfAdWizard.StatusColor(ad.Status)">@RfAdWizard.StatusLabel(ad.Status)</MudChip>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Class="mt-1">SNS の画面の「広告を出す」から、有料広告を出せます（お試しもできます）。</MudText>
+                }
+            </MudPaper>
         </MudItem>
     </MudGrid>
 }
@@ -106,6 +124,7 @@ else
 
     private IReadOnlyList<Channel>? _channels;
     private IReadOnlyList<RecentPost>? _recent;
+    private IReadOnlyList<AdCampaign>? _ads;
 
     /// <summary>文章をつくる AI（Claude または OpenAI）のキーがあるか。</summary>
     private bool AiReady => Ai.Value.Providers.Any(p => p.Value.Type is ReachForge.AI.AiProviderType.Anthropic or ReachForge.AI.AiProviderType.OpenAI
@@ -115,6 +134,7 @@ else
     {
         _channels = await Home.ChannelsAsync(CancellationToken.None);
         _recent = await Home.RecentPostsAsync(10, CancellationToken.None);
+        _ads = await Scoped<AdService>().RecentAsync(5, CancellationToken.None);
     }
 
     private string Greeting

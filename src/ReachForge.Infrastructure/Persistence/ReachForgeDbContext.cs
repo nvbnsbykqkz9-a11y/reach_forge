@@ -63,6 +63,8 @@ public sealed class ReachForgeDbContext(
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<AdAccount> AdAccounts => Set<AdAccount>();
+    public DbSet<AdCampaign> AdCampaigns => Set<AdCampaign>();
 
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
@@ -190,6 +192,30 @@ public sealed class ReachForgeDbContext(
             e.Property(x => x.Key).HasMaxLength(64);
             e.Property(x => x.Note).HasMaxLength(500);
             e.Property(x => x.Evaluation).HasConversion(Json<PromptEvalResult?>());
+        });
+        b.Entity<AdAccount>(e =>
+        {
+            e.HasIndex(x => new { x.WorkspaceId, x.Network, x.ExternalAccountId }).IsUnique();
+            e.Property(x => x.ExternalAccountId).HasMaxLength(128);
+            e.Property(x => x.Name).HasMaxLength(256);
+            e.Property(x => x.Currency).HasMaxLength(8);
+            e.Property(x => x.CredentialSecretRef).HasMaxLength(512);
+            e.Property(x => x.Extra).HasConversion(Json<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
+        });
+        b.Entity<AdCampaign>(e =>
+        {
+            e.HasIndex(x => new { x.WorkspaceId, x.Platform });
+            e.HasIndex(x => x.Status);
+            e.Property(x => x.Name).HasMaxLength(256);
+            e.Property(x => x.Currency).HasMaxLength(8);
+            e.Property(x => x.DailyBudget).HasPrecision(18, 2);
+            e.Property(x => x.Targeting).HasConversion(Json<AdTargeting>(), JsonComparer<AdTargeting>());
+            e.Property(x => x.Creative).HasConversion(Json<AdCreative>(), JsonComparer<AdCreative>());
+            e.Property(x => x.ExternalIds).HasConversion(Json<Dictionary<string, string>>(), JsonComparer<Dictionary<string, string>>());
+            e.Property(x => x.Results).HasConversion(Json<AdResults?>(), JsonComparer<AdResults?>());
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.Property(x => x.ReviewNote).HasMaxLength(2000);
+            e.Property(x => x.CreatedBy).HasMaxLength(256);
         });
         b.Entity<AppSetting>(e =>
         {

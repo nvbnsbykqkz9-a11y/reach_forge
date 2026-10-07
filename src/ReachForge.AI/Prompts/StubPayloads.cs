@@ -30,3 +30,5 @@ public sealed record TrendStubPayload(ReachForge.Application.Services.BrandConte
 public sealed record ScriptStubPayload(string Theme, int SceneCount, int TargetSeconds, string BrandName);
 
 public sealed record LandingPageStubPayload(WebPage Page, int SceneCount, int TargetSeconds, string BrandName);
+
+public sealed record AdCopyStubPayload(AdCopyRequest Request, string BrandName);

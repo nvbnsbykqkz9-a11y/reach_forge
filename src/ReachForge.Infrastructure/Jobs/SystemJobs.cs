@@ -38,6 +38,12 @@ public static class SystemJobCatalog
             var n = await sp.GetRequiredService<CreditResetService>().ResetDueAsync(ct);
             return n > 0 ? $"{n} account(s) reset" : null;
         }),
+        // 有料広告の状態（審査・配信・終了）と成果を各社から読み直す
+        new("ad-sync", "AdSyncJob", "*/30 * * * *", 0, async (sp, ct) =>
+        {
+            var r = await sp.GetRequiredService<AdService>().SyncDueAsync(ct);
+            return r.Synced + r.Failed > 0 ? $"{r.Synced} ad(s) synced, {r.Failed} failed" : null;
+        }),
         new("data-retention", "DataRetentionJob", "0 2 * * *", 0, async (sp, ct) =>
         {
             var r = await sp.GetRequiredService<DataRetentionService>().PurgeAsync(ct);

@@ -105,6 +105,7 @@
     private async Task AddAsync(Guid id)
     {
         if (Selected.Contains(id)) return;
+        if (Max == 1) Selected.Clear(); // 1枚だけなら選び直しにする
         if (Selected.Count >= Max)
         {
             Snackbar.Add($"選べる画像は{Max}枚までです。", Severity.Warning);

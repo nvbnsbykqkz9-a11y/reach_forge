@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using ReachForge.Application.Abstractions;
+using ReachForge.Application.Ads;
 using ReachForge.Domain.Common;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
@@ -15,10 +16,10 @@ public sealed record SettingsField(string Key, string Label, bool Secret = false
 
 /// <summary>
 /// 設定のまとまり：SNS ごとのアプリ（Facebook と Instagram は同じ Meta のアプリ）、または生成 AI のプロバイダ。
-/// <paramref name="Platforms"/> はコールバック URL を表示する SNS（生成 AI は空）。
+/// <paramref name="Platforms"/> はコールバック URL を表示する SNS（生成 AI は空）。<paramref name="CallbackPaths"/> はそのほかのコールバック（広告）。
 /// </summary>
 public sealed record SettingsGroup(string Id, string Name, IReadOnlyList<SocialPlatform> Platforms, string DeveloperUrl,
-    IReadOnlyList<SettingsField> Fields, string Guide);
+    IReadOnlyList<SettingsField> Fields, string Guide, IReadOnlyList<string>? CallbackPaths = null);
 
 public enum SettingSource
 {
@@ -53,7 +54,9 @@ public sealed class AppSettingsService(DbContextOptions<ReachForgeDbContext> dbO
         new("meta", "Facebook・Instagram（Meta）", [SocialPlatform.Facebook, SocialPlatform.Instagram], "https://developers.facebook.com/apps/",
             [new("Social:Meta:AppId", "アプリ ID"), new("Social:Meta:AppSecret", "app secret", Secret: true),
              new("Social:Meta:WebhookVerifyToken", "Webhook の確認トークン（任意）", Secret: true, Help: "受信箱の Webhook を使う場合だけ", Optional: true)],
-            "Meta for Developers で「ビジネス」タイプのアプリを作成し、Facebook ログイン for Business を追加して、有効な OAuth リダイレクト URI にコールバック URL を登録します。"),
+            "Meta for Developers で「ビジネス」タイプのアプリを作成し、Facebook ログイン for Business を追加して、有効な OAuth リダイレクト URI にコールバック URL を登録します。" +
+            "広告も出す場合は、Marketing API を追加し、広告のコールバック URL も登録します（ads_management の権限はアプリの審査が必要です）。",
+            [AdNetworks.CallbackPath(AdNetwork.Meta)]),
         new("threads", "Threads", [SocialPlatform.Threads], "https://developers.facebook.com/apps/",
             [new("Social:Threads:AppId", "Threads アプリ ID"), new("Social:Threads:AppSecret", "Threads app secret", Secret: true)],
             "Meta for Developers で Threads API のユースケースを追加し、リダイレクト URI にコールバック URL を登録します。"),
@@ -65,6 +68,26 @@ public sealed class AppSettingsService(DbContextOptions<ReachForgeDbContext> dbO
         new("youtube", "YouTube（Google）", [SocialPlatform.YouTube], "https://console.cloud.google.com/apis/credentials",
             [new("Social:YouTube:ClientId", "クライアント ID"), new("Social:YouTube:ClientSecret", "クライアント シークレット", Secret: true)],
             "Google Cloud で YouTube Data API v3 を有効にし、OAuth クライアント ID（ウェブ アプリケーション）を作成して、承認済みのリダイレクト URI にコールバック URL を登録します。"),
+    ];
+
+    /// <summary>有料広告のアプリ（広告を出す場合だけ）。Meta は SNS 連携と同じアプリを使う。</summary>
+    public static readonly IReadOnlyList<SettingsGroup> AdApps =
+    [
+        new("tiktok-ads", "TikTok 広告（TikTok API for Business）", [], "https://business-api.tiktok.com/portal/apps",
+            [new("Ads:TikTok:AppId", "App ID"), new("Ads:TikTok:Secret", "Secret", Secret: true)],
+            "TikTok API for Business で開発者登録してアプリを作成し（投稿用の TikTok for Developers とは別）、広告の管理の権限を選んで、Advertiser redirect URL にコールバック URL を登録します。",
+            [AdNetworks.CallbackPath(AdNetwork.TikTok)]),
+        new("x-ads", "X 広告（Ads API）", [], "https://developer.x.com/en/portal/dashboard",
+            [new("Ads:X:ConsumerKey", "API Key（Consumer Key）"), new("Ads:X:ConsumerSecret", "API Key Secret", Secret: true)],
+            "Ads API の利用申請が承認されたアプリで、User authentication settings の OAuth 1.0a を有効にし、Callback URL にコールバック URL を登録します。",
+            [AdNetworks.CallbackPath(AdNetwork.X)]),
+        new("google-ads", "Google 広告（YouTube の広告）", [], "https://ads.google.com/aw/apicenter",
+            [new("Ads:Google:DeveloperToken", "開発者トークン", Secret: true),
+             new("Ads:Google:LoginCustomerId", "MCC のお客様 ID（任意）", Help: "クライアント センター経由で操作するときだけ（数字だけ）", Optional: true),
+             new("Ads:Google:ClientId", "OAuth クライアント ID（任意）", Help: "空なら YouTube の設定のものを使います", Optional: true),
+             new("Ads:Google:ClientSecret", "OAuth クライアント シークレット（任意）", Secret: true, Optional: true)],
+            "Google 広告の API センターで開発者トークンを発行し、Google Cloud で Google Ads API を有効にして、OAuth クライアントの承認済みのリダイレクト URI にコールバック URL を登録します。",
+            [AdNetworks.CallbackPath(AdNetwork.Google)]),
     ];
 
     /// <summary>生成 AI のプロバイダ（設定のキーは AI:Providers:{名前}）。モデルは空なら既定のモデルを使う。</summary>
@@ -87,7 +110,7 @@ public sealed class AppSettingsService(DbContextOptions<ReachForgeDbContext> dbO
     private static readonly HashSet<string> s_keys =
         new(All.SelectMany(a => a.Fields).Select(f => f.Key).Append(UseMockKey), StringComparer.OrdinalIgnoreCase);
 
-    public static IEnumerable<SettingsGroup> All => SnsApps.Concat(AiProviders);
+    public static IEnumerable<SettingsGroup> All => SnsApps.Concat(AdApps).Concat(AiProviders);
 
     private ReachForgeDbContext Db(string user) =>
         new(dbOptions, new MutableTenantContext { IsSystem = true, UserName = user }, null, clock);

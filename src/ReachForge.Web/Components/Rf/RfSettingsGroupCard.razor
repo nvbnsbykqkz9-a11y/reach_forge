@@ -14,17 +14,16 @@
         <MudChip T="string" Size="Size.Small" Color="@(State == "設定済み" ? Color.Success : State == "未設定" ? Color.Default : Color.Warning)">@State</MudChip>
     </div>
     <MudText Typo="Typo.body2" Class="mt-1">@Group.Guide</MudText>
-    <MudLink Href="@Group.DeveloperUrl" Target="_blank" Typo="Typo.body2">@(Group.Platforms.Count > 0 ? "開発者サイトを開く" : "API キーの発行ページを開く")</MudLink>
+    <MudLink Href="@Group.DeveloperUrl" Target="_blank" Typo="Typo.body2">@(Callbacks.Count > 0 ? "開発者サイトを開く" : "API キーの発行ページを開く")</MudLink>
 
-    @if (Group.Platforms.Count > 0)
+    @if (Callbacks.Count > 0)
     {
         <MudText Typo="Typo.subtitle2" Class="mt-3">登録するコールバック URL</MudText>
-        @foreach (var platform in Group.Platforms)
+        @foreach (var (label, url) in Callbacks)
         {
-            var url = $"{Nav.BaseUri}api/v1/oauth/callback/{platform}";
             <div class="d-flex align-center gap-1">
                 <code style="font-size:.85rem;word-break:break-all">@url</code>
-                <MudIconButton Icon="@Icons.Material.Rounded.ContentCopy" Size="Size.Small" aria-label="@($"{PlatformCatalog.Get(platform).DisplayName} のコールバック URL をコピー")"
+                <MudIconButton Icon="@Icons.Material.Rounded.ContentCopy" Size="Size.Small" aria-label="@($"{label} のコールバック URL をコピー")"
                                OnClick="() => CopyAsync(url)" />
             </div>
         }
@@ -74,6 +73,11 @@
 
     /// <summary>保存・削除のあと（親が状態を読み直す）。</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
+
+    private IReadOnlyList<(string Label, string Url)> Callbacks =>
+        Group.Platforms.Select(p => (PlatformCatalog.Get(p).DisplayName, $"{Nav.BaseUri}api/v1/oauth/callback/{p}"))
+            .Concat((Group.CallbackPaths ?? []).Select(path => ("広告", Nav.BaseUri + path)))
+            .ToList();
 
     /// <summary>接続の確認（生成 AI の API キーなど）。指定したときだけボタンを出す。</summary>
     [Parameter] public Func<SettingsGroup, Task<(bool Ok, string Message)>>? Check { get; set; }

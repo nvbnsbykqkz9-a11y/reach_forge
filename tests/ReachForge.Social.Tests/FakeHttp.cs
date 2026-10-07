@@ -29,6 +29,7 @@ public sealed class FakeHttp : HttpMessageHandler, IHttpClientFactory
             "sns-line" => "https://api.line.me/",
             "sns-tiktok" => "https://open.tiktokapis.com/",
             "sns-youtube" => "https://www.googleapis.com/",
+            "ads-tiktok" => "https://business-api.tiktok.com/open_api/v1.3/",
             _ => "https://example.invalid/",
         }),
     };

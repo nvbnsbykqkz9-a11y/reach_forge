@@ -36,6 +36,7 @@ public sealed class StubChatClient : IChatClient
             AbStubPayload p => Serialize(new AbVariantDraft(AbVariant(p.Body, p.Variable))),
             BrandStubPayload p => Serialize(Brand(p.Input)),
             TrendStubPayload p => Serialize(Ideas(p)),
+            AdCopyStubPayload p => Serialize(AdCopies(p)),
             ScriptStubPayload p => Serialize(Script(p)),
             LandingPageStubPayload p => Serialize(LandingPage(p)),
             ReplyStubPayload p => Serialize(Replies(p.Request)),
@@ -253,6 +254,23 @@ public sealed class StubChatClient : IChatClient
         var per = Math.Round((double)p.TargetSeconds / count, 1);
         var picked = lines.Take(count - 1).Append(lines[4]).Take(count);
         return new ScriptDraft($"{theme}のショート動画", [.. picked.Select(l => new SceneDraft(l.Item1, l.Item2, per))]);
+    }
+
+    /// <summary>伝えたいことから決定的に作る広告文の案（3つ）。</summary>
+    private static AdCopyBatch AdCopies(AdCopyStubPayload p)
+    {
+        var limits = AdCopyLimits.For(p.Request.Platform);
+        var theme = PostText.Truncate(p.Request.Theme.Trim(), 40);
+        var cta = p.Request.Objective == Domain.Entities.AdObjective.Traffic ? "LEARN_MORE" : "SHOP_NOW";
+        string Fit(string text, int max) => max == 0 ? "" : PostText.Truncate(text, max);
+        return new AdCopyBatch([
+            new(Fit($"{theme}。{p.BrandName}がお届けします。くわしくはこちらから。", limits.PrimaryText), Fit(theme, limits.Headline),
+                Fit($"{p.BrandName}のおすすめ", limits.Description), cta),
+            new(Fit($"気になっていた方へ。{theme}をはじめました。ぜひのぞいてみてください。", limits.PrimaryText),
+                Fit($"{p.BrandName}の{theme}", limits.Headline), Fit("いまだけの楽しみ", limits.Description), cta),
+            new(Fit($"毎日をちょっと楽しく。{p.BrandName}の{theme}。", limits.PrimaryText), Fit("いまチェック", limits.Headline),
+                Fit(theme, limits.Description), "LEARN_MORE"),
+        ]);
     }
 
     /// <summary>業種の言葉を含む話題ほど関連度を高くする決定的な採点。</summary>

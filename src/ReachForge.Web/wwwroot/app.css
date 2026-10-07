@@ -263,3 +263,8 @@ body { font-variant-numeric: tabular-nums; }
 .rf-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; border: 1px solid var(--rf-color-border); border-radius: 12px; background: transparent; text-align: left; cursor: pointer; width: 100%; color: inherit; font: inherit; }
 .rf-choice:hover, .rf-choice:focus-visible { border-color: var(--rf-color-primary); }
 .rf-choice[aria-pressed="true"] { border: 2px solid var(--rf-color-primary); background: rgba(10, 91, 214, .06); }
+
+/* 広告の確認表（項目名と値） */
+.rf-summary { border-collapse: collapse; width: 100%; }
+.rf-summary th, .rf-summary td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--rf-color-border, rgba(0,0,0,.12)); vertical-align: top; }
+.rf-summary th { width: 9em; font-weight: 500; color: var(--rf-color-text-secondary); }

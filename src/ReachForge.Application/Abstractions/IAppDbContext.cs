@@ -9,6 +9,8 @@ public interface IAppDbContext
 {
     DbSet<Tenant> Tenants { get; }
     DbSet<Workspace> Workspaces { get; }
+    DbSet<AdAccount> AdAccounts { get; }
+    DbSet<AdCampaign> AdCampaigns { get; }
     DbSet<Channel> Channels { get; }
     DbSet<BrandProfile> BrandProfiles { get; }
     DbSet<Product> Products { get; }

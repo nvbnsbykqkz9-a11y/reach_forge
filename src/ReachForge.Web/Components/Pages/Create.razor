@@ -46,7 +46,7 @@ else
                 <RfPostWizard @key="platform" Platform="platform" Channel="_channel" />
             </MudTabPanel>
             <MudTabPanel Text="広告を出す" Icon="@Icons.Material.Rounded.Campaign">
-                <RfAdWizard @key="platform" Platform="platform" Channel="_channel" />
+                <RfAdWizard @key="platform" Platform="platform" Channel="_channel" JustConnected="AdConnected" Error="@ErrorQuery" />
             </MudTabPanel>
         </MudTabs>
     }
@@ -54,6 +54,9 @@ else
 
 @code {
     [Parameter] public string? Slug { get; set; }
+    [SupplyParameterFromQuery(Name = "tab")] public string? Tab { get; set; }
+    [SupplyParameterFromQuery(Name = "adConnected")] public bool AdConnected { get; set; }
+    [SupplyParameterFromQuery(Name = "error")] public string? ErrorQuery { get; set; }
 
     private ChannelService Channels => Scoped<ChannelService>();
     private SocialPlatform? Platform => RfSns.FromSlug(Slug);
@@ -65,7 +68,7 @@ else
     {
         _loaded = false;
         _channel = null;
-        _tab = 0;
+        _tab = Tab == "ad" ? 1 : 0;
         if (Platform is { } p)
         {
             _channel = (await Channels.ListAsync(CancellationToken.None))

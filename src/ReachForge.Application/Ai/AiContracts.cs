@@ -1,3 +1,4 @@
+using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
 
@@ -132,4 +133,29 @@ public sealed class AiSafetyBlockedException(string category)
         $"安全性ポリシーにより生成できませんでした（分類：{category}）。表現を変えてお試しください。")
 {
     public string Category { get; } = category;
+}
+
+/// <summary>広告文の依頼（SNS・目的・伝えたいこと）。</summary>
+public sealed record AdCopyRequest(SocialPlatform Platform, AdObjective Objective, string Theme, string? LinkUrl);
+
+/// <summary>広告文の案（本文・見出し・説明・ボタン）。</summary>
+public sealed record AdCopyCandidate(string PrimaryText, string Headline, string Description, string CallToAction,
+    Domain.Guardrails.GuardrailReport? Guardrail = null);
+
+/// <summary>広告文の長さの上限（各社の入力欄の上限・推奨）。</summary>
+public sealed record AdCopyLimits(int PrimaryText, int Headline, int Description)
+{
+    public static AdCopyLimits For(SocialPlatform platform) => platform switch
+    {
+        SocialPlatform.TikTok => new(100, 0, 0),
+        SocialPlatform.X => new(280, 70, 0),
+        SocialPlatform.YouTube => new(90, 40, 90),
+        _ => new(125, 40, 30),
+    };
+}
+
+/// <summary>広告文をつくる（LLM の構造化出力）。景表法・薬機法の規制表現と、ブランドの NG ワードは使わない。</summary>
+public interface IAdCopyWriter
+{
+    Task<IReadOnlyList<AdCopyCandidate>> WriteAsync(Services.BrandContext brand, AdCopyRequest request, CancellationToken ct);
 }

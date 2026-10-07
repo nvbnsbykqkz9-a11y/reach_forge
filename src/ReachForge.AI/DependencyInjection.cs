@@ -43,6 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IAbVariantGenerator, AbVariantGenerator>();
         services.AddScoped<IBrandAnalyzer, BrandAnalyzer>();
         services.AddScoped<ITrendIdeaWriter, TrendIdeaWriter>();
+        services.AddScoped<IAdCopyWriter, AdCopyWriter>();
         services.AddScoped<IVideoScriptWriter, VideoScriptWriter>();
         services.AddScoped<ILandingPageVideoPlanner, LandingPageVideoPlanner>();
         services.AddScoped<ITextToSpeech, TextToSpeechService>();
