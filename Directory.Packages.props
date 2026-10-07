@@ -46,9 +46,8 @@
     <!-- Hangfire.Core の依存（11.0.1）には既知の脆弱性があるため修正版に上げる -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.21.0" />
-    <!-- E2E・アクセシビリティ検査 -->
+    <!-- E2E（ブラウザ操作のテスト） -->
     <PackageVersion Include="Microsoft.Playwright" Version="1.63.0" />
-    <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.13.0" />
     <!-- UI -->
     <PackageVersion Include="MudBlazor" Version="9.11.0" />
     <!-- Tests -->

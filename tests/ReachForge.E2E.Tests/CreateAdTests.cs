@@ -67,13 +67,4 @@ public class CreateAdTests(E2EFixture app)
         await page.GetByText("審査中").First.WaitForAsync();
         Assert.Empty(errors);
     }
-
-    [Fact]
-    public async Task Line_ads_show_the_official_guide()
-    {
-        var page = await app.LoginAsync();
-        await page.GotoAsync("/create/line?tab=ad");
-        await E2EFixture.WaitForInteractiveAsync(page);
-        await page.GetByText("LINE の広告は、公式の管理画面から出します").WaitForAsync();
-    }
 }

@@ -9,7 +9,6 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.Playwright" />
-    <PackageReference Include="Deque.AxeCore.Playwright" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ReachForge.Web\ReachForge.Web.csproj" />

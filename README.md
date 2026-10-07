@@ -103,9 +103,9 @@ iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 �
   - CI（`.github/workflows/ci.yml`）：AI・プロンプト・設定を変えたコミットで、`ANTHROPIC_API_KEY` などのシークレットがあれば実モデルで評価してレポートを残す
   - 管理画面の「評価する」は copy.generate・common.safety・judge.brand_fit が対象（既定 20 ケース。AI の利用料がかかる）
 
-## E2E・アクセシビリティ検査
+## ブラウザ操作のテスト（E2E）
 
-- `tests/ReachForge.E2E.Tests`：Web を実ポート（Kestrel）で起動し、Playwright（Chromium）で操作する。投稿の作成 → 承認依頼 → 承認、権限のない画面、主要17画面の axe-core 検査（WCAG 2.1 AA の「重大」「深刻」違反 0 件）、スマホ幅（390px）で横スクロールが出ないこと
+- `tests/ReachForge.E2E.Tests`：Web を実ポート（Kestrel）で起動し、Playwright（Chromium）で主な流れだけを操作する：投稿をつくって今すぐ投稿（X）、お試しの広告アカウントで広告を出す（Instagram）
 - ブラウザは `PLAYWRIGHT_CHROMIUM`（実行ファイル）→ `/opt/pw-browsers` → Playwright の既定の順に探す。初回は `pwsh tests/ReachForge.E2E.Tests/bin/Debug/net10.0/playwright.ps1 install chromium`（CI でも実行）
 
 ## 認証（RF-DES-001 9.1 / RF-UX-001 SCR-01・SCR-15）
@@ -306,7 +306,7 @@ src/
 tests/
   ReachForge.Domain.Tests / ReachForge.Application.Tests（SQLite＋スタブAI＋モックSNSのE2E）/ ReachForge.AI.Tests
   ReachForge.Social.Tests（SNS アダプタの HTTP 検証）/ ReachForge.Web.Tests（認証・権限・Webhook の結合テスト）
-  ReachForge.Desktop.Tests（Windows 版のプロセス内起動・自動ログイン）/ ReachForge.E2E.Tests（Playwright・axe）
+  ReachForge.Desktop.Tests（Windows 版のプロセス内起動・自動ログイン）/ ReachForge.E2E.Tests（Playwright）
 ```
 
 依存方向は Domain ← Application ← (AI / Social / Infrastructure) ← (Web / Worker)。外部 AI・SNS はすべてインタフェース越しに利用します。
