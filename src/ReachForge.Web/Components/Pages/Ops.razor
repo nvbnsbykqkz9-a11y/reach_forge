@@ -11,6 +11,7 @@
 <div class="rf-page-header">
     <MudText Typo="Typo.h4" tabindex="-1">運用</MudText>
     <span class="rf-spacer"></span>
+    <MudButton Variant="Variant.Outlined" Href="/ops/prompts" StartIcon="@Icons.Material.Rounded.EditNote" Class="mr-2">プロンプト管理</MudButton>
     @if (Jobs.Value.Engine == JobEngine.Hangfire)
     {
         <MudButton Variant="Variant.Outlined" Href="/ops/jobs" Target="_blank" EndIcon="@Icons.Material.Rounded.OpenInNew">ジョブの実行履歴</MudButton>

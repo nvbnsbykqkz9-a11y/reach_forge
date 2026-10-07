@@ -8,7 +8,7 @@ using ReachForge.Domain.Enums;
 namespace ReachForge.AI.Services;
 
 /// <summary>ネタの採点と切り口（Research Agent）。</summary>
-public sealed class TrendIdeaWriter(IModelRouter router) : ITrendIdeaWriter
+public sealed class TrendIdeaWriter(IModelRouter router, IPromptCatalog prompts) : ITrendIdeaWriter
 {
     public async Task<IReadOnlyList<ScoredIdea>> ScoreAsync(BrandContext brand, IReadOnlyList<TrendCandidate> candidates, CancellationToken ct)
     {
@@ -16,7 +16,7 @@ public sealed class TrendIdeaWriter(IModelRouter router) : ITrendIdeaWriter
         var client = router.Resolve(AiTaskType.Ideation);
         var options = new AiCallContext(AiTaskType.Ideation, null, new TrendStubPayload(brand, candidates)).Apply();
         var (batch, _) = await CopyGenerationService.GetStructuredAsync<IdeaBatch>(client,
-            [new(ChatRole.System, PromptLibrary.TrendSystem(brand)), new(ChatRole.User, PromptLibrary.TrendUser(candidates))], options, ct);
+            [new(ChatRole.System, (await prompts.RenderAsync(PromptKeys.TrendIdeas, PromptLibrary.BrandValues(brand), ct)).Text), new(ChatRole.User, PromptLibrary.TrendUser(candidates))], options, ct);
         var known = candidates.Select(c => c.Topic).ToHashSet();
         return (batch.Ideas ?? [])
             .Where(i => i.Topic is not null && known.Contains(i.Topic)) // 候補にない話題は採用しない

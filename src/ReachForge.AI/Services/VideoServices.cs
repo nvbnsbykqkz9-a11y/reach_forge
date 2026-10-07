@@ -14,14 +14,14 @@ using ReachForge.Domain.Guardrails;
 namespace ReachForge.AI.Services;
 
 /// <summary>構成台本（F-05 ③ 処理 1）。</summary>
-public sealed class VideoScriptWriter(IModelRouter router) : IVideoScriptWriter
+public sealed class VideoScriptWriter(IModelRouter router, IPromptCatalog prompts) : IVideoScriptWriter
 {
     public async Task<VideoScript> WriteAsync(BrandContext brand, string theme, int sceneCount, int targetSeconds, CancellationToken ct)
     {
         var client = router.Resolve(AiTaskType.Video);
         var options = new AiCallContext(AiTaskType.Video, null, new ScriptStubPayload(theme, sceneCount, targetSeconds, brand.Profile.BrandName)).Apply();
         var (draft, _) = await CopyGenerationService.GetStructuredAsync<ScriptDraft>(client,
-            [new(ChatRole.System, PromptLibrary.ScriptSystem(brand, sceneCount, targetSeconds)), new(ChatRole.User, PromptInjectionDetector.Fence(theme))],
+            [new(ChatRole.System, (await prompts.RenderAsync(PromptKeys.VideoScript, PromptLibrary.ScriptValues(brand, sceneCount, targetSeconds), ct)).Text), new(ChatRole.User, PromptInjectionDetector.Fence(theme))],
             options, ct);
         var scenes = (draft.Scenes ?? []).Take(sceneCount)
             .Select(s => new VideoScene(s.Caption?.Trim() ?? "", s.Narration?.Trim() ?? "", Math.Clamp(s.Seconds, 2, 8)))

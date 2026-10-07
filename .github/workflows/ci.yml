@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Install ffmpeg and Japanese fonts
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
+      - run: dotnet build -c Release
+      - name: Test (SQLite)
+        run: dotnet test -c Release --no-build
+      - name: Test (PostgreSQL + RLS)
+        env:
+          RF_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Username=postgres;Password=postgres;Database=postgres
+        run: dotnet test -c Release --no-build --project tests/ReachForge.Application.Tests
+
+  # AI Evals（RF-DES-001 4.6）：プロンプト・モデル設定を変えたときに実モデルで評価する。API キーがなければ飛ばす
+  ai-evals:
+    runs-on: ubuntu-latest
+    needs: build-test
+    env:
+      AI__Providers__anthropic__Type: Anthropic
+      AI__Providers__anthropic__ApiKey: ${{ secrets.ANTHROPIC_API_KEY }}
+      AI__Providers__anthropic__Model: claude-opus-5-5
+      AI__Providers__openai__Type: OpenAI
+      AI__Providers__openai__ApiKey: ${{ secrets.OPENAI_API_KEY }}
+      AI__Providers__openai__Model: ${{ vars.OPENAI_JUDGE_MODEL }}
+      AI__Routes__Copy__0: anthropic
+      AI__Routes__Judge__0: openai
+      AI__Routes__Judge__1: anthropic
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Check whether prompts or models changed
+        id: changed
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -qE '^src/ReachForge.AI/|^src/ReachForge.AI.Evals/|appsettings'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-dotnet@v4
+        if: steps.changed.outputs.run == 'true' && env.AI__Providers__anthropic__ApiKey != ''
+        with:
+          global-json-file: global.json
+      - name: Run evals
+        if: steps.changed.outputs.run == 'true' && env.AI__Providers__anthropic__ApiKey != ''
+        run: dotnet run -c Release --project src/ReachForge.AI.Evals -- --out evals.md
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.changed.outputs.run == 'true' && env.AI__Providers__anthropic__ApiKey != ''
+        with:
+          name: ai-evals
+          path: evals.md

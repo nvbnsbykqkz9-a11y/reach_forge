@@ -58,6 +58,13 @@ public static class DemoSeeder
                 await SchemaIsCurrentAsync(db, ct); // 新しいハッシュを記録する
             }
         }
+        // プロンプトの初期版（コードの既定テンプレート）を登録する。マイグレーションが未適用なら次回に回す
+        if (!db.Database.IsNpgsql() || !(await db.Database.GetPendingMigrationsAsync(ct)).Any())
+        {
+            await new Prompts.PromptAdminService(options, scope.ServiceProvider.GetService<Prompts.DbPromptStore>()
+                ?? new Prompts.DbPromptStore(options, new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                    new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), clock), clock).EnsureSeededAsync(ct);
+        }
         if (!seed || await db.Tenants.AnyAsync(ct)) return;
 
         await SeedAsync(db, clock.GetUtcNow(), ct);

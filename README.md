@@ -37,6 +37,15 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 # モデルは appsettings.json の AI:Providers / AI:Routes で設定（コードにハードコードしない）
 ```
 
+## プロンプト管理・AI Evals（RF-DES-001 4.5・4.6）
+
+- AI への指示文は Scriban テンプレートとして DB（`PromptTemplates`）で版管理する。初回起動時にコードの既定テンプレート（`PromptLibrary.Defaults`）を v1 として登録する。ブランド・商品・SNS の制約などのデータはコードで整形して `{{ brand }}` などの値として差し込み、値の中の `{{ }}` はテンプレートとして解釈しない。安全規約（`common.safety`）は `{{ safety }}` で共通化し、外した版は保存できない
+- 運用管理 → プロンプト管理（`/ops/prompts`）：下書き → プレビュー（見本の値）→ 評価 → 一部のテナントで試す（1〜99%、テナントごとに固定）→ 全体に公開。前の公開版は保管になり、公開し直せば元に戻せる。変更は1分以内に全インスタンスへ反映。生成記録（`AiGeneration`）に使った版を残す
+- AI Evals（`src/ReachForge.AI.Evals`）：評価セット 240 件（10業種×7テーマ×3目的＋レッドチーム30件、`datasets/copy.generate.json`）で、ブランド適合度（別モデルによる採点、平均 4.0 以上）・制約遵守率（99% 以上）・安全性（規制表現・禁止表現 0 件）・事実性（商品マスタとの価格の突合 0 件）を判定する（`Microsoft.Extensions.AI.Evaluation`）
+  - CLI：`dotnet run --project src/ReachForge.AI.Evals -- [--cases 50] [--prompt-file draft.sbn] [--out report.md]`（不合格なら終了コード 1）。モデルは `AI__Providers__…`／`AI__Routes__Copy__0`・`AI__Routes__Judge__0` で指定。未設定ならスタブで、評価の仕組みだけを確認する（スタブは指示をそのまま書くため不合格になる）
+  - CI（`.github/workflows/ci.yml`）：AI・プロンプト・設定を変えたコミットで、`ANTHROPIC_API_KEY` などのシークレットがあれば実モデルで評価してレポートを残す
+  - 管理画面の「評価する」は copy.generate・common.safety・judge.brand_fit が対象（既定 20 ケース。AI の利用料がかかる）
+
 ## 認証（RF-DES-001 9.1 / RF-UX-001 SCR-01・SCR-15）
 
 - ASP.NET Core Identity（Cookie）。5回失敗で15分ロック、エラー文はどちらが違うかを示さない、パスワード貼り付け可
@@ -212,5 +221,5 @@ Blazor Server の DI スコープはサーキット（タブを開いている�
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 生成 AI 動画（F-05 ①②）・BGM、C2PA 署名、参照画像の編集（背景差替・不要物除去）、X の動画投稿
 3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認、post_metric の月次パーティションと13か月超の集計移行
-4. プロンプトのDB管理・AI Evals・SignalR による進捗通知
+4. SignalR による進捗通知
 5. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

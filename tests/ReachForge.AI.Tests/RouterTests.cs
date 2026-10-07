@@ -147,7 +147,7 @@ public class VariantGenerationTests
     {
         var router = Substitute.For<IModelRouter>();
         router.Resolve(Arg.Any<AiTaskType>()).Returns(new StubChatClient());
-        return new VariantGenerationService(router);
+        return new VariantGenerationService(router, PromptTests.Catalog());
     }
 
     private static VariantRequest Request(SocialPlatform p, string? link = null, bool includeUrlForX = false) => new()

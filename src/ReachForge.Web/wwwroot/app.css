@@ -229,3 +229,11 @@ body { font-variant-numeric: tabular-nums; }
 .rf-media-video { position: absolute; left: 6px; bottom: 6px; display: inline-flex; align-items: center; gap: 2px; padding: 0 6px;
                   border-radius: 999px; font-size: .75rem; background: rgba(0,0,0,.65); color: #fff; }
 .rf-srt { white-space: pre-wrap; font-size: .75rem; max-height: 200px; overflow: auto; margin: 0; }
+
+/* 運用管理：プロンプト */
+.rf-tag-ok { background: var(--rf-color-info-bg); color: var(--rf-color-success); border-color: transparent; font-weight: 600; }
+.rf-muted { color: var(--rf-color-text-secondary); font-size: .8rem; }
+.rf-mono textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85rem; line-height: 1.5; }
+.rf-prompt-preview { white-space: pre-wrap; word-break: break-word; max-height: 560px; overflow: auto; margin: 8px 0 0; padding: 12px;
+  border: 1px solid var(--rf-color-border); border-radius: 8px; background: var(--rf-color-surface-subtle);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8rem; line-height: 1.5; }

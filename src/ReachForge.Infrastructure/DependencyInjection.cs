@@ -35,11 +35,12 @@ public static class DependencyInjection
 
         var provider = configuration["Database:Provider"] ?? "Sqlite";
         var connection = configuration.GetConnectionString("ReachForge") ?? "Data Source=reachforge.local.db";
+        // 設定は要求に依存しないため、オプションはシングルトンにする（プロンプトの保存先など、シングルトンからも短命の DbContext を作るため）
         services.AddDbContext<ReachForgeDbContext>(o =>
         {
             if (provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(connection);
             else o.UseSqlite(connection);
-        });
+        }, optionsLifetime: ServiceLifetime.Singleton);
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<ReachForgeDbContext>());
         services.AddScoped<TenantContextOverride>();
 
@@ -71,6 +72,12 @@ public static class DependencyInjection
         }
 
         services.AddScoped<AccountService>();
+
+        // ---- プロンプト管理（RF-DES-001 4.5） ----
+        services.AddMemoryCache();
+        services.AddSingleton<Prompts.DbPromptStore>();
+        services.AddSingleton<IPromptStore>(sp => sp.GetRequiredService<Prompts.DbPromptStore>());
+        services.AddSingleton<Prompts.PromptAdminService>();
 
         // ---- ジョブ基盤（14章）：キューへの登録側。処理役はホストが AddReachForgeJobs / AddReachForgeWorkConsumers で登録する ----
         services.AddReachForgeWorkQueue(configuration);

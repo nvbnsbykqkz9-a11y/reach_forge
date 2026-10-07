@@ -12,6 +12,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\ReachForge.AI\ReachForge.AI.csproj" />
+    <ProjectReference Include="..\..\src\ReachForge.AI.Evals\ReachForge.AI.Evals.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

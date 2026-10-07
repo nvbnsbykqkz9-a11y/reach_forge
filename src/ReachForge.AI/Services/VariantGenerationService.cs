@@ -13,7 +13,7 @@ namespace ReachForge.AI.Services;
 /// マルチSNS最適化変換（RF-DES-001 F-06）。並列実行されるため DbContext には触れない（計量は IAiUsageSink 経由）。
 /// ルールベース検証で不適合なら AI による自動修正を最大2回試み、それでも満たさない場合は機械的に整える。
 /// </summary>
-public sealed class VariantGenerationService(IModelRouter router) : IVariantGenerationService
+public sealed class VariantGenerationService(IModelRouter router, IPromptCatalog prompts) : IVariantGenerationService
 {
     public const int MaxAutoFixAttempts = 2;
 
@@ -22,6 +22,7 @@ public sealed class VariantGenerationService(IModelRouter router) : IVariantGene
         var constraint = PlatformCatalog.Get(request.Platform);
         var link = ResolveLink(request, constraint);
         var client = router.Resolve(AiTaskType.Variant);
+        var system = await prompts.RenderAsync(PromptKeys.Variant, PromptLibrary.VariantValues(constraint), ct);
 
         string? feedback = null;
         VariantDraft draft = new("", [], null);
@@ -33,7 +34,7 @@ public sealed class VariantGenerationService(IModelRouter router) : IVariantGene
                 new VariantStubPayload(request, link, feedback)).Apply();
             (draft, response) = await CopyGenerationService.GetStructuredAsync<VariantDraft>(client,
                 [
-                    new(ChatRole.System, PromptLibrary.VariantSystem(constraint)),
+                    new(ChatRole.System, system.Text),
                     new(ChatRole.User, PromptLibrary.VariantUser(request, link, feedback)),
                 ], options, ct);
 

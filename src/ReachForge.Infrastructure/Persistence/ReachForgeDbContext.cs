@@ -57,6 +57,7 @@ public sealed class ReachForgeDbContext(
     public DbSet<AbTest> AbTests => Set<AbTest>();
     public DbSet<TrendIdea> TrendIdeas => Set<TrendIdea>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+    public DbSet<PromptTemplate> PromptTemplates => Set<PromptTemplate>();
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
     public DbSet<ChannelSecret> ChannelSecrets => Set<ChannelSecret>();
 
@@ -177,6 +178,13 @@ public sealed class ReachForgeDbContext(
             e.HasIndex(x => x.SecretHash).IsUnique();
             e.Property(x => x.SecretHash).HasMaxLength(64);
             e.Property(x => x.Prefix).HasMaxLength(16);
+        });
+        b.Entity<PromptTemplate>(e =>
+        {
+            e.HasIndex(x => new { x.Key, x.Version }).IsUnique();
+            e.Property(x => x.Key).HasMaxLength(64);
+            e.Property(x => x.Note).HasMaxLength(500);
+            e.Property(x => x.Evaluation).HasConversion(Json<PromptEvalResult?>());
         });
         b.Entity<IdempotencyRecord>(e =>
         {

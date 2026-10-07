@@ -10,9 +10,11 @@
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
     <PackageReference Include="Anthropic" />
+    <PackageReference Include="Scriban" />
     <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ReachForge.AI.Tests" />
+    <InternalsVisibleTo Include="ReachForge.AI.Evals" />
   </ItemGroup>
 </Project>

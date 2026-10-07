@@ -27,6 +27,7 @@ public sealed class CopyGenerationService(
     ICreditService credits,
     IAppDbContext db,
     ITenantContext tenant,
+    IPromptCatalog prompts,
     ILogger<CopyGenerationService> log) : ICopyGenerationService
 {
     public async Task<CopyResult> GenerateAsync(CopyRequest request, CancellationToken ct)
@@ -37,10 +38,11 @@ public sealed class CopyGenerationService(
         CheckInput(request.Theme, request.AdditionalInstructions);
 
         var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, request.CampaignId, ct);
-        var generation = StartGeneration(request, PromptLibrary.Copy, ctx);
+        var system = await prompts.RenderAsync(PromptKeys.Copy, PromptLibrary.BrandValues(ctx), ct);
+        var generation = StartGeneration(request, system, ctx);
         List<ChatMessage> messages =
         [
-            new(ChatRole.System, PromptLibrary.CopySystem(ctx)),
+            new(ChatRole.System, system.Text),
             new(ChatRole.User, PromptLibrary.CopyUser(request, request.TargetPlatforms.ToList())),
         ];
         var payload = new CopyStubPayload(request, ctx.Profile, ctx.Products);
@@ -54,11 +56,13 @@ public sealed class CopyGenerationService(
         CheckInput(candidate.Body, null);
 
         var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, request.CampaignId, ct);
-        var generation = StartGeneration(request, PromptLibrary.CopyRefine, ctx);
+        var system = await prompts.RenderAsync(PromptKeys.Copy, PromptLibrary.BrandValues(ctx), ct);
+        var refine = await prompts.RenderAsync(PromptKeys.CopyRefine, PromptLibrary.RefineValues(candidate, fix), ct);
+        var generation = StartGeneration(request, refine, ctx);
         List<ChatMessage> messages =
         [
-            new(ChatRole.System, PromptLibrary.CopySystem(ctx)),
-            new(ChatRole.User, PromptLibrary.RefineUser(candidate, fix)),
+            new(ChatRole.System, system.Text),
+            new(ChatRole.User, refine.Text),
         ];
         var payload = new CopyStubPayload(request, ctx.Profile, ctx.Products, candidate, fix);
         return await RunAsync(generation, messages, payload, ctx, hold, cost, 1, ct);
@@ -149,8 +153,9 @@ public sealed class CopyGenerationService(
         {
             var client = router.Resolve(AiTaskType.Judge);
             var options = new AiCallContext(AiTaskType.Judge, generationId, new JudgeStubPayload(copy, ctx.Profile)).Apply();
+            var system = await prompts.RenderAsync(PromptKeys.Judge, PromptLibrary.BrandValues(ctx), ct);
             var (result, _) = await GetStructuredAsync<JudgeResult>(client,
-                [new(ChatRole.System, PromptLibrary.JudgeSystem(ctx)), new(ChatRole.User, PromptLibrary.JudgeUser(copy))],
+                [new(ChatRole.System, system.Text), new(ChatRole.User, PromptLibrary.JudgeUser(copy))],
                 options, ct);
             return (Math.Clamp(result.Score, 1, 5), result.Reason);
         }
@@ -163,7 +168,7 @@ public sealed class CopyGenerationService(
     }
 
     /// <summary>広告・PR 案件では必須表記を自動挿入する（F-03 業務ルール）。</summary>
-    private static GeneratedCopy EnforceDisclosure(GeneratedCopy copy, GuardrailContext ctx)
+    internal static GeneratedCopy EnforceDisclosure(GeneratedCopy copy, GuardrailContext ctx)
     {
         if (!ctx.IsAdvertisement) return copy;
         var text = Compose(copy);
@@ -172,7 +177,7 @@ public sealed class CopyGenerationService(
             : copy with { Body = $"#PR {copy.Body}" };
     }
 
-    private static string Compose(GeneratedCopy c) =>
+    internal static string Compose(GeneratedCopy c) =>
         PostText.Compose($"{c.Headline}\n{c.Body}\n{c.Cta}", c.Hashtags);
 
     private static void Validate(CopyRequest r)
@@ -200,7 +205,7 @@ public sealed class CopyGenerationService(
         }
     }
 
-    private AiGeneration StartGeneration(CopyRequest request, PromptVersion prompt, BrandContext ctx)
+    private AiGeneration StartGeneration(CopyRequest request, PromptText prompt, BrandContext ctx)
     {
         var generation = new AiGeneration
         {

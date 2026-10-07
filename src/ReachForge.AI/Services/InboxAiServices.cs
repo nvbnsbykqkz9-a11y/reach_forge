@@ -11,7 +11,7 @@ using ReachForge.Domain.Enums;
 namespace ReachForge.AI.Services;
 
 /// <summary>受信メッセージの分類（AiTaskType.Classify）。AI が使えない場合はキーワード分類で代替する。</summary>
-public sealed class InboxClassifier(IModelRouter router, ILogger<InboxClassifier> log) : IInboxClassifier
+public sealed class InboxClassifier(IModelRouter router, IPromptCatalog prompts, ILogger<InboxClassifier> log) : IInboxClassifier
 {
     public async Task<InboxLabels> ClassifyAsync(string maskedText, CancellationToken ct)
     {
@@ -21,7 +21,7 @@ public sealed class InboxClassifier(IModelRouter router, ILogger<InboxClassifier
             var client = router.Resolve(AiTaskType.Classify);
             var options = new AiCallContext(AiTaskType.Classify, null, new ClassifyStubPayload(maskedText)).Apply();
             var (draft, _) = await CopyGenerationService.GetStructuredAsync<ClassificationDraft>(client,
-                [new(ChatRole.System, PromptLibrary.ClassifySystem), new(ChatRole.User, Domain.Guardrails.PromptInjectionDetector.Fence(maskedText))],
+                [new(ChatRole.System, (await prompts.RenderAsync(PromptKeys.Classify, PromptLibrary.Values(), ct)).Text), new(ChatRole.User, Domain.Guardrails.PromptInjectionDetector.Fence(maskedText))],
                 options, ct);
             var labels = new InboxLabels(
                 Parse(draft.Sentiment, fallback.Sentiment),
@@ -48,14 +48,14 @@ public sealed class InboxClassifier(IModelRouter router, ILogger<InboxClassifier
 }
 
 /// <summary>返信案（AiTaskType.Reply）。根拠の id を検証し、存在しない根拠は外す。</summary>
-public sealed class ReplySuggester(IModelRouter router) : IReplySuggester
+public sealed class ReplySuggester(IModelRouter router, IPromptCatalog prompts) : IReplySuggester
 {
     public async Task<IReadOnlyList<ReplyDraft>> SuggestAsync(ReplyRequest request, CancellationToken ct)
     {
         var client = router.Resolve(AiTaskType.Reply);
         var options = new AiCallContext(AiTaskType.Reply, null, new ReplyStubPayload(request)).Apply();
         var (batch, _) = await CopyGenerationService.GetStructuredAsync<ReplyBatch>(client,
-            [new(ChatRole.System, PromptLibrary.ReplySystem(request.Brand)), new(ChatRole.User, PromptLibrary.ReplyUser(request))],
+            [new(ChatRole.System, (await prompts.RenderAsync(PromptKeys.Reply, PromptLibrary.BrandValues(request.Brand), ct)).Text), new(ChatRole.User, PromptLibrary.ReplyUser(request))],
             options, ct);
 
         var sources = new Dictionary<string, ReplySource>(StringComparer.OrdinalIgnoreCase);

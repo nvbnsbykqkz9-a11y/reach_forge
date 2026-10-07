@@ -14,7 +14,7 @@ namespace ReachForge.AI.Services;
 /// 承認者向け「確認ポイント要約」（F-07-1 / RF-UX-001 SCR-08）：伝えたいこと／要確認／前回指摘への対応。
 /// 「伝えたいこと」だけを AI が文章化し、確認事項はシステムが判定した結果をそのまま示す。
 /// </summary>
-public sealed class ApprovalSummaryService(IAppDbContext db, IModelRouter router) : IApprovalSummaryService
+public sealed class ApprovalSummaryService(IAppDbContext db, IModelRouter router, IPromptCatalog prompts) : IApprovalSummaryService
 {
     public async Task<IReadOnlyList<string>> SummarizeAsync(Guid variantId, CancellationToken ct)
     {
@@ -30,7 +30,7 @@ public sealed class ApprovalSummaryService(IAppDbContext db, IModelRouter router
                 new DigestStubPayload(post.Title, v.Body)).Apply();
             var (digest, _) = await CopyGenerationService.GetStructuredAsync<DigestResult>(client,
                 [
-                    new(ChatRole.System, PromptLibrary.DigestSystem),
+                    new(ChatRole.System, (await prompts.RenderAsync(PromptKeys.Digest, PromptLibrary.Values(), ct)).Text),
                     new(ChatRole.User, Domain.Guardrails.PromptInjectionDetector.Fence($"{post.Title}\n{v.Body}")),
                 ], options, ct);
             message = digest.Message;

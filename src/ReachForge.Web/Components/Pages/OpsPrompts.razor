@@ -1,0 +1,298 @@
+@page "/ops/prompts"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = OpsAccess.Policy)]
+@using ReachForge.AI.Evals
+@using ReachForge.AI.Prompts
+@using ReachForge.Infrastructure.Prompts
+@inherits RfComponentBase
+@inject PromptAdminService Admin
+@inject WebTenantContext Tenant
+@inject TimeDisplay Time
+@inject ISnackbar Snackbar
+
+<PageTitle>プロンプト管理｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">プロンプト管理</MudText>
+    <span class="rf-spacer"></span>
+    <MudButton Variant="Variant.Text" Href="/ops" StartIcon="@Icons.Material.Rounded.ArrowBack">運用へ戻る</MudButton>
+</div>
+
+<MudText Typo="Typo.body2" Class="mb-3">
+    AI への指示文（テンプレート）を版で管理します。新しい版は下書きで作り、評価（AI Evals）で基準を満たしてから、
+    一部のテナントで試し（段階適用）、全体に公開します。保管した版を公開し直すと元に戻せます。変更は1分以内に反映されます。
+</MudText>
+
+@if (_keys is null)
+{
+    <MudSkeleton Height="200px" />
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+        <MudSimpleTable Dense="true" Elevation="0" Hover="true">
+            <thead><tr><th>キー</th><th>公開中</th><th>試験中</th><th>公開版の評価</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var k in _keys)
+                {
+                    <tr class="@(k.Key == _key ? "mud-selected-item" : "")">
+                        <td><code>@k.Key</code></td>
+                        <td>@(k.Active is { } a ? $"v{a.Version}" : "既定")</td>
+                        <td>@(k.Candidate is { } c ? $"v{c.Version}（{c.RolloutPercent}%）" : "—")</td>
+                        <td>@EvalLabel(k.Active?.Evaluation)</td>
+                        <td><MudButton Size="Size.Small" Variant="Variant.Text" OnClick="() => SelectAsync(k.Key)" aria-label="@($"{k.Key} の版を見る")">版を見る</MudButton></td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    </MudPaper>
+}
+
+@if (_key is not null)
+{
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+        <div class="d-flex align-center flex-wrap gap-2">
+            <MudText Typo="Typo.h6"><code>@_key</code> の版</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.Add" OnClick="NewDraft">新しい版をつくる</MudButton>
+        </div>
+        <MudText Typo="Typo.caption" Class="d-block mb-2">使える値：@PromptLibrary.Variables[_key]（例：<code>{{ brand }}</code>）</MudText>
+        <MudSimpleTable Dense="true" Elevation="0">
+            <thead><tr><th>版</th><th>状態</th><th>メモ</th><th>作成</th><th>評価</th><th>操作</th></tr></thead>
+            <tbody>
+                @foreach (var v in _versions)
+                {
+                    <tr>
+                        <td>v@(v.Version)</td>
+                        <td><span class="rf-tag @(v.Status == PromptStatus.Active ? "rf-tag-ok" : v.Status == PromptStatus.Candidate ? "rf-tag-warn" : "")">@StatusLabel(v)</span></td>
+                        <td>@v.Note</td>
+                        <td style="white-space:nowrap">@v.CreatedBy<br /><span class="rf-muted">@Time.ToLocal(v.CreatedAt).ToString("yyyy/M/d HH:mm")</span></td>
+                        <td>@EvalLabel(v.Evaluation)</td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                <MudButton Size="Size.Small" OnClick="() => Open(v)">@(v.Status == PromptStatus.Draft ? "編集" : "見る")</MudButton>
+                                @if (EvalRunner.EvaluableKeys.Contains(v.Key))
+                                {
+                                    <MudButton Size="Size.Small" Disabled="_busy" OnClick="() => EvaluateAsync(v)">評価する</MudButton>
+                                }
+                                @if (v.Status is PromptStatus.Draft or PromptStatus.Archived)
+                                {
+                                    <MudButton Size="Size.Small" Disabled="_busy" OnClick="() => RolloutAsync(v)">@(_percent)%で試す</MudButton>
+                                }
+                                @if (v.Status == PromptStatus.Candidate)
+                                {
+                                    <MudButton Size="Size.Small" Disabled="_busy" OnClick="() => StopAsync(v)">試験をやめる</MudButton>
+                                }
+                                @if (v.Status != PromptStatus.Active)
+                                {
+                                    <MudButton Size="Size.Small" Color="Color.Primary" Disabled="_busy" OnClick="() => PublishAsync(v)">全体に公開</MudButton>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+        <div class="d-flex align-center gap-2 mt-2">
+            <MudNumericField T="int" @bind-Value="_percent" Label="試す割合（%）" Min="1" Max="99" Variant="Variant.Outlined" Style="max-width:160px" />
+            <MudNumericField T="int" @bind-Value="_evalCases" Label="評価するケース数" Min="5" Max="240" Variant="Variant.Outlined" Style="max-width:180px"
+                             HelperText="多いほど正確ですが、AI の利用料がかかります" />
+        </div>
+    </MudPaper>
+}
+
+@if (_editing is not null)
+{
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6">@(_editing.Id is null ? "新しい版" : $"v{_editing.Version}")@(_editing.ReadOnly ? "（変更できません）" : "")</MudText>
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" md="6">
+                <MudTextField T="string" @bind-Value="_editing.Body" Label="テンプレート（Scriban）" Variant="Variant.Outlined" Lines="22"
+                              ReadOnly="_editing.ReadOnly" Class="rf-mono" Immediate="true" />
+                <MudTextField T="string" @bind-Value="_editing.Note" Label="変更の内容（メモ）" Variant="Variant.Outlined" Class="mt-2" MaxLength="500"
+                              ReadOnly="_editing.ReadOnly" />
+                <div class="d-flex gap-2 mt-3">
+                    <MudButton Variant="Variant.Text" OnClick="() => _editing = null">閉じる</MudButton>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Outlined" Disabled="_busy" OnClick="PreviewAsync">プレビュー</MudButton>
+                    @if (!_editing.ReadOnly)
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="_busy" OnClick="SaveAsync">下書きを保存</MudButton>
+                    }
+                </div>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                <MudText Typo="Typo.subtitle2">プレビュー（見本の値：架空のカフェ）</MudText>
+                @if (_previewError is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Dense="true">@_previewError</MudAlert>
+                }
+                <pre class="rf-prompt-preview" aria-live="polite">@_preview</pre>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+}
+
+@if (_report is not null)
+{
+    <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true" aria-live="polite">
+        <MudText Typo="Typo.h6">評価結果：@_report.PromptKey v@(_report.PromptVersion)（@_report.Model）</MudText>
+        <MudAlert Severity="@(_report.Passed ? Severity.Success : Severity.Warning)" Dense="true" Class="my-2">
+            @(_report.Passed ? "基準を満たしています。" : "基準を満たしていない項目があります。")@_report.Summary
+        </MudAlert>
+        @{ var problems = _report.Cases.Where(c => c.Problems.Length > 0).Take(15).ToList(); }
+        @if (problems.Count > 0)
+        {
+            <MudSimpleTable Dense="true" Elevation="0">
+                <thead><tr><th>ケース</th><th>テーマ</th><th>指摘</th></tr></thead>
+                <tbody>
+                    @foreach (var c in problems)
+                    {
+                        <tr><td>@c.Id</td><td>@c.Theme</td><td>@c.Problems</td></tr>
+                    }
+                </tbody>
+            </MudSimpleTable>
+        }
+    </MudPaper>
+}
+
+@code {
+    private sealed class Editing
+    {
+        public Guid? Id { get; init; }
+        public int Version { get; init; }
+        public required string Body { get; set; }
+        public string Note { get; set; } = "";
+        public bool ReadOnly { get; init; }
+    }
+
+    private IReadOnlyList<PromptKeySummary>? _keys;
+    private string? _key;
+    private IReadOnlyList<PromptTemplate> _versions = [];
+    private Editing? _editing;
+    private string? _preview, _previewError;
+    private EvalReport? _report;
+    private bool _busy;
+    private int _percent = 10, _evalCases = 20;
+
+    private EvalRunner Runner => Scoped<EvalRunner>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Time.ZoneAsync();
+        await Admin.EnsureSeededAsync(CancellationToken.None);
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _keys = await Admin.ListAsync(CancellationToken.None);
+        if (_key is not null) _versions = await Admin.VersionsAsync(_key, CancellationToken.None);
+    }
+
+    private async Task SelectAsync(string key)
+    {
+        _key = key;
+        _editing = null;
+        _report = null;
+        _versions = await Admin.VersionsAsync(key, CancellationToken.None);
+    }
+
+    private void NewDraft()
+    {
+        var basis = _versions.FirstOrDefault(v => v.Status == PromptStatus.Active) ?? _versions.FirstOrDefault();
+        _editing = new Editing { Body = basis?.Body ?? PromptLibrary.Defaults[_key!] };
+        _preview = _previewError = null;
+    }
+
+    private void Open(PromptTemplate v)
+    {
+        _editing = new Editing { Id = v.Id, Version = v.Version, Body = v.Body, Note = v.Note, ReadOnly = v.Status != PromptStatus.Draft };
+        _preview = _previewError = null;
+    }
+
+    private async Task PreviewAsync()
+    {
+        try
+        {
+            _preview = await Admin.PreviewAsync(_key!, _editing!.Body, CancellationToken.None);
+            _previewError = null;
+        }
+        catch (DomainException ex)
+        {
+            _previewError = ex.Message;
+            _preview = null;
+        }
+    }
+
+    private Task SaveAsync() => RunAsync(async () =>
+    {
+        var saved = _editing!.Id is { } id
+            ? await Admin.UpdateDraftAsync(id, _editing.Body, _editing.Note, Tenant.UserName, CancellationToken.None)
+            : await Admin.CreateDraftAsync(_key!, _editing.Body, _editing.Note, Tenant.UserName, CancellationToken.None);
+        Snackbar.Add($"v{saved.Version} の下書きを保存しました。評価してから公開してください", Severity.Success);
+        _editing = null;
+    });
+
+    private Task PublishAsync(PromptTemplate v) => RunAsync(async () =>
+    {
+        if (v.Evaluation is { Passed: false })
+        {
+            Snackbar.Add("評価の基準を満たしていない版です。内容を確認のうえ公開しました", Severity.Warning);
+        }
+        await Admin.PublishAsync(v.Id, Tenant.UserName, CancellationToken.None);
+        Snackbar.Add($"v{v.Version} を全体に公開しました", Severity.Success);
+    });
+
+    private Task RolloutAsync(PromptTemplate v) => RunAsync(async () =>
+    {
+        await Admin.StartRolloutAsync(v.Id, _percent, Tenant.UserName, CancellationToken.None);
+        Snackbar.Add($"v{v.Version} を {_percent}% のテナントで試しています", Severity.Success);
+    });
+
+    private Task StopAsync(PromptTemplate v) => RunAsync(async () =>
+    {
+        await Admin.StopRolloutAsync(v.Id, Tenant.UserName, CancellationToken.None);
+        Snackbar.Add($"v{v.Version} の試験をやめました", Severity.Info);
+    });
+
+    private Task EvaluateAsync(PromptTemplate v) => RunAsync(async () =>
+    {
+        Snackbar.Add($"v{v.Version} を {_evalCases} ケースで評価しています…", Severity.Info);
+        _report = await Runner.RunAsync(EvalDataset.Load(), new EvalOptions
+        {
+            MaxCases = _evalCases,
+            Overrides = new Dictionary<string, StoredPrompt> { [v.Key] = new(v.Key, v.Version, v.Body) },
+        }, CancellationToken.None);
+        await Admin.RecordEvaluationAsync(v.Id, _report.ToResult(Time.Now), CancellationToken.None);
+    });
+
+    private async Task RunAsync(Func<Task> action)
+    {
+        _busy = true;
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Show(ex);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string StatusLabel(PromptTemplate v) => v.Status switch
+    {
+        PromptStatus.Active => "公開中",
+        PromptStatus.Candidate => $"試験中 {v.RolloutPercent}%",
+        PromptStatus.Archived => "保管",
+        _ => "下書き",
+    };
+
+    private static string EvalLabel(PromptEvalResult? e) => e is null
+        ? "未評価"
+        : $"{(e.Passed ? "合格" : "不合格")}（適合度 {(e.BrandFit is { } b ? b.ToString("0.0") : "-")}・制約 {e.ConstraintRate:P0}・安全 {e.SafetyViolations}・事実 {e.FactMismatches}）";
+}

@@ -112,6 +112,7 @@ builder.Services.AddScoped<ITenantContext>(sp =>
     sp.GetRequiredService<TenantContextOverride>().Current ?? sp.GetRequiredService<WebTenantContext>());
 builder.Services.AddScoped<TimeDisplay>();
 builder.Services.AddScoped<TenantScopes>();
+builder.Services.AddScoped<ReachForge.AI.Evals.EvalRunner>();
 builder.Services.AddScoped<AppState>();
 
 // ジョブ（14章）：本番は ReachForge.Worker が実行する。ローカル開発では Worker:RunInWeb で Web プロセス内でも動かせる
