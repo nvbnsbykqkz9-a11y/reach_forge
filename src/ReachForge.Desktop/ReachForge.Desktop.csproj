@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Windows 版（PC 単体）。WebView2 の画面と、PC の中で動かすサーバー（ReachForge.Web）の起動・停止・タスクトレイ常駐を受け持つ。
-    発行は deploy/desktop/publish.ps1（サーバーは server フォルダーに同梱）。Linux でもビルドだけはできる（EnableWindowsTargeting）。
+    Windows 版（PC 単体）。Web 版と同じアプリ（ReachForge.Web）をこのプロセスの中で動かし、WebView2 で表示する。タスクトレイに常駐する。
+    発行は deploy/desktop/publish.ps1。Linux でもビルドだけはできる（EnableWindowsTargeting）。
   -->
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -19,13 +19,14 @@
     <Version>1.0.0</Version>
     <!-- 画面は WPF（DPI はマニフェストで指定）。Windows Forms はトレイのアイコンにだけ使うため、Windows Forms の DPI 設定の警告は対象外 -->
     <NoWarn>$(NoWarn);WFO0003</NoWarn>
+    <!-- 参照している ReachForge.Web・AI.Evals も実行ファイルのため runtimeconfig／deps が重なる（プロセス内で使うので不要。どちらが残ってもよい） -->
+    <ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\ReachForge.Desktop.Host\ReachForge.Desktop.Host.csproj" />
-    <!-- F5 で起動したときに使うサーバーを先にビルドする（出力には含めない。発行では server フォルダーに別に入れる） -->
-    <ProjectReference Include="..\ReachForge.Web\ReachForge.Web.csproj" ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
+  <Import Project="WebAssets.targets" />
 </Project>

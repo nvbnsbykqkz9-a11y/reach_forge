@@ -10,18 +10,14 @@ using ReachForge.Desktop.Host;
 namespace ReachForge.Desktop;
 
 /// <summary>
-/// Windows 版の本体。サーバー（server\ReachForge.Web.exe）を起動して WebView2 で表示し、
+/// Windows 版の本体。Web 版と同じアプリをこのプロセスの中で起動して WebView2 で表示し、
 /// ウィンドウを閉じてもタスクトレイに残って予約投稿・指標の取得・受信箱の取り込みを続ける。終了はトレイのメニューから。
 /// </summary>
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     public const string MinimizedArgument = "--minimized";
 
-#if DEBUG
-    private const string BuildConfiguration = "Debug";
-#else
-    private const string BuildConfiguration = "Release";
-#endif
+
 
     private SingleInstance? _instance;
     private TrayIcon? _tray;
@@ -30,9 +26,9 @@ public partial class App : Application
 
     public DesktopPaths Paths { get; } = DesktopPaths.Default;
     public DesktopSettings Settings { get; private set; } = new();
-    public ServerProcess? Server { get; private set; }
+    public DesktopServer? Server { get; private set; }
 
-    public static new App Current => (App)Application.Current;
+    public static new App Current => (App)System.Windows.Application.Current;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -49,24 +45,34 @@ public partial class App : Application
 
         Paths.EnsureCreated();
         Settings = DesktopSettings.Load(Paths.Settings);
+        // 想定外のエラーは画面を落とさずに記録する（詳細はログ）
+        DispatcherUnhandledException += (_, args) =>
+        {
+            LogCrash(args.Exception);
+            _window?.ShowError($"予期しないエラーが起きました（{args.Exception.Message}）。");
+            args.Handled = true;
+        };
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            LogCrash(args.Exception);
+            args.SetObserved();
+        };
         _tray = new TrayIcon(this);
         _window = new MainWindow(this);
         if (!e.Args.Contains(MinimizedArgument)) _window.Show();
         _ = StartServerAsync();
     }
 
-    /// <summary>サーバーを起動して画面を開く。失敗したら理由とやり直しのボタンを表示する。</summary>
+    /// <summary>アプリ（Web 版と同じ処理）をプロセス内で起動して画面を開く。失敗したら理由とやり直しのボタンを表示する。</summary>
     public async Task StartServerAsync()
     {
         _window?.ShowStatus("起動しています…");
         try
         {
             if (Server is not null) await Server.DisposeAsync();
-            var baseDir = AppContext.BaseDirectory;
-            Server = new ServerProcess(new ServerLaunchOptions(
-                ServerLocator.Find(baseDir, BuildConfiguration), Paths, Settings.Port,
-                Path.Combine(baseDir, "ffmpeg", "ffmpeg.exe")));
-            Server.Exited += code => Dispatcher.Invoke(() => OnServerExited(code));
+            Server = new DesktopServer(new DesktopServerOptions(Paths, Settings.Port,
+                Path.Combine(AppContext.BaseDirectory, "ffmpeg", "ffmpeg.exe")));
+            Server.StoppedUnexpectedly += () => Dispatcher.Invoke(OnServerStopped);
             await Server.StartAsync();
             if (_window is not null) await _window.OpenAsync(Server);
         }
@@ -82,10 +88,10 @@ public partial class App : Application
         }
     }
 
-    private void OnServerExited(int code)
+    private void OnServerStopped()
     {
         if (_exiting) return;
-        _window?.ShowError($"サーバーが停止しました（終了コード {code}）。予約投稿は止まっています。");
+        _window?.ShowError("ReachForge の処理が停止しました。予約投稿は止まっています。");
         _tray?.Notify("ReachForge が停止しました", "画面を開いて「もう一度起動する」を押してください。");
     }
 
@@ -110,7 +116,7 @@ public partial class App : Application
         return true;
     }
 
-    /// <summary>終了する。サーバーに保存中の処理を終えてもらってから止める。</summary>
+    /// <summary>終了する。保存中の処理を終えてから止める。</summary>
     public async Task ExitAsync()
     {
         if (_exiting) return;
@@ -122,6 +128,17 @@ public partial class App : Application
         Shutdown();
     }
 
+    private void LogCrash(Exception ex)
+    {
+        try
+        {
+            File.AppendAllText(Path.Combine(Paths.Logs, "desktop-errors.log"), $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {ex}{Environment.NewLine}");
+        }
+        catch (IOException)
+        {
+        }
+    }
+
     public static void OpenInExplorer(string path) =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
 
@@ -129,9 +146,9 @@ public partial class App : Application
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)
     {
-        // Windows のサインアウト・シャットダウン：サーバーを止めてから終わる
+        // Windows のサインアウト・シャットダウン：処理を止めてから終わる
         _exiting = true;
-        Server?.StopAsync().Wait(TimeSpan.FromSeconds(10));
+        Task.Run(() => Server?.StopAsync() ?? Task.CompletedTask).Wait(TimeSpan.FromSeconds(10));
         base.OnSessionEnding(e);
     }
 }

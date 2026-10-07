@@ -8,13 +8,13 @@ using ReachForge.Desktop.Host;
 namespace ReachForge.Desktop;
 
 /// <summary>
-/// 画面（WebView2）。サーバーの自己署名証明書だけを例外として受け入れ、外部サイトへのリンクは既定のブラウザーで開く。
+/// 画面（WebView2）。アプリの自己署名証明書だけを例外として受け入れ、外部サイトへのリンクは既定のブラウザーで開く。
 /// SNS の連携（OAuth）は同じ画面の中で行い、コールバックで https://localhost に戻る。
 /// </summary>
 public partial class MainWindow : Window
 {
     private readonly App _app;
-    private ServerProcess? _server;
+    private DesktopServer? _server;
     private bool _webViewReady;
 
     public MainWindow(App app)
@@ -23,7 +23,7 @@ public partial class MainWindow : Window
         InitializeComponent();
     }
 
-    public async Task OpenAsync(ServerProcess server)
+    public async Task OpenAsync(DesktopServer server)
     {
         _server = server;
         if (!_webViewReady)
@@ -48,7 +48,7 @@ public partial class MainWindow : Window
         Web.Visibility = Visibility.Visible;
     }
 
-    /// <summary>自分のサーバーの証明書のときだけ許可する（それ以外のサイトの証明書エラーは通常どおり拒否）。</summary>
+    /// <summary>このアプリの証明書のときだけ許可する（それ以外のサイトの証明書エラーは通常どおり拒否）。</summary>
     private void OnCertificateError(object? sender, CoreWebView2ServerCertificateErrorDetectedEventArgs e)
     {
         if (_server is not null && IsOwnOrigin(e.RequestUri) && _server.IsOwnCertificate(e.ServerCertificate.ToX509Certificate2()))

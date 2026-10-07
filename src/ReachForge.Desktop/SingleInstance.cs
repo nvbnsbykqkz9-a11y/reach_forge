@@ -4,7 +4,7 @@ using System.Threading;
 namespace ReachForge.Desktop;
 
 /// <summary>
-/// 1人の利用者につき1つだけ起動する（サーバーのポートと DB を共有するため）。
+/// 1人の利用者につき1つだけ起動する（ポートと DB を共有するため）。
 /// 2つ目を起動したら、1つ目のウィンドウを前に出すよう知らせて終わる。
 /// </summary>
 public sealed class SingleInstance : IDisposable

@@ -9,7 +9,7 @@ using ReachForge.Infrastructure.Identity;
 namespace ReachForge.Web.Hosting;
 
 /// <summary>
-/// Windows 版（PC 単体）の設定。デスクトップアプリ（ReachForge.Desktop）がこのサーバーを子プロセスとして
+/// Windows 版（PC 単体）の設定。デスクトップアプリ（ReachForge.Desktop）がこのアプリを同じプロセスの中で
 /// https://localhost の固定ポートで起動し、WebView2 で画面を表示する。
 /// </summary>
 public sealed class DesktopOptions
@@ -18,7 +18,7 @@ public sealed class DesktopOptions
 
     public bool Enabled { get; set; }
 
-    /// <summary>起動ごとにデスクトップアプリが作る秘密の値。自動ログインと終了の要求に使う（環境変数で渡し、保存しない）。</summary>
+    /// <summary>起動ごとにデスクトップアプリが作る秘密の値。自動ログインに使う（保存しない）。</summary>
     public string? LaunchToken { get; set; }
 
     /// <summary>利用者が編集する設定ファイル（API キーなど）。データフォルダーに置き、変更はすぐ反映する。</summary>
@@ -28,11 +28,12 @@ public sealed class DesktopOptions
 public static class DesktopMode
 {
     public const string SignInPath = "/desktop/signin";
-    public const string ShutdownPath = "/desktop/shutdown";
-    public const string TokenHeader = "X-Desktop-Token";
 
-    /// <summary>Windows 版の設定を読み込む。利用者の設定ファイルを追加し、Windows では暗号鍵を DPAPI（利用者単位）で保護する。</summary>
-    public static WebApplicationBuilder AddDesktopMode(this WebApplicationBuilder builder)
+    /// <summary>
+    /// Windows 版の設定を読み込む。利用者の設定ファイルを追加し、Windows では暗号鍵を DPAPI（利用者単位）で保護する。
+    /// <paramref name="forced"/>（デスクトップアプリが渡すデータの場所など）は利用者の設定ファイルより優先する。
+    /// </summary>
+    public static WebApplicationBuilder AddDesktopMode(this WebApplicationBuilder builder, IReadOnlyDictionary<string, string?>? forced = null)
     {
         var options = builder.Configuration.GetSection(DesktopOptions.SectionName).Get<DesktopOptions>() ?? new DesktopOptions();
         builder.Services.Configure<DesktopOptions>(builder.Configuration.GetSection(DesktopOptions.SectionName));
@@ -41,8 +42,9 @@ public static class DesktopMode
         if (!string.IsNullOrEmpty(options.ConfigPath))
         {
             builder.Configuration.AddJsonFile(options.ConfigPath, optional: true, reloadOnChange: true);
-            // デスクトップアプリが環境変数で渡す値（DB の場所・ポートなど）を、利用者の設定ファイルより優先する
-            builder.Configuration.AddEnvironmentVariables();
+            // デスクトップアプリが渡す値（DB の場所など）を、利用者の設定ファイルより優先する
+            if (forced is not null) builder.Configuration.AddInMemoryCollection(forced);
+            else builder.Configuration.AddEnvironmentVariables();
         }
         if (OperatingSystem.IsWindows())
         {
@@ -73,14 +75,6 @@ public static class DesktopMode
             await accounts.AuditAsync(user, "auth.login", "desktop", ct);
             return Results.LocalRedirect("/");
         }).AllowAnonymous().ExcludeFromDescription();
-
-        // デスクトップアプリの終了時に、処理中の保存を終えてから止める
-        app.MapPost(ShutdownPath, (HttpContext http, IHostApplicationLifetime lifetime) =>
-        {
-            if (!IsLocal(http) || !Matches(http.Request.Headers[TokenHeader], token)) return Results.NotFound();
-            lifetime.StopApplication();
-            return Results.Accepted();
-        }).AllowAnonymous().DisableAntiforgery().ExcludeFromDescription();
     }
 
     private static bool IsLocal(HttpContext http) => http.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip);

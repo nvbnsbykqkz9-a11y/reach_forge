@@ -63,16 +63,18 @@ public sealed class DesktopHostTests : IDisposable
     }
 
     [Fact]
-    public void Server_environment_points_data_to_the_data_folder()
+    public void Settings_point_data_to_the_data_folder_and_cannot_be_overridden()
     {
         var paths = new DesktopPaths(_root);
-        var env = ServerProcess.Environment(new ServerLaunchOptions("server/ReachForge.Web.exe", paths, 50000), "tok");
-        Assert.Equal("Desktop", env["ASPNETCORE_ENVIRONMENT"]);
-        Assert.Equal("https://localhost:50000", env["Kestrel__Endpoints__Https__Url"]);
-        Assert.Equal($"Data Source={paths.Database}", env["ConnectionStrings__ReachForge"]);
-        Assert.Equal(paths.Media, env["Media__LocalPath"]);
-        Assert.Equal("tok", env["Desktop__LaunchToken"]);
-        Assert.False(env.ContainsKey("Video__FfmpegPath")); // 同梱していなければ PATH の ffmpeg
+        var settings = DesktopServer.Settings(new DesktopServerOptions(paths, 50000)
+        {
+            ExtraSettings = new Dictionary<string, string?> { ["Desktop:LaunchToken"] = "other", ["Database:SeedDemo"] = "true" },
+        }, "tok");
+        Assert.Equal($"Data Source={paths.Database}", settings["ConnectionStrings:ReachForge"]);
+        Assert.Equal(paths.Media, settings["Media:LocalPath"]);
+        Assert.Equal("tok", settings["Desktop:LaunchToken"]);
+        Assert.Equal("true", settings["Database:SeedDemo"]);
+        Assert.False(settings.ContainsKey("Video:FfmpegPath")); // 同梱していなければ PATH の ffmpeg
     }
 
     [Fact]
@@ -83,7 +85,7 @@ public sealed class DesktopHostTests : IDisposable
         try
         {
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-            var ex = Assert.Throws<DesktopStartupException>(() => ServerProcess.EnsurePortIsFree(port));
+            var ex = Assert.Throws<DesktopStartupException>(() => DesktopServer.EnsurePortIsFree(port));
             Assert.Contains(port.ToString(System.Globalization.CultureInfo.InvariantCulture), ex.Message);
         }
         finally
@@ -93,10 +95,10 @@ public sealed class DesktopHostTests : IDisposable
     }
 
     [Fact]
-    public async Task Server_starts_on_https_signs_in_locally_and_stops_gracefully()
+    public async Task App_runs_in_process_on_https_signs_in_locally_and_stops()
     {
         var paths = new DesktopPaths(_root);
-        await using var server = new ServerProcess(new ServerLaunchOptions(WebServerPath(), paths, FreePort()));
+        await using var server = new DesktopServer(new DesktopServerOptions(paths, FreePort()));
         await server.StartAsync(TestContext.Current.CancellationToken);
         Assert.True(server.IsRunning);
 
@@ -117,10 +119,6 @@ public sealed class DesktopHostTests : IDisposable
         {
             Assert.Equal(HttpStatusCode.NotFound, wrong.StatusCode);
         }
-        using (var shutdown = await http.PostAsync("desktop/shutdown", null, TestContext.Current.CancellationToken))
-        {
-            Assert.Equal(HttpStatusCode.NotFound, shutdown.StatusCode); // ヘッダーなしの終了要求は受け付けない
-        }
 
         // DB はマイグレーションで作られる（版を上げても利用者のデータを残すため）
         await using (var db = new SqliteConnection($"Data Source={paths.Database};Mode=ReadOnly"))
@@ -133,16 +131,16 @@ public sealed class DesktopHostTests : IDisposable
 
         await server.StopAsync();
         Assert.False(server.IsRunning);
-        Assert.Contains(Directory.GetFiles(paths.Logs), f => Path.GetFileName(f).StartsWith("server-", StringComparison.Ordinal));
+        Assert.Contains(Directory.GetFiles(paths.Logs), f => Path.GetFileName(f).StartsWith(FileLoggerProvider.FilePrefix, StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task Existing_owner_is_signed_in_automatically()
     {
         var paths = new DesktopPaths(_root);
-        await using var server = new ServerProcess(new ServerLaunchOptions(WebServerPath(), paths, FreePort())
+        await using var server = new DesktopServer(new DesktopServerOptions(paths, FreePort())
         {
-            ExtraEnvironment = new Dictionary<string, string> { ["Database__SeedDemo"] = "true", ["Desktop__LaunchToken"] = "overridden" },
+            ExtraSettings = new Dictionary<string, string?> { ["Database:SeedDemo"] = "true" },
         });
         await server.StartAsync(TestContext.Current.CancellationToken);
 
@@ -163,8 +161,8 @@ public sealed class DesktopHostTests : IDisposable
             Assert.True(response.IsSuccessStatusCode, $"{asset}: {(int)response.StatusCode}");
         }
 
-        await server.StopAsync();
-        var log = string.Join('\n', Directory.GetFiles(paths.Logs).Select(File.ReadAllText));
+        await server.DisposeAsync();
+        var log = string.Join('\n', Directory.GetFiles(paths.Logs).Select(f => File.ReadAllText(f)));
         Assert.DoesNotContain("fail:", log);
         Assert.DoesNotContain("crit:", log);
     }
@@ -178,47 +176,8 @@ public sealed class DesktopHostTests : IDisposable
         return port;
     }
 
-    /// <summary>ビルド済みのサーバー（src/ReachForge.Web/bin/{構成}/net10.0/ReachForge.Web.dll）。</summary>
-    private static string WebServerPath()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "ReachForge.sln"))) dir = dir.Parent;
-        Assert.NotNull(dir);
-        var configuration = new DirectoryInfo(Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory)).Parent!.Name; // bin/{構成}/net10.0
-        return Path.Combine(dir.FullName, "src", "ReachForge.Web", "bin", configuration, "net10.0", "ReachForge.Web.dll");
-    }
-
     private sealed class FixedClock(DateTimeOffset now) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => now;
-    }
-}
-
-public sealed class ServerLocatorTests : IDisposable
-{
-    private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("rf-locator-");
-
-    public void Dispose() => _root.Delete(recursive: true);
-
-    private string Touch(params string[] parts)
-    {
-        var path = Path.Combine([_root.FullName, .. parts]);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, "");
-        return path;
-    }
-
-    [Fact]
-    public void Prefers_environment_then_bundled_then_repository_build()
-    {
-        var app = Path.Combine(_root.FullName, "src", "ReachForge.Desktop", "bin", "Debug", "net10.0-windows");
-        Directory.CreateDirectory(app);
-        Touch("ReachForge.sln");
-        var built = Touch("src", "ReachForge.Web", "bin", "Debug", "net10.0", "ReachForge.Web.exe");
-
-        Assert.Equal(built, ServerLocator.Find(app, "Debug", _ => null)); // F5：リポジトリのビルド結果
-        var bundled = Touch("src", "ReachForge.Desktop", "bin", "Debug", "net10.0-windows", "server", "ReachForge.Web.exe");
-        Assert.Equal(bundled, ServerLocator.Find(app, "Debug", _ => null)); // 発行した形
-        Assert.Equal("C:/custom/ReachForge.Web.exe", ServerLocator.Find(app, "Debug", _ => "C:/custom/ReachForge.Web.exe"));
     }
 }

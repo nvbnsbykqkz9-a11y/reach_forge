@@ -12,8 +12,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\ReachForge.Desktop.Host\ReachForge.Desktop.Host.csproj" />
     <ProjectReference Include="..\..\src\ReachForge.Migrations.Sqlite\ReachForge.Migrations.Sqlite.csproj" />
-    <!-- サーバー（ReachForge.Web）を実際に子プロセスで起動して確かめるため、先にビルドしておく -->
-    <ProjectReference Include="..\..\src\ReachForge.Web\ReachForge.Web.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />

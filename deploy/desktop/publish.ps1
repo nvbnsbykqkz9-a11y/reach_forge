@@ -3,8 +3,8 @@
     pwsh deploy/desktop/publish.ps1                       # artifacts/desktop/app に出力
     pwsh deploy/desktop/publish.ps1 -FfmpegDir C:\ffmpeg\bin   # ffmpeg を同梱する（動画機能用）
   出力：
-    app\ReachForge.exe        画面（WPF + WebView2）
-    app\server\               サーバー（ReachForge.Web）
+    app\ReachForge.exe        アプリ本体（画面と処理を1つのプロセスで動かす）
+    app\wwwroot\              画面の静的ファイル
     app\ffmpeg\ffmpeg.exe     （任意）同梱した ffmpeg
   インストーラー（Inno Setup 6）：iscc deploy/desktop/ReachForge.iss
 #>
@@ -20,14 +20,10 @@ $out = Join-Path $root $Output
 $app = Join-Path $out "app"
 if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 
-# 実行環境（.NET）を同梱する（利用者の PC に .NET を入れなくてよい）
+# 実行環境（.NET）を同梱する（利用者の PC に .NET を入れなくてよい）。画面の静的ファイルも発行の中で入る（WebAssets.targets）
 dotnet publish "$root/src/ReachForge.Desktop/ReachForge.Desktop.csproj" -c $Configuration -r $Runtime --self-contained -o $app
 if ($LASTEXITCODE -ne 0) { throw "ReachForge.Desktop の発行に失敗しました" }
-dotnet publish "$root/src/ReachForge.Web/ReachForge.Web.csproj" -c $Configuration -r $Runtime --self-contained -o (Join-Path $app "server")
-if ($LASTEXITCODE -ne 0) { throw "ReachForge.Web の発行に失敗しました" }
-
-# 開発用の設定はサーバーに含めない
-Remove-Item -ErrorAction SilentlyContinue (Join-Path $app "server/appsettings.Development.json")
+if (-not (Test-Path (Join-Path $app "wwwroot/_framework/blazor.web.js"))) { throw "画面の静的ファイルが発行されていません" }
 
 if ($FfmpegDir) {
     $ffmpeg = Join-Path $FfmpegDir "ffmpeg.exe"

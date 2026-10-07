@@ -1,0 +1,22 @@
+<Project>
+  <!--
+    Windows 版の発行：画面（ReachForge.Web）の静的ファイル（wwwroot：MudBlazor・Blazor のスクリプト・CSS）と、その一覧
+    （ReachForge.Web.staticwebassets.endpoints.json）を、アプリと同じフォルダーに入れる。
+    プロジェクト参照だけでは静的ファイルは発行されないため、ReachForge.Web を一時フォルダーに発行して取り出す。
+    開発中（F5）はビルド結果の開発用の一覧（*.runtime.json）がソースのフォルダーを指すので、発行物からは消す。
+  -->
+  <Target Name="PublishReachForgeWebAssets" AfterTargets="Publish">
+    <PropertyGroup>
+      <_RfWebPublishDir>$(MSBuildProjectDirectory)/$(IntermediateOutputPath)web-publish/</_RfWebPublishDir>
+    </PropertyGroup>
+    <RemoveDir Directories="$(_RfWebPublishDir)" />
+    <MSBuild Projects="$(MSBuildThisFileDirectory)../ReachForge.Web/ReachForge.Web.csproj" Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(RuntimeIdentifier);SelfContained=false;PublishDir=$(_RfWebPublishDir);NoBuild=false" />
+    <ItemGroup>
+      <_RfWebRoot Include="$(_RfWebPublishDir)wwwroot/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_RfWebRoot)" DestinationFiles="@(_RfWebRoot->'$(PublishDir)wwwroot/%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="$(_RfWebPublishDir)ReachForge.Web.staticwebassets.endpoints.json" DestinationFolder="$(PublishDir)" />
+    <Delete Files="$(PublishDir)ReachForge.Web.staticwebassets.runtime.json;$(PublishDir)appsettings.Development.json;$(PublishDir)ReachForge.Web.exe;$(PublishDir)ReachForge.Web;$(PublishDir)ReachForge.Web.runtimeconfig.json;$(PublishDir)ReachForge.AI.Evals.exe;$(PublishDir)ReachForge.AI.Evals;$(PublishDir)ReachForge.AI.Evals.runtimeconfig.json;$(PublishDir)ReachForge.AI.Evals.deps.json" />
+  </Target>
+</Project>

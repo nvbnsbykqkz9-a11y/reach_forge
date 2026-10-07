@@ -1,5 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Windows 版のうち OS に依存しない部分（データフォルダー・証明書・サーバープロセスの管理）。Linux の CI でもテストする -->
+  <!-- Windows 版のうち OS に依存しない部分（アプリをプロセス内で起動・データフォルダー・証明書・ログ）。Linux の CI でもテストする -->
+  <ItemGroup>
+    <ProjectReference Include="..\ReachForge.Web\ReachForge.Web.csproj" />
+  </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ReachForge.Desktop.Tests" />
   </ItemGroup>

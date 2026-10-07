@@ -18,7 +18,7 @@ public sealed class DesktopPaths(string root)
     public string Certificate => Path.Combine(Root, "certs", "localhost.pfx");
     public string Settings => Path.Combine(Root, "desktop.json");
 
-    /// <summary>利用者が編集する設定（API キー・SNS アプリの設定など）。サーバーが読み込み、変更はすぐ反映される。</summary>
+    /// <summary>利用者が編集する設定（API キー・SNS アプリの設定など）。アプリが読み込み、変更はすぐ反映される。</summary>
     public string UserConfig => Path.Combine(Root, "appsettings.user.json");
 
     /// <summary>WebView2 のプロファイル（Cookie など）。</summary>
@@ -59,7 +59,7 @@ public sealed class DesktopPaths(string root)
 public sealed record DesktopSettings
 {
     /// <summary>
-    /// サーバーのポート（https://localhost:{Port}）。SNS アプリに登録するコールバック URL に含まれるため固定にする。
+    /// アプリが待ち受けるポート（https://localhost:{Port}）。SNS アプリに登録するコールバック URL に含まれるため固定にする。
     /// </summary>
     public int Port { get; init; } = 47120;
 

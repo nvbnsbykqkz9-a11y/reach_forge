@@ -39,11 +39,11 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 
 ## Windows 版（PC 単体で完結）
 
-サーバーを用意せず、Windows の PC だけで使えるデスクトップアプリです（Windows 10 1809 以降 / 11、x64）。画面は Web 版と同じものを WebView2 で表示します。
+サーバーを用意せず、Windows の PC だけで使えるデスクトップアプリです（Windows 10 1809 以降 / 11、x64）。インストーラーで配布し、Web 版の機能をすべて PC の中の1つのプロセスで動かします。画面は Web 版と同じものを WebView2 で表示します。
 
 | 項目 | 内容 |
 |---|---|
-| 構成 | `ReachForge.exe`（WPF ＋ WebView2）が、同梱のサーバー（`server\ReachForge.Web.exe`）を子プロセスとして `https://localhost:47120` で起動する（外部からは接続できない） |
+| 構成 | `ReachForge.exe` だけで動く。Web 版と同じアプリ（ReachForge.Web）を同じプロセスの中で `https://localhost:47120` で起動し（外部からは接続できない）、WPF ＋ WebView2 の画面で表示する。別のサーバー・別のプロセスは使わない |
 | データ | `%LOCALAPPDATA%\ReachForge`：DB（SQLite）・メディア・ログ（14日分）・証明書・設定。アプリを更新・アンインストールしても残る。DB は起動時にマイグレーションで新しい版にそろえる（`ReachForge.Migrations.Sqlite`） |
 | ログイン | 起動ごとに作る秘密の値で、最初に登録した利用者（オーナー）として自動ログインする。初回は登録画面でワークスペースを作る |
 | 常駐 | ウィンドウを閉じてもタスクトレイに残り、予約投稿・指標の取得・受信箱の取り込みを続ける。終了はトレイのメニューから。「Windows の起動時に開始」も選べる |
@@ -74,18 +74,18 @@ iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 �
 
 | やりたいこと | 方法 |
 |---|---|
-| アプリ全体を動かす | `ReachForge.Desktop` をスタートアップにして F5（または `dotnet run --project src/ReachForge.Desktop`）。サーバーは自動でビルドされ、リポジトリの `src\ReachForge.Web\bin\Debug\net10.0` のものを子プロセスで起動する（別のサーバーを使うなら環境変数 `REACHFORGE_SERVER_PATH`） |
+| アプリ全体を動かす | `ReachForge.Desktop` をスタートアップにして F5（または `dotnet run --project src/ReachForge.Desktop`）。Web 版のコード（画面・API・ジョブ）も同じプロセスなので、そのままブレークポイントで止まる |
 | 画面（Blazor）を調べる | アプリの画面で F12 → WebView2 の開発者ツール（Debug ビルドのみ。Release では無効） |
-| サーバーのコードで止める | ① アプリを F5 で起動したまま「デバッグ → プロセスにアタッチ」で `ReachForge.Web.exe` を選ぶ、または ② サーバーだけを単独で起動：`dotnet run --project src/ReachForge.Web --launch-profile desktop`（Visual Studio ではプロファイル「desktop」を選んで F5）→ ブラウザが `https://localhost:47120/desktop/signin?t=debug` で開き自動ログインする。DB はリポジトリ直下の `reachforge.desktop.db`、設定は `appsettings.desktop-debug.json`（どちらも Git の対象外）。この場合はアプリ（WPF）を起動しない（ポートが重なる） |
-| 起動しない・止まる | `%LOCALAPPDATA%\ReachForge\logs\server-日付.log`（サーバーの出力）。起動画面の「ログを開く」からも開ける。ポートが使用中なら `desktop.json` の `Port` |
+| ブラウザで確かめる | 画面（WPF）なしで単独で起動：`dotnet run --project src/ReachForge.Web --launch-profile desktop`（Visual Studio ではプロファイル「desktop」を選んで F5）→ ブラウザが `https://localhost:47120/desktop/signin?t=debug` で開き自動ログインする。DB はリポジトリ直下の `reachforge.desktop.db`、設定は `appsettings.desktop-debug.json`（どちらも Git の対象外）。この場合はアプリ（ReachForge.Desktop）を同時に起動しない（ポートが重なる） |
+| 起動しない・止まる | `%LOCALAPPDATA%\ReachForge\logs\reachforge-日付.log`（アプリのログ）と `desktop-errors.log`（画面の想定外のエラー）。起動画面の「ログを開く」からも開ける。ポートが使用中なら `desktop.json` の `Port` |
 | データを初期状態に戻す | アプリを終了して `%LOCALAPPDATA%\ReachForge`（DB・メディア・設定・証明書）を削除する。WebView2 の Cookie だけなら `webview` フォルダー |
-| お試し用のデモデータ | 単独起動（②）で環境変数 `Database__SeedDemo=true` を付ける（owner@example.com ／ ReachForge#2026） |
+| お試し用のデモデータ | ブラウザでの単独起動で環境変数 `Database__SeedDemo=true` を付ける（owner@example.com ／ ReachForge#2026） |
 | トレイから起動した状態を試す | 引数 `--minimized`（プロジェクトのデバッグ設定のコマンドライン引数） |
 | 証明書のエラー | `%LOCALAPPDATA%\ReachForge\certs\localhost.pfx` を削除すると次の起動で作り直す |
 
 - CI（`desktop` ジョブ）で Windows 上で発行・インストーラーの作成まで行い、成果物として残す
 - 動画機能には ffmpeg が必要（`-FfmpegDir` で同梱するか、PC に入れて PATH を通す）。WebView2 ランタイムがなければインストーラーが案内する
-- サーバーの起動・自動ログイン・終了・マイグレーションは `tests/ReachForge.Desktop.Tests` で Linux でも確認する（画面の WPF は Windows でのみ動く）
+- プロセス内での起動・自動ログイン・画面の静的ファイル・終了・マイグレーションは `tests/ReachForge.Desktop.Tests` で Linux でも確認する（画面の WPF は Windows でのみ動く）。発行物には `wwwroot`（画面の CSS・スクリプト）を `WebAssets.targets` で入れる
 
 ## リアルタイム通知（RF-DES-001 3.3）
 
@@ -289,12 +289,12 @@ src/
   ReachForge.Web/             Blazor Web App（MudBlazor 9）＋ Minimal API（/api/v1）
   ReachForge.Worker/          予約配信・定期ジョブ・キューの処理
   ReachForge.Migrations.Sqlite/ SQLite 用マイグレーション（Windows 版）
-  ReachForge.Desktop.Host/    Windows 版のサーバー起動・停止・証明書・データフォルダー（OS 非依存）
+  ReachForge.Desktop.Host/    Windows 版のアプリのプロセス内起動・停止・証明書・データフォルダー・ログ（OS 非依存）
   ReachForge.Desktop/         Windows 版の画面（WPF ＋ WebView2・タスクトレイ）
 tests/
   ReachForge.Domain.Tests / ReachForge.Application.Tests（SQLite＋スタブAI＋モックSNSのE2E）/ ReachForge.AI.Tests
   ReachForge.Social.Tests（SNS アダプタの HTTP 検証）/ ReachForge.Web.Tests（認証・権限・Webhook の結合テスト）
-  ReachForge.Desktop.Tests（Windows 版のサーバー起動・自動ログイン）/ ReachForge.E2E.Tests（Playwright・axe）
+  ReachForge.Desktop.Tests（Windows 版のプロセス内起動・自動ログイン）/ ReachForge.E2E.Tests（Playwright・axe）
 ```
 
 依存方向は Domain ← Application ← (AI / Social / Infrastructure) ← (Web / Worker)。外部 AI・SNS はすべてインタフェース越しに利用します。

@@ -51,10 +51,6 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "ReachForge を起動する"; Flags: nowait postinstall skipifsilent
 
-[UninstallRun]
-; 起動中のサーバーを止める
-Filename: "{cmd}"; Parameters: "/C taskkill /IM ReachForge.Web.exe /F"; Flags: runhidden; RunOnceId: "StopServer"
-
 [Code]
 // WebView2 ランタイム（Windows 11 と多くの Windows 10 には入っている）がなければ案内する
 function WebView2Installed(): Boolean;
