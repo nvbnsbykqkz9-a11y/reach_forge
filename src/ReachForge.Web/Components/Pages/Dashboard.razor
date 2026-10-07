@@ -61,7 +61,7 @@ else
                     {
                         <MudText Typo="Typo.body2">対応が必要なものはありません</MudText>
                     }
-                    <MudList T="string" Dense="true">
+                    <MudList T="string" Dense="true" aria-label="対応が必要なこと">
                         @foreach (var a in _summary.ActionItems)
                         {
                             <MudListItem T="string" Icon="@SeverityIcon(a.Severity)" IconColor="@SeverityColor(a.Severity)" Href="@a.Href">
@@ -82,7 +82,7 @@ else
                         <MudText Typo="Typo.body2">まだ予約がありません。</MudText>
                         <MudButton Href="/studio" Variant="Variant.Text" Color="Color.Primary">投稿をつくる</MudButton>
                     }
-                    <MudList T="string" Dense="true">
+                    <MudList T="string" Dense="true" aria-label="これからの予定">
                         @foreach (var e in _summary.Upcoming)
                         {
                             <MudListItem T="string" Href="/calendar">

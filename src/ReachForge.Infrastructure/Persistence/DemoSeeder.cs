@@ -31,7 +31,41 @@ public static class DemoSeeder
     ];
 
     /// <summary>DB を作成し、空ならデモデータを投入する。</summary>
+    /// <summary>起動時の初期化（マイグレーション・プロンプトの初期版・デモデータ）を同時に行わないためのロックの番号。</summary>
+    public const long InitializationLockKey = 0x52_46_49_4E_49_54; // "RFINIT"
+
+    /// <summary>
+    /// DB の初期化。PostgreSQL では Web・Worker・複数のインスタンスが同時に起動しても1つずつ行うよう、
+    /// アドバイザリロック（pg_advisory_lock）を取ってから行う（同時にマイグレーションすると履歴表の重複で失敗するため）。
+    /// </summary>
     public static async Task InitializeAsync(IServiceProvider services, bool seed, CancellationToken ct = default)
+    {
+        var options = services.GetRequiredService<DbContextOptions<ReachForgeDbContext>>();
+        var extension = options.Extensions.OfType<Microsoft.EntityFrameworkCore.Infrastructure.RelationalOptionsExtension>().FirstOrDefault();
+        if (extension?.ConnectionString is not { } connectionString || !options.Extensions.Any(e => e.GetType().Name.StartsWith("Npgsql", StringComparison.Ordinal)))
+        {
+            await InitializeCoreAsync(services, seed, ct);
+            return;
+        }
+
+        await using var lockConnection = new Npgsql.NpgsqlConnection(connectionString);
+        await lockConnection.OpenAsync(ct);
+        await using (var acquire = new Npgsql.NpgsqlCommand($"SELECT pg_advisory_lock({InitializationLockKey})", lockConnection))
+        {
+            await acquire.ExecuteNonQueryAsync(ct);
+        }
+        try
+        {
+            await InitializeCoreAsync(services, seed, ct);
+        }
+        finally
+        {
+            await using var release = new Npgsql.NpgsqlCommand($"SELECT pg_advisory_unlock({InitializationLockKey})", lockConnection);
+            await release.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+    }
+
+    private static async Task InitializeCoreAsync(IServiceProvider services, bool seed, CancellationToken ct)
     {
         using var scope = services.CreateScope();
         var options = scope.ServiceProvider.GetRequiredService<DbContextOptions<ReachForgeDbContext>>();
@@ -65,15 +99,17 @@ public static class DemoSeeder
                 ?? new Prompts.DbPromptStore(options, new Microsoft.Extensions.Caching.Memory.MemoryCache(
                     new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), clock), clock).EnsureSeededAsync(ct);
         }
-        if (!seed || await db.Tenants.AnyAsync(ct)) return;
+        if (!seed) return;
+        if (!await db.Tenants.AnyAsync(ct)) await SeedAsync(db, clock.GetUtcNow(), ct);
 
-        await SeedAsync(db, clock.GetUtcNow(), ct);
-
-        // 認証基盤が登録されているホスト（Web）ではデモ用のログイン利用者も作る
-        if (scope.ServiceProvider.GetService<UserManager<AppUser>>() is { } users)
+        // 認証基盤が登録されているホスト（Web）ではデモ用のログイン利用者も作る。
+        // Worker が先にデモデータを作った場合も、Web の起動時に足りない利用者を作る
+        if (scope.ServiceProvider.GetService<UserManager<AppUser>>() is { } users
+            && await db.Tenants.AnyAsync(t => t.Id == TenantId, ct))
         {
             foreach (var (email, name, role) in DemoUsers)
             {
+                if (await users.FindByEmailAsync(email) is not null) continue;
                 var user = new AppUser
                 {
                     UserName = email, Email = email, EmailConfirmed = true, DisplayName = name, TenantId = TenantId,

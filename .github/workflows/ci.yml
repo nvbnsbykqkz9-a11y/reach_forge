@@ -30,6 +30,8 @@ jobs:
       - name: Install ffmpeg and Japanese fonts
         run: sudo apt-get update && sudo apt-get install -y ffmpeg fonts-noto-cjk
       - run: dotnet build -c Release
+      - name: Install Playwright Chromium (E2E・アクセシビリティ検査)
+        run: pwsh tests/ReachForge.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
       - name: Test (SQLite)
         env:
           RF_TEST_REDIS: 127.0.0.1:6379

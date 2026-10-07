@@ -53,6 +53,18 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
   - CI（`.github/workflows/ci.yml`）：AI・プロンプト・設定を変えたコミットで、`ANTHROPIC_API_KEY` などのシークレットがあれば実モデルで評価してレポートを残す
   - 管理画面の「評価する」は copy.generate・common.safety・judge.brand_fit が対象（既定 20 ケース。AI の利用料がかかる）
 
+## .NET Aspire（ローカルの一括起動）
+
+- `dotnet run --project src/ReachForge.AppHost`：PostgreSQL・Redis（コンテナ）と Web・Worker をまとめて起動し、Aspire ダッシュボードでログ・トレース・メトリクスを確認する（Docker または Podman が必要）。Web・Worker は PostgreSQL（起動時マイグレーション）・Hangfire・Redis のリアルタイム通知で動く
+- `-- --UseServiceBus=true` で Azure Service Bus エミュレーター（`webhooks`・`ai-jobs` キュー）も起動し、キューを Service Bus に切り替える
+- ローカルの PostgreSQL は管理者ロールで接続するため行レベルセキュリティは効かない（RLS の確認は `RF_TEST_POSTGRES` のテストで行う）
+- 起動時の初期化（マイグレーション・デモデータ）は PostgreSQL のアドバイザリロックで1プロセスずつ行う（Web と Worker の同時起動で競合しない）
+
+## E2E・アクセシビリティ検査
+
+- `tests/ReachForge.E2E.Tests`：Web を実ポート（Kestrel）で起動し、Playwright（Chromium）で操作する。投稿の作成 → 承認依頼 → 承認、権限のない画面、主要17画面の axe-core 検査（WCAG 2.1 AA の「重大」「深刻」違反 0 件）、スマホ幅（390px）で横スクロールが出ないこと
+- ブラウザは `PLAYWRIGHT_CHROMIUM`（実行ファイル）→ `/opt/pw-browsers` → Playwright の既定の順に探す。初回は `pwsh tests/ReachForge.E2E.Tests/bin/Debug/net10.0/playwright.ps1 install chromium`（CI でも実行）
+
 ## 認証（RF-DES-001 9.1 / RF-UX-001 SCR-01・SCR-15）
 
 - ASP.NET Core Identity（Cookie）。5回失敗で15分ロック、エラー文はどちらが違うかを示さない、パスワード貼り付け可
@@ -237,4 +249,3 @@ Blazor Server の DI スコープはサーキット（タブを開いている�
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 実際の Veo・Sora・c2patool（署名証明書）での動作確認
 3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認
-5. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

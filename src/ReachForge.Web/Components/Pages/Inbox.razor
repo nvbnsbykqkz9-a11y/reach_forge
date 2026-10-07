@@ -32,7 +32,7 @@
 <div class="rf-inbox @(_selected is null ? "" : "rf-inbox-has-detail")">
     @* 左：絞り込み *@
     <aside class="rf-inbox-filters" aria-label="絞り込み">
-        <MudList T="InboxView" SelectedValue="_view" SelectedValueChanged="ChangeViewAsync" Dense="true" Color="Color.Primary">
+        <MudList T="InboxView" SelectedValue="_view" SelectedValueChanged="ChangeViewAsync" Dense="true" Color="Color.Primary" aria-label="表示する受信メッセージ">
             <MudListItem Value="InboxView.All" Text="@($"すべて（{_counts?.All ?? 0}）")" />
             <MudListItem Value="InboxView.Urgent" Text="@($"急ぎ（{_counts?.Urgent ?? 0}）")" />
             <MudListItem Value="InboxView.Overdue" Text="@($"期限切れ（{_counts?.Overdue ?? 0}）")" />

@@ -33,42 +33,47 @@
     <MudItem xs="12" md="@(_selected is null ? 12 : 8)">
         @if (_view == "week")
         {
+            @* 表（grid）の構造：行（row）の中に見出し・セル。行は display:contents でレイアウトには影響させない *@
             <div class="rf-cal" role="grid" aria-label="週の予定">
-                <div class="rf-cal-head" role="columnheader"></div>
+                <div class="rf-cal-row" role="row">
+                <div class="rf-cal-head" role="columnheader"><span class="rf-sr-only">時刻</span></div>
                 @for (var d = 0; d < 7; d++)
                 {
                     var day = _weekStart.AddDays(d);
                     <div class="rf-cal-head @(day.Date == Today ? "rf-cal-today" : "")" role="columnheader">@day.ToString("M/d")（@DayLabel(day.DayOfWeek)）</div>
                 }
+                </div>
                 @for (var h = 7; h <= 23; h++)
                 {
                     var hour = h;
-                    <div class="rf-cal-hour">@($"{hour}:00")</div>
-                    @for (var d = 0; d < 7; d++)
-                    {
-                        var day = _weekStart.AddDays(d);
-                        var items = _entries.Where(e => Time.ToLocal(e.At).Date == day.Date && Time.ToLocal(e.At).Hour == hour).ToList();
-                        <div class="rf-cal-cell" role="gridcell">
-                            @foreach (var e in items.Take(3))
-                            {
-                                <button class="rf-cal-entry" @onclick="() => Select(e)" aria-label="@($"{Time.Short(e.At)} {e.Title} {e.Status.ToLabel()}")">
-                                    <RfStatusBadge Status="e.Status" />
-                                    <div><b>@Time.ToLocal(e.At).ToString("HH:mm")</b> @PlatformCatalog.Get(e.Platform).DisplayName</div>
-                                    <div>@e.Title</div>
-                                </button>
-                            }
-                            @if (items.Count > 3)
-                            {
-                                <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ShowList">＋@(items.Count - 3)件</MudButton>
-                            }
-                            @if (items.Count == 0 && IsBestSlot(day, hour))
-                            {
-                                <MudTooltip Text="@BestRationale(day, hour)">
-                                    <button class="rf-cal-entry rf-cal-best" @onclick="@(() => Nav.NavigateTo("/studio"))">✦ おすすめ枠</button>
-                                </MudTooltip>
-                            }
-                        </div>
-                    }
+                    <div class="rf-cal-row" role="row">
+                        <div class="rf-cal-hour" role="rowheader">@($"{hour}:00")</div>
+                        @for (var d = 0; d < 7; d++)
+                        {
+                            var day = _weekStart.AddDays(d);
+                            var items = _entries.Where(e => Time.ToLocal(e.At).Date == day.Date && Time.ToLocal(e.At).Hour == hour).ToList();
+                            <div class="rf-cal-cell" role="gridcell">
+                                @foreach (var e in items.Take(3))
+                                {
+                                    <button class="rf-cal-entry" @onclick="() => Select(e)" aria-label="@($"{Time.Short(e.At)} {e.Title} {e.Status.ToLabel()}")">
+                                        <RfStatusBadge Status="e.Status" />
+                                        <div><b>@Time.ToLocal(e.At).ToString("HH:mm")</b> @PlatformCatalog.Get(e.Platform).DisplayName</div>
+                                        <div>@e.Title</div>
+                                    </button>
+                                }
+                                @if (items.Count > 3)
+                                {
+                                    <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="ShowList">＋@(items.Count - 3)件</MudButton>
+                                }
+                                @if (items.Count == 0 && IsBestSlot(day, hour))
+                                {
+                                    <MudTooltip Text="@BestRationale(day, hour)">
+                                        <button class="rf-cal-entry rf-cal-best" @onclick="@(() => Nav.NavigateTo("/studio"))">✦ おすすめ枠</button>
+                                    </MudTooltip>
+                                }
+                            </div>
+                        }
+                    </div>
                 }
             </div>
         }

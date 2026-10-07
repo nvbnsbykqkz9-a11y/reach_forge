@@ -17,17 +17,17 @@
 @* 条件（URL に保存して共有できる） *@
 <MudPaper Class="pa-3 mb-3 rf-card" Elevation="0" Outlined="true">
     <div class="d-flex flex-wrap gap-3 align-center">
-        <MudSelect T="string" Label="期間" Value="Period" ValueChanged="v => SetQueryAsync(period: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:140px">
+        <MudSelect aria-label="期間" T="string" Label="期間" Value="Period" ValueChanged="v => SetQueryAsync(period: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:140px">
             @foreach (var (key, label) in s_periods)
             {
                 <MudSelectItem Value="@key">@label</MudSelectItem>
             }
         </MudSelect>
-        <MudSelect T="string" Label="比べる期間" Value="Compare" ValueChanged="v => SetQueryAsync(compare: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:140px">
+        <MudSelect aria-label="比べる期間" T="string" Label="比べる期間" Value="Compare" ValueChanged="v => SetQueryAsync(compare: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:140px">
             <MudSelectItem Value="@("prev")">前の期間</MudSelectItem>
             <MudSelectItem Value="@("year")">前年の同じ期間</MudSelectItem>
         </MudSelect>
-        <MudSelect T="string" Label="SNS" Value="@(PlatformQuery ?? "")" ValueChanged="v => SetQueryAsync(platform: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:140px">
+        <MudSelect aria-label="SNS" T="string" Label="SNS" Value="@(PlatformQuery ?? "")" ValueChanged="v => SetQueryAsync(platform: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:140px">
             <MudSelectItem Value="@("")">すべて</MudSelectItem>
             @foreach (var c in PlatformCatalog.InitialRelease)
             {
@@ -36,7 +36,7 @@
         </MudSelect>
         @if (_campaigns.Count > 0)
         {
-            <MudSelect T="string" Label="キャンペーン" Value="@(CampaignQuery ?? "")" ValueChanged="v => SetQueryAsync(campaign: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:160px">
+            <MudSelect aria-label="キャンペーン" T="string" Label="キャンペーン" Value="@(CampaignQuery ?? "")" ValueChanged="v => SetQueryAsync(campaign: v)" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width:160px">
                 <MudSelectItem Value="@("")">すべて</MudSelectItem>
                 @foreach (var c in _campaigns)
                 {
@@ -56,7 +56,7 @@
         <MudSwitch T="bool" @bind-Value="_settings.Monthly" Color="Color.Primary" Label="毎月1日（先月分）" />
         <MudTextField T="string" @bind-Value="_recipients" Label="送り先のメールアドレス" HelperText="カンマまたは改行で区切ります（20件まで）"
                       Lines="2" Variant="Variant.Outlined" Class="mt-2" />
-        <MudSelect T="Guid?" @bind-Value="_settings.LogoAssetId" Label="PDFに載せるロゴ" HelperText="クライアント向けに差し替えられます。未選択ならブランドのロゴ"
+        <MudSelect aria-label="PDFに載せるロゴ" T="Guid?" @bind-Value="_settings.LogoAssetId" Label="PDFに載せるロゴ" HelperText="クライアント向けに差し替えられます。未選択ならブランドのロゴ"
                    Variant="Variant.Outlined" Class="mt-2" Clearable="true">
             @foreach (var a in _logos)
             {
@@ -161,7 +161,7 @@ else
                 else
                 {
                     <MudChart T="double" ChartType="ChartType.Line" ChartSeries="_trendSeries" ChartLabels="_trendLabels" ChartOptions="_lineOptions"
-                              Height="260px" Width="100%" aria-label="表示回数と反応数の日別推移。表で見るに切り替えると数値を確認できます" />
+                              Height="260px" Width="100%" role="img" aria-label="表示回数と反応数の日別推移。表で見るに切り替えると数値を確認できます" />
                 }
             </MudPaper>
         </MudItem>
@@ -185,7 +185,7 @@ else
                 else
                 {
                     <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="_platformSeries" ChartLabels="_platformLabels" ChartOptions="_barOptions"
-                              Height="260px" Width="100%" aria-label="SNSごとの表示回数。表で見るに切り替えると数値を確認できます" />
+                              Height="260px" Width="100%" role="img" aria-label="SNSごとの表示回数。表で見るに切り替えると数値を確認できます" />
                 }
             </MudPaper>
         </MudItem>
@@ -210,7 +210,7 @@ else
                 else
                 {
                     <MudChart T="double" ChartType="ChartType.HeatMap" ChartSeries="_heatSeries" ChartLabels="AnalyticsData.HourBands" ChartOptions="_heatOptions"
-                              Height="280px" Width="100%" aria-label="曜日と時間帯ごとの反応の割合。表で見るに切り替えると数値を確認できます" />
+                              Height="280px" Width="100%" role="img" aria-label="曜日と時間帯ごとの反応の割合。表で見るに切り替えると数値を確認できます" />
                 }
                 <MudText Typo="Typo.caption" Style="color:var(--rf-color-text-tertiary)">
                     おすすめ：@string.Join("、", _data.BestTimes.Select(s => $"{DashboardService.DayLabel(s.Day)}曜{s.Hour}時"))（@(_data.BestTimes.FirstOrDefault()?.Rationale)）
@@ -264,7 +264,7 @@ else
                         <MudTd><MudButton Size="Size.Small" Variant="Variant.Text" Href="@($"/studio?theme={Uri.EscapeDataString(context.Title)}")">この投稿をもとにつくる</MudButton></MudTd>
                     </RowTemplate>
                     <NoRecordsContent><MudText Typo="Typo.body2">この期間に公開された投稿はありません。</MudText></NoRecordsContent>
-                    <PagerContent><MudTablePager InfoFormat="{first_item}-{last_item} / {all_items}件" RowsPerPageString="表示件数" /></PagerContent>
+                    <PagerContent><MudTablePager InfoFormat="{first_item}-{last_item} / {all_items}件" HideRowsPerPage="true" /></PagerContent>
                 </MudTable>
             </MudPaper>
         </MudItem>

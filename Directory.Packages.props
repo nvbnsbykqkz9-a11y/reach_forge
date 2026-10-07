@@ -46,6 +46,13 @@
     <!-- Hangfire.Core の依存（11.0.1）には既知の脆弱性があるため修正版に上げる -->
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="Azure.Messaging.ServiceBus" Version="7.21.0" />
+    <!-- .NET Aspire（ローカルのオーケストレーション） -->
+    <PackageVersion Include="Aspire.Hosting.PostgreSQL" Version="13.6.1" />
+    <PackageVersion Include="Aspire.Hosting.Redis" Version="13.6.1" />
+    <PackageVersion Include="Aspire.Hosting.Azure.ServiceBus" Version="13.6.1" />
+    <!-- E2E・アクセシビリティ検査 -->
+    <PackageVersion Include="Microsoft.Playwright" Version="1.63.0" />
+    <PackageVersion Include="Deque.AxeCore.Playwright" Version="4.13.0" />
     <!-- UI -->
     <PackageVersion Include="MudBlazor" Version="9.11.0" />
     <!-- Tests -->

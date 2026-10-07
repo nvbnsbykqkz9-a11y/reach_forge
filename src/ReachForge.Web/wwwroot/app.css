@@ -15,7 +15,7 @@
     --rf-color-info-bg: #E8EEF9;
     --rf-color-text-primary: #1B2333;
     --rf-color-text-secondary: #4A5568;
-    --rf-color-text-tertiary: #6B7487;
+    --rf-color-text-tertiary: #5F687A; /* 背景（#F1EFFF・#F3F6FB・白）に対してコントラスト比 4.5 以上 */
     --rf-color-border: #D7DDE8;
     --rf-color-border-input: #8C96A8;
     --rf-color-surface: #FFFFFF;
@@ -245,3 +245,7 @@ body { font-variant-numeric: tabular-nums; }
 .rf-region-cell:hover { background: rgba(0, 0, 0, .15); }
 .rf-region-cell:focus-visible { outline: 3px solid var(--rf-color-primary); outline-offset: -3px; }
 .rf-region-cell.is-selected { background: rgba(220, 38, 38, .35); border: 2px solid #DC2626; }
+
+/* アクセシビリティ：表の行（レイアウトには影響させない）と、画面読み上げ専用の文字 */
+.rf-cal-row { display: contents; }
+.rf-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

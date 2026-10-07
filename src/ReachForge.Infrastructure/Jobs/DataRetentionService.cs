@@ -82,7 +82,7 @@ public sealed class DataRetentionService(ReachForgeDbContext db, ITenantContext 
         while (true)
         {
             var variantIds = await db.PostMetrics.Where(m => m.CapturedAt < cutoff).Select(m => m.PostVariantId).Distinct()
-                .Take(RollupBatch).ToListAsync(ct);
+                .OrderBy(id => id).Take(RollupBatch).ToListAsync(ct);
             if (variantIds.Count == 0) return moved;
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
