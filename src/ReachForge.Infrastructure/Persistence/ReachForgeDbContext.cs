@@ -9,7 +9,6 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
@@ -39,7 +38,6 @@ public sealed class ReachForgeDbContext(
     public DbSet<AiGeneration> AiGenerations => Set<AiGeneration>();
     public DbSet<AiUsageLog> AiUsageLogs => Set<AiUsageLog>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
-    public DbSet<CreditAccount> CreditAccounts => Set<CreditAccount>();
     public DbSet<WorkspaceMember> WorkspaceMembers => Set<WorkspaceMember>();
     public DbSet<Invitation> Invitations => Set<Invitation>();
     public DbSet<AiJob> AiJobs => Set<AiJob>();
@@ -99,7 +97,7 @@ public sealed class ReachForgeDbContext(
         });
         b.Entity<AuditLog>().HasIndex(x => x.CreatedAt);
         b.Entity<AiGeneration>().HasIndex(x => new { x.TenantId, x.CreatedAt });
-        b.Entity<CreditAccount>().HasIndex(x => x.TenantId).IsUnique();
+        b.Entity<AiUsageLog>().HasIndex(x => new { x.TenantId, x.CreatedAt });
         b.Entity<PromptTemplate>(e =>
         {
             e.HasIndex(x => new { x.Key, x.Version }).IsUnique();

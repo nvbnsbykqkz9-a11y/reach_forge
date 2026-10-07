@@ -8,7 +8,6 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
@@ -18,13 +17,12 @@ namespace ReachForge.AI.Services;
 
 /// <summary>
 /// AI 投稿文生成（RF-DES-001 F-03 / 付録 A.2）。
-/// クレジット予約 → 入力ガードレール → ブランド知識 → プロンプト組立 → モデルルータ → 構造化出力（失敗時1回再生成）
+/// 入力ガードレール → ブランド知識 → プロンプト組立 → モデルルータ → 構造化出力（失敗時1回再生成）
 /// → 出力ガードレール → ブランド適合度採点 → 並べ替え → 確定。
 /// </summary>
 public sealed class CopyGenerationService(
     IModelRouter router,
     IBrandContextProvider brand,
-    ICreditService credits,
     IAppDbContext db,
     ITenantContext tenant,
     IPromptCatalog prompts,
@@ -33,8 +31,6 @@ public sealed class CopyGenerationService(
     public async Task<CopyResult> GenerateAsync(CopyRequest request, CancellationToken ct)
     {
         Validate(request);
-        var cost = CreditTable.Cost(CreditOperation.CopyGeneration);
-        await using var hold = await credits.HoldAsync(cost, ct);
         CheckInput(request.Theme, request.AdditionalInstructions);
 
         var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, ct);
@@ -46,13 +42,11 @@ public sealed class CopyGenerationService(
             new(ChatRole.User, PromptLibrary.CopyUser(request, request.TargetPlatforms.ToList())),
         ];
         var payload = new CopyStubPayload(request, ctx.Profile, ctx.Products);
-        return await RunAsync(generation, messages, payload, ctx, hold, cost, request.Count, ct);
+        return await RunAsync(generation, messages, payload, ctx, request.Count, ct);
     }
 
     public async Task<CopyResult> RefineAsync(CopyRequest request, GeneratedCopy candidate, QuickFix fix, CancellationToken ct)
     {
-        var cost = CreditTable.Cost(CreditOperation.CopyPartialRegeneration);
-        await using var hold = await credits.HoldAsync(cost, ct);
         CheckInput(candidate.Body, null);
 
         var ctx = await brand.BuildAsync(request.WorkspaceId, request.ProductIds, ct);
@@ -65,11 +59,11 @@ public sealed class CopyGenerationService(
             new(ChatRole.User, refine.Text),
         ];
         var payload = new CopyStubPayload(request, ctx.Profile, ctx.Products, candidate, fix);
-        return await RunAsync(generation, messages, payload, ctx, hold, cost, 1, ct);
+        return await RunAsync(generation, messages, payload, ctx, 1, ct);
     }
 
     private async Task<CopyResult> RunAsync(AiGeneration generation, List<ChatMessage> messages, CopyStubPayload payload,
-        BrandContext ctx, CreditHold hold, int cost, int count, CancellationToken ct)
+        BrandContext ctx, int count, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
         var client = router.Resolve(AiTaskType.Copy);
@@ -110,13 +104,11 @@ public sealed class CopyGenerationService(
             generation.Status = AiGenerationStatus.Succeeded;
             generation.Output = JsonSerializer.Serialize(copies, AIJsonUtilities.DefaultOptions);
             generation.LatencyMs = (int)sw.ElapsedMilliseconds;
-            generation.Credits = await hold.CommitAsync(cost, ct);
             await db.SaveChangesAsync(ct);
-            return new CopyResult(generation.Id, model, generation.Credits, ranked);
+            return new CopyResult(generation.Id, model, ranked);
         }
         catch (DomainException ex)
         {
-            // 失敗・ブロック時はクレジットを消費しない（hold は Dispose で解放）
             generation.Status = ex is AiSafetyBlockedException ? AiGenerationStatus.Blocked : AiGenerationStatus.Failed;
             generation.ErrorCode = ex.ErrorCode;
             generation.LatencyMs = (int)sw.ElapsedMilliseconds;
@@ -141,7 +133,7 @@ public sealed class CopyGenerationService(
             }
             if (attempt >= 1)
             {
-                throw new AiUnavailableException("AIの出力を読み取れませんでした。もう一度お試しください（クレジットは消費されていません）。");
+                throw new AiUnavailableException("AIの出力を読み取れませんでした。もう一度お試しください。");
             }
         }
     }

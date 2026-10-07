@@ -1,0 +1,101 @@
+@page "/settings/ai-cost"
+@* AI の利用料金の目安（AI を呼ぶたびに記録した推定料金を月ごとに集計）。実際の請求は各 AI サービスの管理画面で確認する *@
+@inherits RfComponentBase
+@inject Microsoft.Extensions.Options.IOptions<ReachForge.AI.AiOptions> Ai
+
+<PageTitle>AI の利用料金｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">AI の利用料金（目安）</MudText>
+</div>
+<MudText Typo="Typo.body2" Class="mb-4" Style="color:var(--rf-color-text-secondary)">
+    AI の利用料金は、設定した AI サービス（Anthropic・OpenAI・Google）から直接請求されます。ここでは、AI を使うたびに記録した料金の目安を表示します。
+    円は 1ドル＝@(Rate.ToString("N0"))円で換算しています。正確な金額は、各サービスの管理画面で確認してください。
+</MudText>
+
+@if (_summary is { } s)
+{
+    <MudGrid>
+        @foreach (var (title, month) in new[] { ("今月", s.ThisMonth), ("先月", s.LastMonth) })
+        {
+            <MudItem xs="12" sm="6">
+                <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+                    <MudText Typo="Typo.subtitle1">@title（@month.Month.ToString("yyyy年M月")）</MudText>
+                    <div class="rf-kpi-value">@Yen(month.TotalUsd)</div>
+                    <MudText Typo="Typo.body2" Style="color:var(--rf-color-text-secondary)">
+                        @Usd(month.TotalUsd)・AI の利用 @(month.Calls.ToString("N0"))回
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        }
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-2">今月の機能別</MudText>
+                @Breakdown(s.ThisMonth.ByFeature, "機能")
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-2">今月のサービス別</MudText>
+                @Breakdown(s.ThisMonth.ByService, "サービス")
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12">
+            <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-1">実際の請求を確認する</MudText>
+                <MudText Typo="Typo.body2" Class="mb-2">
+                    目安には、為替・税・無料枠・単価の改定は反映されません。使いすぎを防ぐには、各サービスの管理画面で利用上限（予算）を設定してください。
+                </MudText>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var (name, url) in Consoles)
+                    {
+                        <MudButton Variant="Variant.Outlined" Href="@url" Target="_blank" rel="noopener" EndIcon="@Icons.Material.Rounded.OpenInNew">@name</MudButton>
+                    }
+                </div>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private static readonly (string Name, string Url)[] Consoles =
+    [
+        ("Anthropic Console", "https://console.anthropic.com/"),
+        ("OpenAI Platform", "https://platform.openai.com/usage"),
+        ("Google AI Studio", "https://aistudio.google.com/"),
+    ];
+
+    private AiCostService Costs => Scoped<AiCostService>();
+
+    private AiCostSummary? _summary;
+
+    private decimal Rate => Ai.Value.UsdJpyRate;
+
+    protected override async Task OnInitializedAsync() => _summary = await Costs.SummaryAsync(CancellationToken.None);
+
+    private string Yen(decimal usd) => usd <= 0 ? "0円" : usd * Rate < 1 ? "1円未満" : $"約 {Math.Round(usd * Rate):N0}円";
+
+    private static string Usd(decimal usd) => usd.ToString(usd is > 0 and < 0.01m ? "$0.0000" : "$#,0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+    private RenderFragment Breakdown(IReadOnlyList<AiCostLine> lines, string column) => __builder =>
+    {
+        if (lines.Count == 0)
+        {
+            <MudText Typo="Typo.body2">今月はまだ AI を使っていません。</MudText>
+            return;
+        }
+        <table class="rf-summary">
+            <thead><tr><th scope="col">@column</th><th scope="col" style="text-align:right">回数</th><th scope="col" style="text-align:right">料金（目安）</th></tr></thead>
+            <tbody>
+                @foreach (var l in lines)
+                {
+                    <tr>
+                        <td>@l.Label</td>
+                        <td style="text-align:right">@l.Calls.ToString("N0")</td>
+                        <td style="text-align:right">@Yen(l.Usd)<br /><span class="mud-typography-caption">@Usd(l.Usd)</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    };
+}

@@ -75,7 +75,7 @@ public sealed class ImageGenerationService(
                 log.LogWarning(ex, "Image provider {Provider} failed for {Task}; trying next", name, task);
             }
         }
-        throw new AiUnavailableException("画像の作成に失敗しました。AIが混み合っている可能性があります。もう一度お試しください（クレジットは消費されていません）。", last);
+        throw new AiUnavailableException("画像の作成に失敗しました。AIが混み合っている可能性があります。もう一度お試しください。", last);
     }
 
     /// <summary>画像プロンプトの設計（Creative Agent 相当）。写真調などのスタイルとブランドカラーを指定し、文字・実在人物・商標は避ける。</summary>

@@ -20,7 +20,6 @@ public sealed class ProblemDetailsHandler(IProblemDetailsService problems, ILogg
             ForbiddenException e => (StatusCodes.Status403Forbidden, e.ErrorCode, e.Message),
             NotFoundException e => (StatusCodes.Status404NotFound, e.ErrorCode, e.Message),
             DomainException e when e.ErrorCode == ErrorCodes.AiUnavailable => (StatusCodes.Status503ServiceUnavailable, e.ErrorCode, e.Message),
-            DomainException e when e.ErrorCode == ErrorCodes.AiInsufficientCredits => (StatusCodes.Status402PaymentRequired, e.ErrorCode, e.Message),
             DomainException e => (StatusCodes.Status400BadRequest, e.ErrorCode, e.Message),
             BadHttpRequestException e => (StatusCodes.Status400BadRequest, ErrorCodes.Validation, e.Message),
             _ => (StatusCodes.Status500InternalServerError, ErrorCodes.SysUnexpected,

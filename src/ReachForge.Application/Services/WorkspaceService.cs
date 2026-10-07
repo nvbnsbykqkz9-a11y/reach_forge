@@ -1,18 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using ReachForge.Application.Abstractions;
 using ReachForge.Application.Security;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 
 namespace ReachForge.Application.Services;
 
-public sealed record UsageBreakdown(string Label, int Credits);
-
-public sealed record UsageSummary(CreditAccount Account, IReadOnlyList<UsageBreakdown> ByFeature, DateOnly? ProjectedExhaustion);
-
-/// <summary>ワークスペース・ブランド設定・利用量（F-02 / F-13 / SCR-04 / SCR-14）。</summary>
-public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, ICreditService credits, TimeProvider clock)
+/// <summary>ワークスペース・ブランド設定（F-02 / SCR-04）。</summary>
+public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant)
 {
     public Task<Workspace> CurrentAsync(CancellationToken ct) =>
         db.Workspaces.FirstAsync(w => w.Id == tenant.WorkspaceId, ct);
@@ -23,7 +18,7 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
     public async Task<TimeZoneInfo> TenantTimeZoneAsync(CancellationToken ct)
     {
         var id = await db.Tenants.Where(t => t.Id == tenant.TenantId).Select(t => t.TimeZoneId).FirstOrDefaultAsync(ct);
-        return CreditResetService.FindTimeZone(id);
+        return TimeZones.Find(id);
     }
 
     public async Task<BrandProfile> GetBrandAsync(CancellationToken ct) =>
@@ -89,40 +84,4 @@ public sealed class WorkspaceService(IAppDbContext db, ITenantContext tenant, IC
         await db.SaveChangesAsync(ct);
         return product;
     }
-
-    public async Task<UsageSummary> UsageAsync(CancellationToken ct)
-    {
-        var account = await credits.GetAccountAsync(ct);
-        var since = new DateTimeOffset(account.PeriodStart.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero);
-
-        var generations = await db.AiGenerations
-            .Where(g => g.CreatedAt >= since && g.Status == AiGenerationStatus.Succeeded)
-            .Select(g => new { g.TaskType, g.Credits })
-            .ToListAsync(ct);
-        var byFeature = generations
-            .GroupBy(g => g.TaskType)
-            .Select(g => new UsageBreakdown(TaskLabel(g.Key), g.Sum(x => x.Credits)))
-            .OrderByDescending(x => x.Credits)
-            .ToList();
-
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        return new UsageSummary(account, byFeature, account.ProjectedExhaustionDate(today));
-    }
-
-    public static string TaskLabel(AiTaskType t) => t switch
-    {
-        AiTaskType.Ideation => "企画",
-        AiTaskType.Copy => "投稿文",
-        AiTaskType.Variant => "SNS別の変換",
-        AiTaskType.Image => "画像",
-        AiTaskType.ImageEdit => "画像編集",
-        AiTaskType.Video => "動画",
-        AiTaskType.Tts => "ナレーション",
-        AiTaskType.Reply => "返信案",
-        AiTaskType.Report => "レポート",
-        AiTaskType.Classify => "分類",
-        AiTaskType.Judge => "品質評価",
-        AiTaskType.Summarize => "要約",
-        _ => t.ToString(),
-    };
 }

@@ -3,22 +3,20 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Security;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
 
 namespace ReachForge.Application.Services;
 
 /// <summary>
-/// ブランド診断（F-02 処理 1〜2）：Web サイト・紹介文・過去の投稿から、AI がブランド設定の下書きをつくる（3クレジット）。
+/// ブランド診断（F-02 処理 1〜2）：Web サイト・紹介文・過去の投稿から、AI がブランド設定の下書きをつくる。
 /// 下書きは保存せず、利用者が確認して反映する。URL を取得できない場合は紹介文だけで診断する（W-BRD-001）。
 /// </summary>
 public sealed class BrandDiagnosisService(
     IAppDbContext db,
     ITenantContext tenant,
     IWebPageFetcher fetcher,
-    IBrandAnalyzer analyzer,
-    ICreditService credits)
+    IBrandAnalyzer analyzer)
 {
     public const int MaxExtraText = 20_000;
 
@@ -51,10 +49,7 @@ public sealed class BrandDiagnosisService(
 
         IReadOnlyList<string> posts = [];
 
-        var cost = CreditTable.Cost(CreditOperation.CopyGeneration);
-        await using var hold = await credits.HoldAsync(cost, ct);
         var draft = await analyzer.AnalyzeAsync(new BrandAnalysisInput(page, extraText, posts), ct);
-        await hold.CommitAsync(cost, ct);
         db.Record(tenant, "brand.diagnosed", "BrandProfile", null, page?.Url.Host);
         await db.SaveChangesAsync(ct);
         return new Result(draft, warning);

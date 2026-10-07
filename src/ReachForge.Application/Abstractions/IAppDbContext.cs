@@ -1,5 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 
 namespace ReachForge.Application.Abstractions;
@@ -16,7 +15,6 @@ public interface IAppDbContext
     DbSet<AiGeneration> AiGenerations { get; }
     DbSet<AiUsageLog> AiUsageLogs { get; }
     DbSet<AuditLog> AuditLogs { get; }
-    DbSet<CreditAccount> CreditAccounts { get; }
     DbSet<WorkspaceMember> WorkspaceMembers { get; }
     DbSet<Invitation> Invitations { get; }
     DbSet<AiJob> AiJobs { get; }

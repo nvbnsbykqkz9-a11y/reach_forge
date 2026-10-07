@@ -64,12 +64,14 @@ public sealed class TextToSpeechService(IOptions<AiOptions> options, ProviderCir
                         .GenerateSpeechAsync(text, new OpenAI.Audio.GeneratedSpeechVoice(provider.Voice ?? "alloy"),
                             new OpenAI.Audio.SpeechGenerationOptions { ResponseFormat = OpenAI.Audio.GeneratedSpeechFormat.Wav }, ct)).Value.ToArray();
                 breaker.RecordSuccess(name);
+                var seconds = WavSeconds(wav);
                 usage.Add(new AiUsageLog
                 {
                     TaskType = AiTaskType.Tts, Provider = name, ModelId = provider.ModelFor(AiTaskType.Tts) ?? "",
                     LatencyMs = (int)sw.ElapsedMilliseconds, Succeeded = true, InputTokens = text.Length,
+                    CostUsd = (decimal)seconds / 60m * provider.PricePerSpeechMinute,
                 });
-                return new SpeechAudio(wav, WavSeconds(wav));
+                return new SpeechAudio(wav, seconds);
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
@@ -78,7 +80,7 @@ public sealed class TextToSpeechService(IOptions<AiOptions> options, ProviderCir
                 log.LogWarning(ex, "TTS provider {Provider} failed", name);
             }
         }
-        throw new AiUnavailableException("ナレーションを作れませんでした。もう一度お試しください（クレジットは消費されていません）。", last);
+        throw new AiUnavailableException("ナレーションを作れませんでした。もう一度お試しください。", last);
     }
 
     /// <summary>日本語の読み上げはおよそ1秒に7文字。</summary>

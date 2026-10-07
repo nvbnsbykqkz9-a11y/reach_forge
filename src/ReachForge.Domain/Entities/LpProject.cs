@@ -47,5 +47,4 @@ public sealed class LpProject : Entity
 
     public string? Error { get; set; }
     public string CreatedBy { get; set; } = "";
-    public int CreditsUsed { get; set; }
 }

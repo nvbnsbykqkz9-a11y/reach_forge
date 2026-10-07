@@ -134,7 +134,6 @@
                     <tr><th scope="row">SNS</th><td>@string.Join("・", _platforms.Select(p => PlatformCatalog.Get(p).DisplayName))</td></tr>
                     <tr><th scope="row">画像</th><td>@(_images.Count == 0 ? "使わない" : $"LP の画像 {_images.Count}枚を、SNS ごとのサイズにします")</td></tr>
                     <tr><th scope="row">動画</th><td>@(_video ? $"縦型 {_seconds}秒{(_narration ? "・ナレーションあり" : "")}" : "つくらない")</td></tr>
-                    <tr><th scope="row">クレジット</th><td>約 <b>@Credits</b>（残り @(State.Credits?.Available ?? 0)）</td></tr>
                 </tbody>
             </table>
             <MudText Typo="Typo.caption" Class="d-block mt-2">文章と画像は1分ほどでできます。動画はそのあと数分かけてつくります（画面を閉じても続きます）。</MudText>
@@ -187,8 +186,6 @@
         Url = _page?.Url.ToString() ?? _url ?? "", Platforms = _platforms, ImageUrls = _images, RightsConfirmed = _rights,
         MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration,
     };
-
-    private int Credits => LpStudioService.EstimateCredits(Request);
 
     protected override async Task OnInitializedAsync()
     {
@@ -244,7 +241,7 @@
 
     private async Task CreateAsync()
     {
-        var ok = await Dialogs.ShowMessageBoxAsync("つくりますか？", $"約 {Credits} クレジットを使います。", yesText: "つくる", cancelText: "やめる");
+        var ok = await Dialogs.ShowMessageBoxAsync("つくりますか？", "AI を使ってつくります。AI の利用料金は、設定した AI サービスから請求されます（目安は「設定」→「AI の利用料金」で確認できます）。", yesText: "つくる", cancelText: "やめる");
         if (ok != true) return;
         _busy = true;
         try

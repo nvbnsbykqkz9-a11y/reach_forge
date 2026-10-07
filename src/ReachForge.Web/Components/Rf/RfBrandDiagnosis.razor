@@ -10,7 +10,7 @@
     <MudTextField T="string" @bind-Value="_text" Label="紹介文・資料の文章（任意）" Variant="Variant.Outlined" Class="mt-2" Lines="3"
                   HelperText="サイトを読み込めない場合は、ここに貼り付けた文章だけで診断します" />
     <MudButton Variant="Variant.Filled" Color="Color.Secondary" Class="mt-2" OnClick="RunAsync" Disabled="_busy">
-        @(_busy ? "診断しています…" : "診断する（3クレジット）")
+        @(_busy ? "診断しています…" : "診断する")
     </MudButton>
 
     @if (_draft is { } d)

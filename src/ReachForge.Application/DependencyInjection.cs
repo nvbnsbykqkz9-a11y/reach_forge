@@ -10,16 +10,15 @@ public static class DependencyInjection
     {
         services.AddSingleton(TimeProvider.System);
         services.AddScoped<IBrandContextProvider, BrandContextProvider>();
-        services.AddScoped<ICreditService, CreditService>();
         services.AddScoped<MemberService>();
         services.AddScoped<MediaService>();
         services.AddScoped<AiJobProcessor>();
         services.AddScoped<LpStudioService>();
         services.AddScoped<BrandDiagnosisService>();
-        services.AddScoped<CreditResetService>();
         services.AddScoped<VideoService>();
         services.AddScoped<AccountNotifications>();
         services.AddScoped<WorkspaceService>();
+        services.AddScoped<AiCostService>();
         return services;
     }
 }

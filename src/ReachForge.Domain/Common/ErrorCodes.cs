@@ -12,7 +12,6 @@ public static class ErrorCodes
     public const string SnsReauthRequired = "E-SNS-010";
     public const string SnsDailyLimit = "E-SNS-020";
     public const string AiUnavailable = "E-AI-001";
-    public const string AiInsufficientCredits = "E-AI-002";
     public const string AiSafetyBlocked = "E-AI-003";
     public const string AiRegulatedExpression = "W-AI-010";
     public const string AiMissingPrDisclosure = "W-AI-011";

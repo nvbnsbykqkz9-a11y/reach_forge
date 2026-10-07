@@ -7,7 +7,7 @@ using ReachForge.Application.Services;
 namespace ReachForge.Infrastructure.Jobs;
 
 /// <summary>
-/// 定期ジョブの定義（14章）。SNS とはつながないため、クレジットの付与と古いデータの削除だけを行う。
+/// 定期ジョブの定義（14章）。SNS とはつながないため、古いデータの削除だけを行う。
 /// <paramref name="Cron"/> は <see cref="JobOptions.TimeZone"/>（既定 JST）で解釈する。
 /// 実行内容はどれも「期限が来たものだけを処理する」冪等な処理で、取りこぼしても次の周期で追いつく。
 /// </summary>
@@ -20,11 +20,6 @@ public static class SystemJobCatalog
 {
     public static readonly IReadOnlyList<SystemJob> All =
     [
-        new("credit-reset", "CreditResetJob", "0 * * * *", 0, async (sp, ct) =>
-        {
-            var n = await sp.GetRequiredService<CreditResetService>().ResetDueAsync(ct);
-            return n > 0 ? $"{n} account(s) reset" : null;
-        }),
         new("data-retention", "DataRetentionJob", "0 2 * * *", 0, async (sp, ct) =>
         {
             var r = await sp.GetRequiredService<DataRetentionService>().PurgeAsync(ct);

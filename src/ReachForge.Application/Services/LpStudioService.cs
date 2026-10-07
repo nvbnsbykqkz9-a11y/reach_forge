@@ -4,7 +4,6 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Security;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
@@ -40,7 +39,6 @@ public sealed class LpStudioService(
     VideoService videos,
     ILpCreativeWriter writer,
     IBrandContextProvider brand,
-    ICreditService credits,
     ILogger<LpStudioService> log)
 {
     /// <summary>つくれる SNS（画面の並び順）。</summary>
@@ -53,13 +51,8 @@ public sealed class LpStudioService(
     /// <summary>使える LP の画像の数（動画の素材の上限と同じ）。</summary>
     public const int MaxImages = 4;
 
-    /// <summary>LP を読み込む（タイトル・説明・画像の候補。クレジットは使わない）。</summary>
+    /// <summary>LP を読み込む（タイトル・説明・画像の候補）。</summary>
     public Task<WebPage> PreviewAsync(string url, CancellationToken ct) => videos.PreviewLandingPageAsync(url, ct);
-
-    /// <summary>使うクレジットの見込み（文章は SNS ごと、動画は1本）。</summary>
-    public static int EstimateCredits(LpProjectRequest r) =>
-        CreditTable.Cost(CreditOperation.CopyGeneration) * r.Platforms.Distinct().Count()
-        + (r.MakeVideo ? VideoService.EstimateCredits(VideoRequest(r)) : 0);
 
     /// <summary>この SNS に画像をつくるか（YouTube は動画だけ）。</summary>
     public static bool MakesImages(SocialPlatform p) => !PlatformCatalog.Get(p).VideoOnly;
@@ -123,14 +116,10 @@ public sealed class LpStudioService(
             project.SourceImageAssetIds = sources.Select(s => s.Id).ToList();
 
             var ctx = await brand.BuildAsync(tenant.WorkspaceId, [], ct);
-            var cost = CreditTable.Cost(CreditOperation.CopyGeneration);
             var outputs = new Dictionary<SocialPlatform, LpPlatformOutput>();
             foreach (var platform in platforms)
             {
-                await using var hold = await credits.HoldAsync(cost, ct);
                 var creative = await writer.WriteAsync(ctx, page, platform, ct);
-                await hold.CommitAsync(cost, ct);
-                project.CreditsUsed += cost;
 
                 var images = new List<Guid>();
                 if (MakesImages(platform))
@@ -151,7 +140,6 @@ public sealed class LpStudioService(
             {
                 var job = await videos.EnqueueAsync(VideoRequest(request with { Url = project.Url, ImageUrls = sources.Count == 0 ? [] : imageUrls }), ct);
                 project.VideoJobId = job.Id;
-                project.CreditsUsed += job.CreditsHeld;
             }
             project.Status = LpProjectStatus.Ready;
         }

@@ -5,7 +5,6 @@ using ReachForge.Application.Ai;
 using ReachForge.Application.Security;
 using ReachForge.Application.Social;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
@@ -73,7 +72,6 @@ public sealed class MediaService(
     IImageProcessor images,
     IMediaUrlSigner signer,
     IAltTextGenerator alt,
-    ICreditService credits,
     IWorkQueue queue,
     IProvenanceStamper provenance,
     TimeProvider clock)
@@ -159,7 +157,7 @@ public sealed class MediaService(
     }
 
     /// <summary>
-    /// 画像に文字を入れる（F-04 文字入れ）。日本語の文字は生成 AI に描かせず、フォントで正確に描く（0 クレジット）。
+    /// 画像に文字を入れる（F-04 文字入れ）。日本語の文字は生成 AI に描かせず、フォントで正確に描く。
     /// 元の画像は残し、新しい画像としてライブラリに追加する。
     /// </summary>
     public async Task<MediaAsset> AddTextAsync(Guid id, TextOverlay overlay, CancellationToken ct)
@@ -243,7 +241,7 @@ public sealed class MediaService(
         return (url, asset.Kind, thumb is null ? null : await UrlAsync(thumb.Id, ct));
     }
 
-    /// <summary>ALT テキストを AI で作る（分類と同様にクレジットは消費しない）。</summary>
+    /// <summary>ALT テキストを AI で作る。</summary>
     public async Task<MediaAsset> GenerateAltAsync(Guid id, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
@@ -338,7 +336,7 @@ public sealed class MediaService(
         return asset;
     }
 
-    /// <summary>画像生成ジョブを登録する（推定 5 クレジット／枚を予約）。完了は GetJobAsync で確認する。</summary>
+    /// <summary>画像生成ジョブを登録する。完了は GetJobAsync で確認する。</summary>
     public async Task<AiJob> EnqueueGenerationAsync(ImageJobRequest request, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
@@ -355,19 +353,18 @@ public sealed class MediaService(
             throw new AiSafetyBlockedException("指示の書き換えの疑い");
         }
         var count = Math.Clamp(request.Count, 1, ImageGenerationSpec.MaxCount);
-        return await EnqueueAsync(AiTaskType.Image, request with { Count = count },
-            CreditTable.Cost(CreditOperation.ImageStandard, count), ct);
+        return await EnqueueAsync(AiTaskType.Image, request with { Count = count }, ct);
     }
 
-    /// <summary>AI で画像を広げる（アウトペインティング）ジョブを登録する（5 クレジット）。</summary>
+    /// <summary>AI で画像を広げる（アウトペインティング）ジョブを登録する。</summary>
     public async Task<AiJob> EnqueueOutpaintAsync(OutpaintJobRequest request, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
         await GetAsync(request.SourceAssetId, ct);
-        return await EnqueueAsync(AiTaskType.ImageEdit, request, CreditTable.Cost(CreditOperation.ImageEditAi), ct);
+        return await EnqueueAsync(AiTaskType.ImageEdit, request, ct);
     }
 
-    /// <summary>参照画像を AI で編集するジョブを登録する（5 クレジット）。</summary>
+    /// <summary>参照画像を AI で編集するジョブを登録する。</summary>
     public async Task<AiJob> EnqueueEditAsync(ReferenceEditJobRequest request, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
@@ -391,8 +388,7 @@ public sealed class MediaService(
         {
             throw new DomainException(ErrorCodes.Validation, $"消したい範囲を1〜{ReferenceEditJobRequest.MaxRegions}か所選んでください。");
         }
-        return await EnqueueAsync(AiTaskType.ImageEdit, request with { Prompt = prompt, Scale = Math.Clamp(request.Scale, 0.2, 0.9) },
-            CreditTable.Cost(CreditOperation.ImageEditAi), ct);
+        return await EnqueueAsync(AiTaskType.ImageEdit, request with { Prompt = prompt, Scale = Math.Clamp(request.Scale, 0.2, 0.9) }, ct);
     }
 
     /// <summary>画像編集ジョブの種類（アウトペインティングは null）。</summary>
@@ -406,14 +402,13 @@ public sealed class MediaService(
     public async Task<AiJob> GetJobAsync(Guid id, CancellationToken ct) =>
         await db.AiJobs.AsNoTracking().FirstOrDefaultAsync(j => j.Id == id, ct) ?? throw new NotFoundException("処理");
 
-    /// <summary>待機中のジョブを取り消す（予約したクレジットを解放する）。</summary>
+    /// <summary>待機中のジョブを取り消す。</summary>
     public async Task CancelJobAsync(Guid id, CancellationToken ct)
     {
         var job = await db.AiJobs.FirstOrDefaultAsync(j => j.Id == id, ct) ?? throw new NotFoundException("処理");
         await db.ReloadAsync(job, ct);
         job.Cancel(clock.GetUtcNow());
         await db.SaveChangesAsync(ct);
-        await credits.ReleaseReservedAsync(job.CreditsHeld, ct);
     }
 
     internal async Task<byte[]> ReadAsync(MediaAsset asset, CancellationToken ct)
@@ -475,31 +470,21 @@ public sealed class MediaService(
         return brand?.BrandColors.FirstOrDefault() ?? "#FFFFFF";
     }
 
-    private async Task<AiJob> EnqueueAsync<T>(AiTaskType type, T request, int amount, CancellationToken ct)
+    private async Task<AiJob> EnqueueAsync<T>(AiTaskType type, T request, CancellationToken ct)
     {
-        await credits.ReserveAsync(amount, ct);
-        try
+        var job = new AiJob
         {
-            var job = new AiJob
-            {
-                TenantId = tenant.TenantId,
-                WorkspaceId = tenant.WorkspaceId,
-                TaskType = type,
-                RequestJson = JsonSerializer.Serialize(request, s_json),
-                CreditsHeld = amount,
-                RequestedBy = tenant.UserName,
-            };
-            db.AiJobs.Add(job);
-            db.Record(tenant, "ai.job_queued", nameof(AiJob), job.Id, type.ToString());
-            await db.SaveChangesAsync(ct);
-            await queue.NotifyAiJobAsync(job.Id, ct);
-            return job;
-        }
-        catch
-        {
-            await credits.ReleaseReservedAsync(amount, CancellationToken.None);
-            throw;
-        }
+            TenantId = tenant.TenantId,
+            WorkspaceId = tenant.WorkspaceId,
+            TaskType = type,
+            RequestJson = JsonSerializer.Serialize(request, s_json),
+            RequestedBy = tenant.UserName,
+        };
+        db.AiJobs.Add(job);
+        db.Record(tenant, "ai.job_queued", nameof(AiJob), job.Id, type.ToString());
+        await db.SaveChangesAsync(ct);
+        await queue.NotifyAiJobAsync(job.Id, ct);
+        return job;
     }
 
     internal static T Request<T>(AiJob job) => JsonSerializer.Deserialize<T>(job.RequestJson, s_json)!;

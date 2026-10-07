@@ -34,7 +34,6 @@
                    Class="mr-3 d-none d-sm-flex" Style="white-space:nowrap">つくる</MudButton>
         <MudIconButton Icon="@Icons.Material.Rounded.Add" Variant="Variant.Filled" Color="Color.Primary" Href="/"
                        Class="mr-1 d-flex d-sm-none" aria-label="つくる" />
-        <RfCreditMeter Account="State.Credits" />
         <MudTooltip Text="通知">
             <MudIconButton Icon="@Icons.Material.Rounded.NotificationsNone" Color="Color.Inherit" aria-label="通知" />
         </MudTooltip>
@@ -113,7 +112,7 @@
         State.Changed += OnChanged;
         await Time.ZoneAsync();
         await State.RefreshAsync();
-        // AI ジョブの完了（クレジット残量）をトップバーへすぐに反映する
+        // AI ジョブの完了をトップバーへすぐに反映する
         var (tenantId, workspaceId) = (Tenant.TenantId, Tenant.WorkspaceId);
         _realtime = Realtime.Subscribe(e => e.TenantId == tenantId && e.WorkspaceId == workspaceId
             && e is JobProgressEvent { Status: AiJobStatus.Succeeded or AiJobStatus.Failed or AiJobStatus.Canceled }

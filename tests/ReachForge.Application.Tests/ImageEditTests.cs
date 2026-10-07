@@ -124,7 +124,6 @@ public class ImageEditTests
             Regions = kind == ImageEditKind.ObjectRemoval ? [new NormalizedRect(0.78, 0.03, 0.16, 0.16)] : [],
         });
         Assert.Equal(AiJobStatus.Succeeded, job.Status);
-        Assert.Equal(5, job.CreditsCharged);
 
         await using var scope = f.Scope();
         var asset = await f.Get<IAppDbContext>(scope).MediaAssets.AsNoTracking().SingleAsync(a => a.Id == job.ResultAssetIds.Single());
@@ -136,15 +135,13 @@ public class ImageEditTests
     }
 
     [Fact]
-    public async Task Product_placement_refuses_photos_it_cannot_cut_out_and_releases_credits()
+    public async Task Product_placement_refuses_photos_it_cannot_cut_out()
     {
         var (f, sourceId) = await UploadAsync(ProductPhoto(busyBackground: true));
         await using var _ = f;
         var job = await RunAsync(f, new ReferenceEditJobRequest { SourceAssetId = sourceId, Kind = ImageEditKind.ProductPlacement, Prompt = "海辺" });
         Assert.Equal(AiJobStatus.Failed, job.Status);
         Assert.Contains("切り抜けませんでした", job.Error);
-        await using var scope = f.Scope();
-        Assert.Equal(0, (await f.Get<ICreditService>(scope).GetAccountAsync(CancellationToken.None)).Held);
     }
 
     [Fact]

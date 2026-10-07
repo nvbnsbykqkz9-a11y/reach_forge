@@ -56,7 +56,6 @@ public sealed class MediaAsset : Entity
 
 /// <summary>
 /// 非同期の AI ジョブ（画像生成・編集など：RF-DES-001 14章 AiGenerationJob）。
-/// 作成時に推定クレジットを予約し、成功時に実消費で確定、失敗・取り消し時は解放する。
 /// </summary>
 public sealed class AiJob : Entity
 {
@@ -68,8 +67,6 @@ public sealed class AiJob : Entity
     /// <summary>要求内容の JSON（プロンプト・スタイル・枚数など）。</summary>
     public string RequestJson { get; set; } = "{}";
     public List<Guid> ResultAssetIds { get; private set; } = [];
-    public int CreditsHeld { get; set; }
-    public int CreditsCharged { get; private set; }
     public string RequestedBy { get; set; } = "";
     public string? ErrorCode { get; private set; }
     public string? Error { get; private set; }
@@ -90,10 +87,9 @@ public sealed class AiJob : Entity
 
     public void MoveTo(AiJobStage stage) => Stage = stage;
 
-    public void Succeed(IEnumerable<Guid> assetIds, int creditsCharged, DateTimeOffset now)
+    public void Succeed(IEnumerable<Guid> assetIds, DateTimeOffset now)
     {
         ResultAssetIds = [.. assetIds];
-        CreditsCharged = creditsCharged;
         Status = AiJobStatus.Succeeded;
         Stage = AiJobStage.Done;
         CompletedAt = now;

@@ -39,7 +39,7 @@ public sealed partial class LandingPageVideoPlanner(IModelRouter router, IPrompt
                 Math.Clamp(s.Seconds, 2, 8),
                 s.ImageIndex is { } i && i >= 0 && i < images ? i : null))
             .ToList();
-        if (scenes.Count < 2) throw new AiUnavailableException("動画の構成をつくれませんでした。もう一度お試しください（クレジットは消費されていません）。");
+        if (scenes.Count < 2) throw new AiUnavailableException("動画の構成をつくれませんでした。もう一度お試しください。");
 
         var plan = new LandingPageVideoPlan(
             string.IsNullOrWhiteSpace(d.Title) ? PostText.Truncate(page.Title, 30) : PostText.Truncate(d.Title.Trim(), 30),

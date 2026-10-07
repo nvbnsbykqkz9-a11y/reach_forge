@@ -28,7 +28,6 @@ public sealed class AiGeneration : Entity
     public string Output { get; set; } = "";
     public AiGenerationStatus Status { get; set; } = AiGenerationStatus.Queued;
     public string? ErrorCode { get; set; }
-    public int Credits { get; set; }
     public int LatencyMs { get; set; }
     public bool FallbackUsed { get; set; }
 }

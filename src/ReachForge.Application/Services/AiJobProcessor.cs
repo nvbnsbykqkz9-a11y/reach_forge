@@ -7,7 +7,6 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Security;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
@@ -17,7 +16,6 @@ namespace ReachForge.Application.Services;
 /// <summary>
 /// AI ジョブ（画像生成・アウトペインティング）を1件実行する（RF-DES-001 F-04 処理 1〜7）。
 /// ジョブのテナント・ワークスペースのコンテキストで呼び出すこと（Worker の AiJobDispatcher が設定する）。
-/// 成功した画像の枚数分だけクレジットを確定し、失敗・安全性ブロック時は解放する（クレジットを消費しない）。
 /// </summary>
 public sealed class AiJobProcessor(
     IAppDbContext db,
@@ -26,7 +24,6 @@ public sealed class AiJobProcessor(
     IImageProcessor images,
     IImageSafetyChecker safety,
     IAltTextGenerator alt,
-    ICreditService credits,
     VideoService videos,
     TimeProvider clock,
     ILogger<AiJobProcessor> log)
@@ -68,33 +65,27 @@ public sealed class AiJobProcessor(
                 throw new AiSafetyBlockedException("画像の安全性");
             }
 
-            var perImage = job.TaskType == AiTaskType.ImageEdit
-                ? CreditTable.Cost(CreditOperation.ImageEditAi)
-                : CreditTable.Cost(CreditOperation.ImageStandard);
-            var charged = await credits.CommitReservedAsync(job.CreditsHeld, perImage * assets.Count, ct);
-            job.Succeed(assets.Select(a => a.Id), charged, clock.GetUtcNow());
+            job.Succeed(assets.Select(a => a.Id), clock.GetUtcNow());
             await db.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             var code = ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected;
-            var message = ex is DomainException ? ex.Message : "画像を作成できませんでした。もう一度お試しください（クレジットは消費されていません）。";
+            var message = ex is DomainException ? ex.Message : "画像を作成できませんでした。もう一度お試しください。";
             if (ex is not DomainException) log.LogError(ex, "AI job {JobId} failed", job.Id);
             DiscardUnsaved();
             job.Fail(code, message, clock.GetUtcNow());
             await db.SaveChangesAsync(CancellationToken.None);
-            await credits.ReleaseReservedAsync(job.CreditsHeld, CancellationToken.None);
         }
     }
 
-    /// <summary>ショート動画（テンプレート合成）。成功時に実際の長さで確定し、失敗時は予約を解放する。</summary>
+    /// <summary>ショート動画（テンプレート合成）。</summary>
     private async Task ProcessVideoAsync(AiJob job, CancellationToken ct)
     {
         try
         {
-            var (video, actual) = await videos.ProcessAsync(job, ct);
-            var charged = await credits.CommitReservedAsync(job.CreditsHeld, actual, ct);
-            job.Succeed([video.Id], charged, clock.GetUtcNow());
+            var video = await videos.ProcessAsync(job, ct);
+            job.Succeed([video.Id], clock.GetUtcNow());
             await db.SaveChangesAsync(ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
@@ -102,13 +93,12 @@ public sealed class AiJobProcessor(
             if (ex is not DomainException) log.LogError(ex, "Video job {JobId} failed", job.Id);
             DiscardUnsaved();
             job.Fail(ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected,
-                ex is DomainException ? ex.Message : "動画を作成できませんでした。もう一度お試しください（クレジットは消費されていません）。", clock.GetUtcNow());
+                ex is DomainException ? ex.Message : "動画を作成できませんでした。もう一度お試しください。", clock.GetUtcNow());
             await db.SaveChangesAsync(CancellationToken.None);
-            await credits.ReleaseReservedAsync(job.CreditsHeld, CancellationToken.None);
         }
     }
 
-    /// <summary>止まったジョブを失敗にしてクレジットを解放する。</summary>
+    /// <summary>止まったジョブを失敗にする。</summary>
     public async Task<int> FailStaleAsync(CancellationToken ct)
     {
         var now = clock.GetUtcNow();
@@ -117,9 +107,8 @@ public sealed class AiJobProcessor(
             .ToList();
         foreach (var job in stale)
         {
-            job.Fail(ErrorCodes.AiUnavailable, "処理が時間内に終わりませんでした。もう一度お試しください（クレジットは消費されていません）。", now);
+            job.Fail(ErrorCodes.AiUnavailable, "処理が時間内に終わりませんでした。もう一度お試しください。", now);
             await db.SaveChangesAsync(ct);
-            await credits.ReleaseReservedAsync(job.CreditsHeld, ct);
         }
         return stale.Count;
     }
@@ -158,7 +147,7 @@ public sealed class AiJobProcessor(
             if (verdict.Blocked)
             {
                 log.LogInformation("Generated image blocked by safety check ({Result}) for job {JobId}", verdict.Result, job.Id);
-                continue; // 該当画像は破棄（クレジットは消費しない）
+                continue; // 該当画像は破棄
             }
 
             using var input = new MemoryStream(image.Bytes);
@@ -267,7 +256,7 @@ public sealed class AiJobProcessor(
                 if (cutout.Confidence < Cutout.MinConfidence)
                 {
                     throw new DomainException(ErrorCodes.Validation,
-                        "商品を背景から切り抜けませんでした。白や単色の背景で撮った商品写真、または背景を透明にした PNG を選んでください（クレジットは消費されていません）。");
+                        "商品を背景から切り抜けませんでした。白や単色の背景で撮った商品写真、または背景を透明にした PNG を選んでください。");
                 }
                 var c = PlatformCatalog.Get(request.AspectFor);
                 generated = await GenerateOneAsync(new ImageGenerationSpec

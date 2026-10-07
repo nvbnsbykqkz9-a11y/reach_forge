@@ -5,7 +5,6 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Media;
 using ReachForge.Infrastructure.Web;
@@ -74,8 +73,6 @@ public class LandingPageVideoTests
                 BgmTrackId: "calm", SourceUrl: Lp.ToString(), SourceImageUrls: preview.ImageList.Select(i => i.Url.ToString()).ToList(),
                 AnimateHook: true, RightsConfirmed: true);
             var job = await videos.EnqueueAsync(request, CancellationToken.None);
-            Assert.Equal(VideoService.EstimateCredits(request), job.CreditsHeld);
-            Assert.True(job.CreditsHeld > VideoService.EstimateCredits(request with { AnimateHook = false })); // 冒頭の生成の分
             jobId = job.Id;
         }
         await using (var scope = f.Scope())
@@ -100,7 +97,6 @@ public class LandingPageVideoTests
             Assert.Equal(Lp.ToString(), summary.Url);
             Assert.True(summary.HookAnimated);
             Assert.False(string.IsNullOrWhiteSpace(summary.PostText));
-            Assert.Equal(job.CreditsHeld, job.CreditsCharged);
 
             // 取得できた LP の画像はライブラリに取り込み、取得元を来歴に残す（取得できない画像は飛ばす）
             var imported = await db.MediaAssets.Where(m => m.Provenance != null && m.Provenance.Contains("\"kind\":\"web\"")).ToListAsync();
@@ -135,7 +131,6 @@ public class LandingPageVideoTests
         {
             var job = await f.Get<IAppDbContext>(scope).AiJobs.SingleAsync(j => j.Id == jobId);
             Assert.True(job.Status == AiJobStatus.Succeeded, job.Error);
-            Assert.Equal(CreditTable.Cost(CreditOperation.TemplateVideo), job.CreditsCharged); // 冒頭の生成の分は使わない
             var video = await f.Get<IAppDbContext>(scope).MediaAssets.SingleAsync(m => m.Id == job.ResultAssetIds[0]);
             Assert.False(VideoService.LandingPageSummaryOf(video)!.HookAnimated);
         }

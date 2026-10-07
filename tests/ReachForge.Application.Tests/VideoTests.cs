@@ -4,7 +4,6 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Media;
@@ -54,7 +53,6 @@ public class VideoTests
             await Assert.ThrowsAsync<DomainException>(() => videos.EnqueueAsync(new VideoJobRequest("", ids), CancellationToken.None));
             var request = new VideoJobRequest("秋限定さつまいもラテ", ids, Narration: true, TargetSeconds: 10);
             var job = await videos.EnqueueAsync(request, CancellationToken.None);
-            Assert.Equal(VideoService.EstimateCredits(request), job.CreditsHeld);
             jobId = job.Id;
         }
 
@@ -81,7 +79,7 @@ public class VideoTests
             var text = System.Text.Encoding.ASCII.GetString(bytes, 0, Math.Min(bytes.Length, 200_000));
             Assert.True(text.IndexOf("moov", StringComparison.Ordinal) < text.IndexOf("mdat", StringComparison.Ordinal));
             Assert.True(await db.MediaAssets.AnyAsync(m => m.ParentAssetId == video.Id && m.DerivationKey == MediaService.ThumbnailKey));
-            Assert.Equal(job.CreditsCharged, VideoService.EstimateCredits(new VideoJobRequest("x", [], true, 10)));
+            Assert.Contains(await db.AiUsageLogs.ToListAsync(), u => u.TaskType == AiTaskType.Tts); // ナレーションの料金の記録
         }
         Console.WriteLine($"video job took {sw.Elapsed.TotalSeconds:0.0}s");
     }
@@ -149,7 +147,6 @@ public class VideoTests
             var videos = f.Get<VideoService>(scope);
             var job = await videos.EnqueueAsync(new VideoJobRequest("湯気の立つラテ", ids, TargetSeconds: 4, Mode: mode, BgmTrackId: "calm"),
                 CancellationToken.None);
-            Assert.Equal(CreditTable.Cost(CreditOperation.ShortVideo), job.CreditsHeld);
             jobId = job.Id;
         }
         await using (var scope = f.Scope())
@@ -161,7 +158,7 @@ public class VideoTests
             var db = f.Get<IAppDbContext>(scope);
             var job = await db.AiJobs.SingleAsync(j => j.Id == jobId);
             Assert.True(job.Status == AiJobStatus.Succeeded, job.Error);
-            Assert.Equal(CreditTable.Cost(CreditOperation.ShortVideo), job.CreditsCharged);
+            Assert.Contains(await db.AiUsageLogs.ToListAsync(), u => u.TaskType == AiTaskType.VideoGeneration && u.VideoSeconds == 4);
             var video = await db.MediaAssets.SingleAsync(m => m.Id == job.ResultAssetIds[0]);
             Assert.Equal((1080, 1920), (video.Width, video.Height));
             Assert.InRange(video.DurationMs!.Value, 3500, 4500);

@@ -66,7 +66,7 @@ public sealed class HangfireRecurringJobRegistrar(IRecurringJobManager manager, 
 {
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        var tz = CreditResetService.FindTimeZone(options.Value.TimeZone);
+        var tz = TimeZones.Find(options.Value.TimeZone);
         foreach (var job in SystemJobCatalog.All)
         {
             manager.AddOrUpdate<HangfireSystemJob>(job.Id, j => j.RunAsync(job.Id, CancellationToken.None), job.Cron,

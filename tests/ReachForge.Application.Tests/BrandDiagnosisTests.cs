@@ -79,14 +79,12 @@ public class BrandDiagnosisTests
         await using (var f = await AppFixture.CreateAsync(configure: s => s.AddScoped<IWebPageFetcher>(_ => new FakeFetcher(page))))
         {
             await using var scope = f.Scope();
-            var before = (await f.Get<ICreditService>(scope).GetAccountAsync(CancellationToken.None)).Balance;
             var result = await f.Get<BrandDiagnosisService>(scope).DiagnoseAsync("https://example.com", null, CancellationToken.None);
             Assert.Equal("ほっこりカフェ", result.Draft.BrandName);
             Assert.Equal("カフェ", result.Draft.Industry);
             Assert.Equal(["#B45309"], result.Draft.Colors);
             Assert.Contains(result.Draft.Faqs, x => x.Question.Contains("駐車場"));
             Assert.Null(result.Warning);
-            Assert.Equal(before - 3, (await f.Get<ICreditService>(scope).GetAccountAsync(CancellationToken.None)).Balance);
             Assert.True(await f.Get<IAppDbContext>(scope).AuditLogs.AnyAsync(a => a.Action == "brand.diagnosed"));
         }
 

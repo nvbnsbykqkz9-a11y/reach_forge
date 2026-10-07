@@ -20,7 +20,7 @@ public sealed class HostedJobScheduler(
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var tz = CreditResetService.FindTimeZone(options.Value.TimeZone);
+        var tz = TimeZones.Find(options.Value.TimeZone);
         return Task.WhenAll(SystemJobCatalog.All.Select(job => LoopAsync(job, tz, stoppingToken)));
     }
 

@@ -71,6 +71,13 @@ public class LpCreateTests(E2EFixture app)
         // ホームの「最近つくったもの」に出る
         await page.GotoAsync("/");
         await page.GetByText("最近つくったもの").WaitForAsync();
+
+        // 「設定」→「AI の利用料金」：つくったときの AI の利用が目安として集計される（お試しの AI は料金なし）
+        await page.GotoAsync("/settings/ai-cost");
+        await page.GetByText("今月の機能別").WaitForAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Cell, new() { Name = "広告文・投稿文" })).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Cell, new() { Name = "お試し（料金なし）" })).ToBeVisibleAsync();
+        await ShotAsync(page, "ai-cost");
         Assert.Empty(errors);
     }
 }

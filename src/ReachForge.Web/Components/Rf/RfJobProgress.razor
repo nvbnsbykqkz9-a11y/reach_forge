@@ -86,7 +86,7 @@
         try
         {
             await Media.CancelJobAsync(JobId, CancellationToken.None);
-            Snackbar.Add("キャンセルしました（クレジットは消費されていません）", Severity.Info);
+            Snackbar.Add("キャンセルしました", Severity.Info);
         }
         catch (Exception ex)
         {

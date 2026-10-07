@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using ReachForge.Application.Abstractions;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Persistence;
@@ -56,8 +55,6 @@ public sealed class AccountService(
             db.Tenants.Add(tenant);
             db.Workspaces.Add(workspace);
             db.BrandProfiles.Add(new BrandProfile { TenantId = tenant.Id, WorkspaceId = workspace.Id, BrandName = workspace.Name });
-            var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-            db.CreditAccounts.Add(CreditAccount.Open(tenant.Id, CreditService.DefaultMonthlyGrant, new DateOnly(today.Year, today.Month, 1)));
             db.WorkspaceMembers.Add(new WorkspaceMember
             {
                 TenantId = tenant.Id, WorkspaceId = workspace.Id, UserId = user.Id, Email = user.Email!,

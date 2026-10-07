@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ReachForge.Application.Abstractions;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Identity;
@@ -147,8 +146,6 @@ public static class DemoSeeder
                 TenantId = TenantId, WorkspaceId = WorkspaceId, Name = "かぼちゃのチーズケーキ", Price = 520,
                 Description = "濃厚なかぼちゃとクリームチーズのケーキ。", AvailableFrom = today, Url = "https://example.com/hokkori-cafe/menu/cake",
             });
-
-        db.CreditAccounts.Add(CreditAccount.Open(TenantId, 1500, new DateOnly(today.Year, today.Month, 1)));
 
         await db.SaveChangesAsync(ct);
     }

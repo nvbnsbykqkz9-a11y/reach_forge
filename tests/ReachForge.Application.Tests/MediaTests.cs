@@ -205,7 +205,7 @@ public class MediaServiceTests
     }
 
     [Fact]
-    public async Task Image_generation_job_charges_per_image_and_labels_as_ai()
+    public async Task Image_generation_job_records_cost_per_image_and_labels_as_ai()
     {
         await using var f = await AppFixture.CreateAsync();
         AiJob job;
@@ -213,8 +213,6 @@ public class MediaServiceTests
         {
             job = await f.Get<MediaService>(scope).EnqueueGenerationAsync(
                 new ImageJobRequest { Prompt = "木のテーブルに置かれた湯気の立つさつまいもラテ", Count = 2 }, CancellationToken.None);
-            var account = await f.Get<IAppDbContext>(scope).CreditAccounts.SingleAsync();
-            Assert.Equal(10, account.Held); // 5 クレジット × 2 枚を予約
         }
 
         await RunJobAsync(f, job.Id);
@@ -225,7 +223,6 @@ public class MediaServiceTests
             var done = await db.AiJobs.SingleAsync(j => j.Id == job.Id);
             Assert.Equal(AiJobStatus.Succeeded, done.Status);
             Assert.Equal(2, done.ResultAssetIds.Count);
-            Assert.Equal(10, done.CreditsCharged);
 
             var assets = await db.MediaAssets.Where(m => done.ResultAssetIds.Contains(m.Id)).ToListAsync();
             Assert.All(assets, a =>
@@ -236,8 +233,6 @@ public class MediaServiceTests
                 Assert.False(string.IsNullOrWhiteSpace(a.AltText));
                 Assert.Equal(4.0 / 5, a.AspectRatio, 2); // Instagram 基準
             });
-            var account = await db.CreditAccounts.SingleAsync();
-            Assert.Equal((1490, 0), (account.Balance, account.Held));
             Assert.Contains(await db.AiUsageLogs.ToListAsync(), u => u.TaskType == AiTaskType.Image && u.Images == 2);
         }
     }
@@ -256,7 +251,7 @@ public class MediaServiceTests
     [Theory]
     [InlineData("generator")]
     [InlineData("safety")]
-    public async Task Failed_or_blocked_jobs_release_credits(string failure)
+    public async Task Failed_or_blocked_jobs_keep_no_images(string failure)
     {
         await using var f = await AppFixture.CreateAsync(configure: s =>
         {
@@ -276,8 +271,6 @@ public class MediaServiceTests
             var done = await db.AiJobs.SingleAsync(j => j.Id == job.Id);
             Assert.Equal(AiJobStatus.Failed, done.Status);
             Assert.Equal(failure == "generator" ? ErrorCodes.AiUnavailable : ErrorCodes.AiSafetyBlocked, done.ErrorCode);
-            var account = await db.CreditAccounts.SingleAsync();
-            Assert.Equal((1500, 0), (account.Balance, account.Held));
             Assert.Empty(await db.MediaAssets.ToListAsync());
         }
     }
@@ -297,7 +290,6 @@ public class MediaServiceTests
         var done = await db.AiJobs.SingleAsync(j => j.Id == job.Id);
         var asset = await db.MediaAssets.SingleAsync(m => m.Id == done.ResultAssetIds[0]);
         Assert.Equal((MediaSource.AiEdited, source.Id), (asset.Source, asset.ParentAssetId!.Value));
-        Assert.Equal(1495, (await db.CreditAccounts.SingleAsync()).Balance);
     }
 
     [Fact]

@@ -18,10 +18,10 @@ using ReachForge.Infrastructure.Persistence;
 
 namespace ReachForge.Application.Tests;
 
-/// <summary>ジョブ基盤（14章）：定期ジョブ・Hangfire・キュー・クレジットの月次付与・データ保存期限。</summary>
+/// <summary>ジョブ基盤（14章）：定期ジョブ・Hangfire・キュー・データ保存期限・AI の利用料金の集計。</summary>
 public class JobTests
 {
-    private static readonly TimeZoneInfo Tokyo = CreditResetService.FindTimeZone("Asia/Tokyo");
+    private static readonly TimeZoneInfo Tokyo = TimeZones.Find("Asia/Tokyo");
 
     /// <summary>Hangfire のログ設定は static。ほかのテストで破棄されたホストのロガーを使わないよう、何も出力しないものに戻す。</summary>
     private sealed class SilentLogProvider : Hangfire.Logging.ILogProvider, Hangfire.Logging.ILog
@@ -34,43 +34,38 @@ public class JobTests
     public JobTests() => Hangfire.Logging.LogProvider.SetCurrentLogProvider(new SilentLogProvider());
 
     [Fact]
-    public async Task Credit_reset_grants_once_per_month_in_tenant_time_zone_and_keeps_holds()
+    public async Task Ai_cost_is_summed_per_month_in_tenant_time_zone()
     {
         await using var f = await AppFixture.CreateAsync();
+        var jst = TimeSpan.FromHours(9);
+        foreach (var (at, task, provider, usd) in new[]
+        {
+            (new DateTimeOffset(2026, 10, 31, 12, 0, 0, jst), AiTaskType.Copy, "anthropic", 9m),      // 先々月は数えない
+            (new DateTimeOffset(2026, 11, 30, 23, 0, 0, jst), AiTaskType.Copy, "anthropic", 0.10m),   // 先月
+            (new DateTimeOffset(2026, 12, 1, 0, 30, 0, jst), AiTaskType.Copy, "anthropic", 0.20m),   // 今月（UTC ではまだ11月）
+            (new DateTimeOffset(2026, 12, 5, 12, 0, 0, jst), AiTaskType.Tts, "openai", 0.05m),
+            (new DateTimeOffset(2026, 12, 6, 12, 0, 0, jst), AiTaskType.Copy, "local", 0m),
+        })
+        {
+            f.Clock.SetUtcNow(at); // 記録の時刻は保存した時刻になる
+            await using var scope = f.Scope();
+            var db = f.Get<IAppDbContext>(scope);
+            db.AiUsageLogs.Add(new AiUsageLog { TaskType = task, Provider = provider, CostUsd = usd, Succeeded = true });
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+
+        f.Clock.SetUtcNow(new DateTimeOffset(2026, 12, 7, 9, 0, 0, jst));
         await using (var scope = f.Scope())
         {
-            await f.Get<ICreditService>(scope).ReserveAsync(10, CancellationToken.None);
-            var db = f.Get<IAppDbContext>(scope);
-            var account = await db.CreditAccounts.SingleAsync();
-            account.Commit(0, 100); // 今月 100 消費
-            await db.SaveChangesAsync();
-        }
-
-        // 10/31 23:30 JST：まだ10月
-        f.Clock.SetUtcNow(new DateTimeOffset(2026, 10, 31, 23, 30, 0, TimeSpan.FromHours(9)));
-        await using (var worker = f.Scope(c => c.IsSystem = true))
-        {
-            Assert.Equal(0, await f.Get<CreditResetService>(worker).ResetDueAsync(CancellationToken.None));
-        }
-
-        // 11/1 00:05 JST（UTC ではまだ10月31日）
-        f.Clock.SetUtcNow(new DateTimeOffset(2026, 11, 1, 0, 5, 0, TimeSpan.FromHours(9)));
-        await using (var worker = f.Scope(c => c.IsSystem = true))
-        {
-            var service = f.Get<CreditResetService>(worker);
-            Assert.Equal(1, await service.ResetDueAsync(CancellationToken.None));
-            Assert.Equal(0, await service.ResetDueAsync(CancellationToken.None)); // 冪等
-        }
-
-        await using (var scope = f.Scope())
-        {
-            var db = f.Get<IAppDbContext>(scope);
-            var account = await db.CreditAccounts.AsNoTracking().SingleAsync();
-            Assert.Equal(new DateOnly(2026, 11, 1), account.PeriodStart);
-            Assert.Equal(account.MonthlyGrant, account.Balance);
-            Assert.Equal(0, account.ConsumedThisPeriod);
-            Assert.Equal(10, account.Held); // 実行中のジョブの分は残す
-            Assert.Single(await db.AuditLogs.AsNoTracking().Where(a => a.Action == "credits.reset").ToListAsync());
+            var summary = await f.Get<AiCostService>(scope).SummaryAsync(CancellationToken.None);
+            Assert.Equal(new DateOnly(2026, 12, 1), summary.ThisMonth.Month);
+            Assert.Equal(0.25m, summary.ThisMonth.TotalUsd);
+            Assert.Equal(3, summary.ThisMonth.Calls);
+            Assert.Equal(["広告文・投稿文", "ナレーション"], summary.ThisMonth.ByFeature.Select(l => l.Label));
+            Assert.Equal(0.20m, summary.ThisMonth.ByFeature[0].Usd);
+            Assert.Equal(["Anthropic（Claude）", "OpenAI", "お試し（料金なし）"], summary.ThisMonth.ByService.Select(l => l.Label));
+            Assert.Equal(0.10m, summary.LastMonth.TotalUsd);
+            Assert.Equal(1, summary.LastMonth.Calls);
         }
     }
 
@@ -87,7 +82,7 @@ public class JobTests
             {
                 var job = new AiJob { TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, TaskType = AiTaskType.Image };
                 job.Start(f.Clock.GetUtcNow());
-                job.Succeed([], 0, f.Clock.GetUtcNow());
+                job.Succeed([], f.Clock.GetUtcNow());
                 return job;
             }
             var done = Done();
@@ -142,10 +137,6 @@ public class JobTests
             new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.FromHours(9)), Tokyo);
         Assert.Equal(new DateTimeOffset(2026, 10, 8, 2, 0, 0, TimeSpan.FromHours(9)), next);
 
-        var credits = SystemJobCatalog.Find("credit-reset")!;
-        Assert.Equal(new DateTimeOffset(2026, 10, 7, 13, 0, 0, TimeSpan.Zero), // 毎時 0 分（22:00 JST）
-            Infrastructure.Jobs.HostedJobScheduler.NextOccurrence(CronExpression.Parse(credits.Cron),
-                new DateTimeOffset(2026, 10, 7, 12, 30, 0, TimeSpan.Zero), Tokyo));
         Assert.Equal(SystemJobCatalog.All.Count, SystemJobCatalog.All.Select(j => j.Id).Distinct().Count());
     }
 
@@ -173,7 +164,6 @@ public class JobTests
             .GetFilters(Job.FromExpression<HangfireSystemJob>(j => j.RunAsync(id, CancellationToken.None)))
             .Select(f => f.Instance).OfType<AutomaticRetryAttribute>().Single().Attempts;
 
-        Assert.Equal(0, Attempts("credit-reset"));
         Assert.Equal(0, Attempts("data-retention"));
     }
 
@@ -189,16 +179,13 @@ public class JobTests
             new BackgroundJobServerOptions { Activator = f.Services.GetRequiredService<JobActivator>(),
                 SchedulePollingInterval = TimeSpan.FromMilliseconds(200), WorkerCount = 1 }, storage);
 
-        var id = new BackgroundJobClient(storage).Enqueue<HangfireSystemJob>(j => j.RunAsync("credit-reset", CancellationToken.None));
+        var id = new BackgroundJobClient(storage).Enqueue<HangfireSystemJob>(j => j.RunAsync("data-retention", CancellationToken.None));
         var monitor = storage.GetMonitoringApi();
         for (var i = 0; i < 100 && monitor.JobDetails(id).History.FirstOrDefault()?.StateName is not ("Succeeded" or "Failed"); i++)
         {
             await Task.Delay(100);
         }
         Assert.Equal("Succeeded", monitor.JobDetails(id).History.First().StateName);
-
-        await using var scope = f.Scope();
-        Assert.Equal(new DateOnly(2026, 11, 1), (await f.Get<IAppDbContext>(scope).CreditAccounts.AsNoTracking().SingleAsync()).PeriodStart);
     }
 
     private sealed class FlakyHandler(string queue, int failures) : IWorkHandler

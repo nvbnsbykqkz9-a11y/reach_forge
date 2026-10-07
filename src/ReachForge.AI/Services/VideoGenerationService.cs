@@ -55,7 +55,7 @@ public sealed class VideoGenerationService(
             {
                 Record(name, provider, modelId, 0, sw, fallback, false, generationId);
                 throw new AiUnavailableException(
-                    "動画の生成が15分以内に終わりませんでした。画像とテロップで作る「テンプレート合成」をお試しください（クレジットは消費されていません）。");
+                    "動画の生成が15分以内に終わりませんでした。画像とテロップで作る「テンプレート合成」をお試しください。");
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
@@ -65,7 +65,7 @@ public sealed class VideoGenerationService(
                 log.LogWarning(ex, "Video provider {Provider} failed; trying next", name);
             }
         }
-        throw new AiUnavailableException("動画を生成できませんでした。時間をおいて試すか、テンプレート合成をお使いください（クレジットは消費されていません）。", last);
+        throw new AiUnavailableException("動画を生成できませんでした。時間をおいて試すか、テンプレート合成をお使いください。", last);
     }
 
     private void Record(string name, AiProviderOptions provider, string modelId, int seconds, Stopwatch sw, bool fallback, bool succeeded,

@@ -21,6 +21,9 @@ public sealed class AiOptions
     /// <summary>生成1回あたりの出力トークン上限。</summary>
     public int MaxOutputTokens { get; set; } = 16000;
 
+    /// <summary>「AI の利用料金（目安）」で円に換算するときの、1ドルあたりの円（目安）。</summary>
+    public decimal UsdJpyRate { get; set; } = 150m;
+
     public IReadOnlyList<string> RouteFor(AiTaskType task) =>
         Routes.TryGetValue(task.ToString(), out var route) && route.Count > 0 ? route
         : Routes.TryGetValue("Default", out var fallback) ? fallback
@@ -53,6 +56,9 @@ public sealed class AiProviderOptions
 
     /// <summary>動画1秒あたりの単価（USD）。</summary>
     public decimal PricePerVideoSecond { get; set; }
+
+    /// <summary>音声合成（ナレーション）1分あたりの単価（USD）。</summary>
+    public decimal PricePerSpeechMinute { get; set; }
 
     /// <summary>API の接続先の上書き（検証環境・テスト用。通常は未設定）。</summary>
     public string? BaseUrl { get; set; }

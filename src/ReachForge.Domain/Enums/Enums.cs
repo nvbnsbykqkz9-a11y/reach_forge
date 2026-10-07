@@ -67,11 +67,11 @@ public enum AiJobStage : short { Waiting = 1, Generating = 2, Checking = 3, Done
 /// <summary>比率変換の方法（F-04-6：引き伸ばし禁止）。</summary>
 public enum AspectMethod : short
 {
-    /// <summary>被写体を中心にしたスマートクロップ（0 クレジット・既定）。</summary>
+    /// <summary>被写体を中心にしたスマートクロップ（既定）。</summary>
     SmartCrop = 1,
-    /// <summary>余白（背景色）を付ける（0 クレジット）。</summary>
+    /// <summary>余白（背景色）を付ける。</summary>
     Pad = 2,
-    /// <summary>AI で画像を広げる（アウトペインティング、5 クレジット）。</summary>
+    /// <summary>AI で画像を広げる（アウトペインティング）。</summary>
     Outpaint = 3,
 }
 
@@ -90,18 +90,3 @@ public enum ApprovalDecision : short { Submitted = 1, Approved = 2, Rejected = 3
 /// <summary>コピーライティングの型（F-03）。</summary>
 public enum CopyFramework : short { Auto = 0, Aida = 1, Pas = 2, Story = 3, HowTo = 4, List = 5 }
 
-/// <summary>クレジットを消費する操作（F-13 クレジット換算）。</summary>
-public enum CreditOperation : short
-{
-    CopyGeneration = 1,
-    CopyPartialRegeneration = 2,
-    VariantConversion = 3,
-    ImageStandard = 4,
-    ImageEditAi = 5,
-    ShortVideo = 6,
-    Narration30s = 7,
-    ReplySuggestion = 8,
-    Classification = 9,
-    /// <summary>テンプレート合成のショート動画（画像＋テロップ＋ナレーション）。生成AI動画（ShortVideo）より安い。</summary>
-    TemplateVideo = 10,
-}

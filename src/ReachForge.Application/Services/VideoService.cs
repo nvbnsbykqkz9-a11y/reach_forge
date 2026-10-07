@@ -7,7 +7,6 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Security;
 using ReachForge.Domain.Common;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
@@ -58,7 +57,7 @@ public sealed record LandingPageVideoSummary(string Url, string Product, string 
 /// ショート動画（F-05）：③ テンプレート合成（複数画像＋テロップ＋ナレーション）。
 /// 構成台本（AI）→ 各シーン画像を 9:16 に変換しテロップを焼き込み → TTS でナレーション → 音声の長さに合わせてシーン秒数を調整
 /// → FFmpeg で 1080×1920・H.264/AAC・faststart に書き出し → 字幕（SRT）を作成。
-/// 実行前に推定クレジットと所要時間を表示して確認をとる（画面側）。生成 AI による動画（①②）はプロバイダ導入時に追加する。
+/// 実行前に所要時間を表示して確認をとる（画面側）。生成 AI による動画（①②）はプロバイダ導入時に追加する。
 /// </summary>
 public sealed class VideoService(
     IAppDbContext db,
@@ -69,7 +68,6 @@ public sealed class VideoService(
     ITextToSpeech tts,
     IVideoComposer composer,
     IBrandContextProvider brand,
-    ICreditService credits,
     IWorkQueue queue,
     IVideoGenerationService generator,
     IBgmLibrary bgm,
@@ -85,14 +83,7 @@ public sealed class VideoService(
 
     public IReadOnlyList<BgmTrack> BgmTracks => bgm.Tracks;
 
-    /// <summary>推定クレジット（テンプレート合成＋ナレーション 30秒ごと／生成 AI の動画は1本あたり）。</summary>
-    public static int EstimateCredits(VideoJobRequest r) => r.IsGenerative
-        ? CreditTable.Cost(CreditOperation.ShortVideo)
-        : CreditTable.Cost(CreditOperation.TemplateVideo)
-          + (r.Narration ? CreditTable.Cost(CreditOperation.Narration30s, (int)Math.Ceiling(Clamp(r.TargetSeconds) / 30.0)) : 0)
-          + (r.Mode == VideoMode.LandingPage && r.AnimateHook ? CreditTable.Cost(CreditOperation.ShortVideo) : 0);
-
-    /// <summary>LP を読み込む（タイトル・説明・画像の候補を画面に出す。クレジットは使わない）。</summary>
+    /// <summary>LP を読み込む（タイトル・説明・画像の候補を画面に出す）。</summary>
     public async Task<WebPage> PreviewLandingPageAsync(string url, CancellationToken ct)
     {
         RolePolicy.Demand(tenant.Role, Permission.Generate);
@@ -158,30 +149,19 @@ public sealed class VideoService(
                 : Clamp(request.TargetSeconds),
             Narration = !request.IsGenerative && request.Narration,
         };
-        var amount = EstimateCredits(normalized);
-        await credits.ReserveAsync(amount, ct);
-        try
+        var job = new AiJob
         {
-            var job = new AiJob
-            {
-                TenantId = tenant.TenantId,
-                WorkspaceId = tenant.WorkspaceId,
-                TaskType = AiTaskType.Video,
-                RequestJson = JsonSerializer.Serialize(normalized),
-                CreditsHeld = amount,
-                RequestedBy = tenant.UserName,
-            };
-            db.AiJobs.Add(job);
-            db.Record(tenant, "ai.job_queued", nameof(AiJob), job.Id, AiTaskType.Video.ToString());
-            await db.SaveChangesAsync(ct);
-            await queue.NotifyAiJobAsync(job.Id, ct);
-            return job;
-        }
-        catch
-        {
-            await credits.ReleaseReservedAsync(amount, CancellationToken.None);
-            throw;
-        }
+            TenantId = tenant.TenantId,
+            WorkspaceId = tenant.WorkspaceId,
+            TaskType = AiTaskType.Video,
+            RequestJson = JsonSerializer.Serialize(normalized),
+            RequestedBy = tenant.UserName,
+        };
+        db.AiJobs.Add(job);
+        db.Record(tenant, "ai.job_queued", nameof(AiJob), job.Id, AiTaskType.Video.ToString());
+        await db.SaveChangesAsync(ct);
+        await queue.NotifyAiJobAsync(job.Id, ct);
+        return job;
     }
 
     private static VideoJobRequest ValidateLandingPage(VideoJobRequest request)
@@ -211,7 +191,7 @@ public sealed class VideoService(
     }
 
     /// <summary>動画を作る（AiJobProcessor から、依頼したテナント・ワークスペースのコンテキストで呼ぶ）。</summary>
-    public async Task<(MediaAsset Video, int Credits)> ProcessAsync(AiJob job, CancellationToken ct)
+    public async Task<MediaAsset> ProcessAsync(AiJob job, CancellationToken ct)
     {
         var request = JsonSerializer.Deserialize<VideoJobRequest>(job.RequestJson)!;
         if (request.Mode == VideoMode.LandingPage) return await LandingPageAsync(job, request, ct);
@@ -223,7 +203,7 @@ public sealed class VideoService(
         // ① 構成台本（シーン数は 3〜6、画像が少なければ繰り返し使う）
         var sceneCount = Math.Clamp(sources.Count, 3, 6);
         var script = await scripts.WriteAsync(ctx, request.Theme, sceneCount, request.TargetSeconds, ct);
-        if (script.Scenes.Count == 0) throw new AiUnavailableException("動画の構成をつくれませんでした。もう一度お試しください（クレジットは消費されていません）。");
+        if (script.Scenes.Count == 0) throw new AiUnavailableException("動画の構成をつくれませんでした。もう一度お試しください。");
         job.MoveTo(AiJobStage.Generating);
         await db.SaveChangesAsync(ct);
 
@@ -270,15 +250,13 @@ public sealed class VideoService(
             kind = "template-video", theme = request.Theme, scenes = timeline.Count, narration = request.Narration,
             sources = request.ImageAssetIds, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
-        var actual = CreditTable.Cost(CreditOperation.TemplateVideo)
-                     + (request.Narration ? CreditTable.Cost(CreditOperation.Narration30s, (int)Math.Ceiling(video.DurationMs / 30_000.0)) : 0);
-        return (asset, actual);
+        return asset;
     }
 
     /// <summary>
     /// ①② 生成 AI の動画：起点の画像（②）を 9:16 に整えて渡し、返ってきたクリップを 1080×1920・H.264/AAC に整えて BGM を重ねる。
     /// </summary>
-    private async Task<(MediaAsset Video, int Credits)> GenerateAsync(AiJob job, VideoJobRequest request, CancellationToken ct)
+    private async Task<MediaAsset> GenerateAsync(AiJob job, VideoJobRequest request, CancellationToken ct)
     {
         byte[]? start = null;
         if (request.Mode == VideoMode.ImageToVideo)
@@ -316,15 +294,15 @@ public sealed class VideoService(
             provider = generated.Model.Provider, model = generated.Model.ModelId, fallbackUsed = generated.Model.FallbackUsed,
             theme = request.Theme, sources = request.ImageAssetIds, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
-        return (asset, CreditTable.Cost(CreditOperation.ShortVideo));
+        return asset;
     }
 
     /// <summary>
     /// LP から集客動画をつくる：LP を読み → 選んだ画像を取り込み → AI が訴求を整理して絵コンテをつくり（価格は LP と突き合わせ）
     /// → 各シーンの画像を 9:16 に整えてテロップを焼き込み、ナレーションを付ける → （希望すれば）冒頭のシーンを生成 AI で動かす
-    /// → BGM を重ねて書き出し、字幕と投稿文の案を残す。冒頭の生成に失敗しても静止画で作り、その分のクレジットは使わない。
+    /// → BGM を重ねて書き出し、字幕と投稿文の案を残す。冒頭の生成に失敗しても静止画で作る。
     /// </summary>
-    private async Task<(MediaAsset Video, int Credits)> LandingPageAsync(AiJob job, VideoJobRequest request, CancellationToken ct)
+    private async Task<MediaAsset> LandingPageAsync(AiJob job, VideoJobRequest request, CancellationToken ct)
     {
         var page = await fetcher.FetchAsync(request.SourceUrl!, ct);
         var imported = new List<(WebImage Web, MediaAsset Asset)>();
@@ -406,7 +384,7 @@ public sealed class VideoService(
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
-                    // 冒頭を動かせなくても静止画で作る（その分のクレジットは使わない）
+                    // 冒頭を動かせなくても静止画で作る
                     log.LogWarning(ex, "Hook animation failed for job {JobId}; using a still image", job.Id);
                 }
             }
@@ -433,10 +411,7 @@ public sealed class VideoService(
             sources = imported.Select(i => new { url = i.Web.Url.ToString(), assetId = i.Asset.Id }),
             narration = request.Narration, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
-        var actual = CreditTable.Cost(CreditOperation.TemplateVideo)
-                     + (request.Narration ? CreditTable.Cost(CreditOperation.Narration30s, (int)Math.Ceiling(video.DurationMs / 30_000.0)) : 0)
-                     + (hookAnimated ? CreditTable.Cost(CreditOperation.ShortVideo) : 0);
-        return (asset, actual);
+        return asset;
     }
 
     /// <summary>字幕（SRT）：各シーンのナレーション（なければテロップ）を表示する。</summary>

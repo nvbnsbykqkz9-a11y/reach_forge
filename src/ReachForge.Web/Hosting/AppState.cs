@@ -1,5 +1,4 @@
 using ReachForge.Application.Services;
-using ReachForge.Domain.Credits;
 using ReachForge.Domain.Entities;
 
 namespace ReachForge.Web.Hosting;
@@ -11,7 +10,6 @@ namespace ReachForge.Web.Hosting;
 public sealed class AppState(TenantScopes scopes)
 {
     public Workspace? Workspace { get; private set; }
-    public CreditAccount? Credits { get; private set; }
 
     public event Action? Changed;
 
@@ -20,7 +18,6 @@ public sealed class AppState(TenantScopes scopes)
         await scopes.RunAsync(async sp =>
         {
             Workspace = await sp.GetRequiredService<WorkspaceService>().CurrentAsync(CancellationToken.None);
-            Credits = await sp.GetRequiredService<ICreditService>().GetAccountAsync(CancellationToken.None);
         });
         Changed?.Invoke();
     }

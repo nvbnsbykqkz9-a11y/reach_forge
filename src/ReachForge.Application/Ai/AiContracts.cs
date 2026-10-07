@@ -43,7 +43,7 @@ public sealed record CopyCandidate
 
 public sealed record AiModelInfo(string Provider, string ModelId, bool FallbackUsed);
 
-public sealed record CopyResult(Guid GenerationId, AiModelInfo Model, int CreditsUsed, IReadOnlyList<CopyCandidate> Candidates);
+public sealed record CopyResult(Guid GenerationId, AiModelInfo Model, IReadOnlyList<CopyCandidate> Candidates);
 
 /// <summary>クイック修正チップ（RF-UX-001 6.1 原則4）。</summary>
 public enum QuickFix
@@ -89,7 +89,7 @@ public interface ICopyGenerationService
 {
     Task<CopyResult> GenerateAsync(CopyRequest request, CancellationToken ct);
 
-    /// <summary>対象案のみの部分再生成（消費 1 クレジット）。</summary>
+    /// <summary>対象案のみの部分再生成。</summary>
     Task<CopyResult> RefineAsync(CopyRequest request, GeneratedCopy candidate, QuickFix fix, CancellationToken ct);
 }
 

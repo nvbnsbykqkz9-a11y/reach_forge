@@ -10,7 +10,7 @@ SNS とはつながず、できたものはダウンロード・コピーして�
 
 1. **LP を読み込む**（ホーム）：URL を入れると、タイトル・説明・画像の候補を読み取る。広告・動画に使う画像を選び（4枚まで）、使う権利があることを確認する
 2. **SNS を選ぶ**：Instagram・X・Facebook・Threads・TikTok・YouTube・LINE から、いくつでも。縦型の動画をつくるか（長さ・ナレーション）も選ぶ
-3. **確認してつくる**：使うクレジットを確認して「つくる」
+3. **確認してつくる**：内容を確認して「つくる」
 
 つくったもの（`/lp/{id}`、一覧は `/lp`）：
 
@@ -77,7 +77,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 | ⑤ 動画の合成 | LP の画像を 9:16 にしてテロップを焼き込み、ゆっくりズーム。音声合成（OpenAI TTS）のナレーション、ライセンス済み BGM（ナレーション中は自動で音量を下げる）→ FFmpeg で 1080×1920・30fps・H.264/AAC | 早く安い。AI ラベル（IPTC／C2PA の来歴）付き |
 
 - 権利：LP の画像を使うときは「広告・動画に使う権利がある」ことの確認を必須にする。取り込んだ画像には取得元の URL を来歴に記録する
-- クレジット：文章は SNS ごとに 3、動画はテンプレート合成 20＋ナレーション 30秒ごとに 2。失敗したら使わない（ジョブはクレジットを予約し、成功時に確定・失敗時に解放）
+- AI の利用料金：アプリ内のクレジット・回数の上限はなく、料金は API キーを発行した各 AI サービスから直接請求される。AI を呼ぶたびに推定料金（`AI:Providers` の単価 × トークン数・画像の枚数・動画の秒数・ナレーションの分数）を `AiUsageLogs` に記録し、「設定 → AI の利用料金」で今月・先月の目安を機能別・サービス別に表示する（円換算は `AI:UsdJpyRate`、既定 150）
 - 設定：`Video:FfmpegPath`（既定 `ffmpeg`）、`Video:BgmLibraryPath`（ライセンス済みの曲と `tracks.json`）、`Media:FontPath`（テロップのフォント。未設定なら OS の Noto Sans JP / IPA フォント等）
 
 > **ライセンス注意**：画像処理は SixLabors.ImageSharp 3.1 を使用しています（`IImageProcessor` の実装を差し替え可能）。
@@ -92,7 +92,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 ## ブランド設定
 
 - 口調・一人称・絵文字・NG ワード・必須表記・お客様像・よく使うハッシュタグ・商品（価格は文章の事実確認に使う）。AI はこれに沿って文章をつくる
-- 「AIでブランド診断」：Web サイトの URL・紹介文から、口調・お客様像・ハッシュタグ・避けたい表現・ブランドカラーの下書きをつくり、選んだ項目だけ反映（3クレジット）
+- 「AIでブランド診断」：Web サイトの URL・紹介文から、口調・お客様像・ハッシュタグ・避けたい表現・ブランドカラーの下書きをつくり、選んだ項目だけ反映
 
 ## プロンプト管理・AI Evals（RF-DES-001 4.5・4.6）
 
@@ -116,7 +116,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 ## ジョブ基盤
 
 - 動画・画像の生成は AI ジョブ（`AiJob`）として裏で実行し、段階（待機中 → 生成中 → 確認中 → 完了）をすぐ画面へ届ける（Blazor のサーキット＝SignalR。外部クライアント向けに `/hubs/realtime` の `jobProgress`）
-- 定期ジョブ：CreditResetJob（毎時確認・毎月1日にテナントのタイムゾーンでクレジットを付与）、DataRetentionJob（02:00：監査ログ2年、終了した AI ジョブ・期限切れ招待 90日。つくったものの動画のジョブは残す）。時刻は `Jobs:TimeZone`（既定 Asia/Tokyo）
+- 定期ジョブ：DataRetentionJob（02:00：監査ログ2年、終了した AI ジョブ・期限切れ招待 90日。つくったものの動画のジョブは残す）。時刻は `Jobs:TimeZone`（既定 Asia/Tokyo）
 - 実行エンジン `Jobs:Engine`：`Hosted`（既定）／`Hangfire`（メモリのストレージ）。キュー `Jobs:Queue`：`InProcess`（既定）／`ServiceBus`
 - 運用管理（`/ops`）：`Ops:Operators` に書いたメールアドレスの利用者（Windows 版はオーナー）だけが見られる
 
@@ -133,8 +133,8 @@ dotnet test   # xUnit v3（Microsoft.Testing.Platform）
 
 ```
 src/
-  ReachForge.Domain/          エンティティ・プラットフォーム制約マスタ・ガードレール・クレジット（外部依存なし）
-  ReachForge.Application/     ユースケース（LP からつくる・メディア・動画・ブランド・クレジット）、権限、AI の抽象
+  ReachForge.Domain/          エンティティ・プラットフォーム制約マスタ・ガードレール（外部依存なし）
+  ReachForge.Application/     ユースケース（LP からつくる・メディア・動画・ブランド・AI の利用料金）、権限、AI の抽象
   ReachForge.AI/              設定駆動モデルルータ（フェイルオーバー・サーキットブレーカー・計量）、プロンプト、文章・動画の企画・画像・音声
   ReachForge.Infrastructure/  EF Core（SQLite）、テナント分離、デモデータ、ジョブ基盤、画像処理・FFmpeg・LP の取得
   ReachForge.ServiceDefaults/ OpenTelemetry・ヘルスチェック・HTTP 回復性
