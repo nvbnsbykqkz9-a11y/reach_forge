@@ -24,6 +24,9 @@ namespace ReachForge.Infrastructure;
 
 public static class DependencyInjection
 {
+    /// <summary>SQLite 用のマイグレーションを持つアセンブリ（Database:SqliteMigrations=true のとき使う）。</summary>
+    public const string SqliteMigrationsAssembly = "ReachForge.Migrations.Sqlite";
+
     /// <summary>
     /// アプリケーション・AI・SNS・永続化をまとめて登録する。<see cref="ITenantContext"/> はホスト側（Web / Worker）で登録すること。
     /// </summary>
@@ -39,6 +42,8 @@ public static class DependencyInjection
         services.AddDbContext<ReachForgeDbContext>(o =>
         {
             if (provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(connection);
+            // Windows 版は SQLite もマイグレーションで更新する（ReachForge.Migrations.Sqlite）。開発・テストはモデルから作る
+            else if (configuration.GetValue("Database:SqliteMigrations", false)) o.UseSqlite(connection, x => x.MigrationsAssembly(SqliteMigrationsAssembly));
             else o.UseSqlite(connection);
         }, optionsLifetime: ServiceLifetime.Singleton);
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<ReachForgeDbContext>());

@@ -4,6 +4,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\ReachForge.Infrastructure\ReachForge.Infrastructure.csproj" />
+    <ProjectReference Include="..\ReachForge.Migrations.Sqlite\ReachForge.Migrations.Sqlite.csproj" />
     <ProjectReference Include="..\ReachForge.ServiceDefaults\ReachForge.ServiceDefaults.csproj" />
     <ProjectReference Include="..\ReachForge.AI.Evals\ReachForge.AI.Evals.csproj" />
   </ItemGroup>

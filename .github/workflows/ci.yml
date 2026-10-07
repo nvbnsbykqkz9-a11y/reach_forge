@@ -41,6 +41,28 @@ jobs:
           RF_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Username=postgres;Password=postgres;Database=postgres
         run: dotnet test -c Release --no-build --project tests/ReachForge.Application.Tests
 
+  # Windows 版（PC 単体）：発行してインストーラーを作り、成果物として残す
+  desktop:
+    runs-on: windows-latest
+    needs: build-test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - name: Publish
+        shell: pwsh
+        run: ./deploy/desktop/publish.ps1
+      - name: Build installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" deploy/desktop/ReachForge.iss
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReachForge-Windows
+          path: artifacts/desktop/ReachForge-Setup-*.exe
+
   # AI Evals（RF-DES-001 4.6）：プロンプト・モデル設定を変えたときに実モデルで評価する。API キーがなければ飛ばす
   ai-evals:
     runs-on: ubuntu-latest

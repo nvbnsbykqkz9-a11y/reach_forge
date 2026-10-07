@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\ReachForge.Desktop.Host\ReachForge.Desktop.Host.csproj" />
+    <ProjectReference Include="..\..\src\ReachForge.Migrations.Sqlite\ReachForge.Migrations.Sqlite.csproj" />
+    <!-- サーバー（ReachForge.Web）を実際に子プロセスで起動して確かめるため、先にビルドしておく -->
+    <ProjectReference Include="..\..\src\ReachForge.Web\ReachForge.Web.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

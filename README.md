@@ -37,6 +37,41 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 # モデルは appsettings.json の AI:Providers / AI:Routes で設定（コードにハードコードしない）
 ```
 
+## Windows 版（PC 単体で完結）
+
+サーバーを用意せず、Windows の PC だけで使えるデスクトップアプリです（Windows 10 1809 以降 / 11、x64）。画面は Web 版と同じものを WebView2 で表示します。
+
+| 項目 | 内容 |
+|---|---|
+| 構成 | `ReachForge.exe`（WPF ＋ WebView2）が、同梱のサーバー（`server\ReachForge.Web.exe`）を子プロセスとして `https://localhost:47120` で起動する（外部からは接続できない） |
+| データ | `%LOCALAPPDATA%\ReachForge`：DB（SQLite）・メディア・ログ（14日分）・証明書・設定。アプリを更新・アンインストールしても残る。DB は起動時にマイグレーションで新しい版にそろえる（`ReachForge.Migrations.Sqlite`） |
+| ログイン | 起動ごとに作る秘密の値で、最初に登録した利用者（オーナー）として自動ログインする。初回は登録画面でワークスペースを作る |
+| 常駐 | ウィンドウを閉じてもタスクトレイに残り、予約投稿・指標の取得・受信箱の取り込みを続ける。終了はトレイのメニューから。「Windows の起動時に開始」も選べる |
+| 設定 | トレイの「設定ファイル（API キー）を開く」で `appsettings.user.json` を編集する（生成AI の API キー、SNS アプリの ID・シークレット）。保存するとすぐ反映される。SNS のトークンの暗号鍵は Windows の DPAPI で利用者ごとに保護する |
+| HTTPS | SNS の OAuth は HTTPS のコールバックを求めるため、初回に `localhost` 用の自己署名証明書を作り、アプリの画面だけがこの証明書を信頼する（OS の信頼ストアには入れない） |
+
+SNS アプリに登録するコールバック URL：`https://localhost:47120/api/v1/oauth/callback/<X|Facebook|Instagram|Threads|TikTok|YouTube>`
+（ポートは `desktop.json` の `Port` で変えられるが、変えたら SNS 側の登録も変える）
+
+PC 単体で使えない・制限があるもの：
+
+- Webhook（SNS 側からの通知）は届かないため、受信箱は定期取得（5〜15分ごと）で取り込む。LINE のトーク（Webhook のみ）は取り込めない
+- Instagram・Threads・Facebook・TikTok の写真投稿は、SNS 側が画像を URL から取得するため、外部から届く保存先（`Media:BlobServiceUri` の Azure Blob Storage など）を設定ファイルで指定する必要がある。X・YouTube・TikTok の動画はアップロードするので不要
+- 予約投稿は PC が起動していて ReachForge が動いている間だけ実行される（止まっていた間の分は次の起動時に投稿する）
+- チームでの承認フロー・複数人の同時利用は Web 版を使う
+- SNS 各社がアプリ内の画面（WebView2）での OAuth を拒む場合がある（特に Google）。その場合は Web 版で連携するか、各社の設定を確認する
+
+発行・インストーラー：
+
+```powershell
+pwsh deploy/desktop/publish.ps1 [-FfmpegDir C:\ffmpeg\bin]   # artifacts/desktop/app（.NET を同梱）
+iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 でインストーラーを作る（管理者権限なしで入る）
+```
+
+- CI（`desktop` ジョブ）で Windows 上で発行・インストーラーの作成まで行い、成果物として残す
+- 動画機能には ffmpeg が必要（`-FfmpegDir` で同梱するか、PC に入れて PATH を通す）。WebView2 ランタイムがなければインストーラーが案内する
+- サーバーの起動・自動ログイン・終了・マイグレーションは `tests/ReachForge.Desktop.Tests` で Linux でも確認する（画面の WPF は Windows でのみ動く）
+
 ## リアルタイム通知（RF-DES-001 3.3）
 
 - AI ジョブの段階（待機中 → 生成中 → 確認中 → 完了）と受信箱の更新（新着・対応状況・炎上アラート）は、保存した時点で画面へ届く（Blazor のサーキット＝SignalR）。ナビの未対応件数・クレジット残量もすぐ更新される
@@ -79,7 +114,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - ローカル開発・テストは SQLite（モデルから作成）。本番は `Database:Provider=Postgres` と `ConnectionStrings:ReachForge`
 - スキーマは EF Core マイグレーション（`src/ReachForge.Infrastructure/Persistence/Migrations`）。CI/CD で表の所有者ロールとして適用し（例：`dotnet ef migrations bundle` で作った実行ファイル）、アプリは別ロールで接続する。`Database:MigrateOnStartup=true` で起動時に未適用分を適用することもできる（開発環境向け）
 - テナント分離はアプリのクエリフィルタと RLS の二重化。`TenantId` 列を持つ全表に、接続ごとに設定するセッション変数（`app.tenant_id`／`app.is_system`）と一致する行だけ読み書きできるポリシーを付けている（FORCE で所有者にも適用）。スーパーユーザーと BYPASSRLS のロールは RLS を回避するため、アプリは `deploy/postgres/setup-roles.sql` の `reachforge_app`（NOSUPERUSER・NOBYPASSRLS）で接続する
-- モデルを変えたら `dotnet ef migrations add <名前> -p src/ReachForge.Infrastructure -s src/ReachForge.Infrastructure -o Persistence/Migrations`。新しい表を作るマイグレーションでは `SELECT rf_enable_rls();` を呼ぶ（テストでマイグレーション漏れ・RLS 漏れを検出）
+- モデルを変えたら `dotnet ef migrations add <名前> -p src/ReachForge.Infrastructure -s src/ReachForge.Infrastructure -o Persistence/Migrations`。新しい表を作るマイグレーションでは `SELECT rf_enable_rls();` を呼ぶ（テストでマイグレーション漏れ・RLS 漏れを検出）。Windows 版の SQLite 用も同じ名前で `dotnet ef migrations add <名前> -p src/ReachForge.Migrations.Sqlite -s src/ReachForge.Migrations.Sqlite` で追加する（漏れは ReachForge.Desktop.Tests で検出）
 - PostgreSQL でテストする：`RF_TEST_POSTGRES="Host=…;Username=postgres;Database=postgres" dotnet test`（テストごとに DB を作り、RLS 付き・アプリ専用ロールで実行）
 
 ## ジョブ基盤（RF-DES-001 14章）
@@ -215,14 +250,18 @@ src/
   ReachForge.Domain/          エンティティ・状態遷移・プラットフォーム制約マスタ・ガードレール・クレジット・分析計算（外部依存なし）
   ReachForge.Application/     ユースケース（スタジオ・承認・予約・配信・チャネル・ダッシュボード）、権限マトリクス、AI/SNS の抽象
   ReachForge.AI/              設定駆動モデルルータ（フェイルオーバー・サーキットブレーカー・計量）、プロンプト、投稿文生成・SNS別変換・承認要約
-  ReachForge.Social/          ISocialPublisher アダプタ（現状はモック＋デモ接続）
+  ReachForge.Social/          SNS アダプタ（X / Meta / Threads / LINE / TikTok / YouTube ＋デモ接続）
   ReachForge.Infrastructure/  EF Core（SQLite / PostgreSQL）、テナント分離、デモデータ、ジョブ基盤（Hangfire・Service Bus）
   ReachForge.ServiceDefaults/ OpenTelemetry・ヘルスチェック・HTTP 回復性
   ReachForge.Web/             Blazor Web App（MudBlazor 9）＋ Minimal API（/api/v1）
   ReachForge.Worker/          予約配信・定期ジョブ・キューの処理
+  ReachForge.Migrations.Sqlite/ SQLite 用マイグレーション（Windows 版）
+  ReachForge.Desktop.Host/    Windows 版のサーバー起動・停止・証明書・データフォルダー（OS 非依存）
+  ReachForge.Desktop/         Windows 版の画面（WPF ＋ WebView2・タスクトレイ）
 tests/
   ReachForge.Domain.Tests / ReachForge.Application.Tests（SQLite＋スタブAI＋モックSNSのE2E）/ ReachForge.AI.Tests
   ReachForge.Social.Tests（SNS アダプタの HTTP 検証）/ ReachForge.Web.Tests（認証・権限・Webhook の結合テスト）
+  ReachForge.Desktop.Tests（Windows 版のサーバー起動・自動ログイン）/ ReachForge.E2E.Tests（Playwright・axe）
 ```
 
 依存方向は Domain ← Application ← (AI / Social / Infrastructure) ← (Web / Worker)。外部 AI・SNS はすべてインタフェース越しに利用します。

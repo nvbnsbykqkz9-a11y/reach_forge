@@ -16,6 +16,7 @@ using ReachForge.Web.Components;
 using ReachForge.Web.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddDesktopMode();
 builder.AddServiceDefaults();
 
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
@@ -162,6 +163,7 @@ app.MapInboxEndpoints();
 app.MapCampaignEndpoints();
 app.MapWebhookEndpoints();
 app.MapDefaultEndpoints();
+app.MapDesktopEndpoints();
 app.MapHub<RealtimeHub>(RealtimeHub.Path);
 if (app.Configuration.GetValue<JobEngine>("Jobs:Engine") == JobEngine.Hangfire)
 {

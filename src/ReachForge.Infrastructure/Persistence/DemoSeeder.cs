@@ -80,6 +80,11 @@ public static class DemoSeeder
                 ?.GetValue("Database:MigrateOnStartup", false) == true;
             if (migrate && (await db.Database.GetPendingMigrationsAsync(ct)).Any()) await db.Database.MigrateAsync(ct);
         }
+        else if (scope.ServiceProvider.GetService<IConfiguration>()?.GetValue("Database:SqliteMigrations", false) == true)
+        {
+            // SQLite（Windows 版）：利用者の PC の DB をマイグレーションで新しい版にそろえる（データは残す）
+            await db.Database.MigrateAsync(ct);
+        }
         else
         {
             // SQLite（ローカル開発・テスト）：モデルから作成する
