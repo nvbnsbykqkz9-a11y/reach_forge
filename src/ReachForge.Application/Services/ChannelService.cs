@@ -218,8 +218,26 @@ public sealed class ChannelService(
 
     private IChannelConnector ConnectorFor(SocialPlatform platform) =>
         connectors.FirstOrDefault(c => c.Supports(platform))
-        ?? throw new DomainException(ErrorCodes.Validation,
-            $"{PlatformCatalog.Get(platform).DisplayName}の連携は準備中です（アプリの設定が必要です）。");
+        ?? throw new DomainException(ErrorCodes.Validation, NotConfiguredMessage(platform));
+
+    /// <summary>連携に必要な SNS アプリの設定がないときの案内（どの設定を入れればよいかを示す）。</summary>
+    internal static string NotConfiguredMessage(SocialPlatform platform)
+    {
+        var name = PlatformCatalog.Get(platform).DisplayName;
+        var keys = platform switch
+        {
+            SocialPlatform.X => "Social:X:ClientId と ClientSecret",
+            SocialPlatform.Facebook or SocialPlatform.Instagram => "Social:Meta:AppId と AppSecret",
+            SocialPlatform.Threads => "Social:Threads:AppId と AppSecret",
+            SocialPlatform.TikTok => "Social:TikTok:ClientKey と ClientSecret",
+            SocialPlatform.YouTube => "Social:YouTube:ClientId と ClientSecret",
+            _ => null,
+        };
+        if (keys is null) return $"{name}との連携は今後対応予定です（パートナー承認が必要なため）。";
+        return $"{name}と連携するには、{name}の開発者サイトで作成したアプリの設定（{keys}）が必要です。" +
+               "設定ファイル（Windows 版はトレイの「設定ファイル（API キー）を開く」）に入力して保存し、アプリを再起動してください。" +
+               "動作を試すだけなら Social:UseMock を true にすると、デモ接続（実際には投稿しない）で連携できます。";
+    }
 
     internal static string RandomToken(int bytes) => Base64Url(RandomNumberGenerator.GetBytes(bytes));
 

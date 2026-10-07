@@ -18,7 +18,7 @@ public sealed class DesktopPaths(string root)
     public string Certificate => Path.Combine(Root, "certs", "localhost.pfx");
     public string Settings => Path.Combine(Root, "desktop.json");
 
-    /// <summary>利用者が編集する設定（API キー・SNS アプリの設定など）。アプリが読み込み、変更はすぐ反映される。</summary>
+    /// <summary>利用者が編集する設定（API キー・SNS アプリの設定など）。アプリが起動時に読み込む（変更は再起動で反映）。</summary>
     public string UserConfig => Path.Combine(Root, "appsettings.user.json");
 
     /// <summary>WebView2 のプロファイル（Cookie など）。</summary>
@@ -37,6 +37,7 @@ public sealed class DesktopPaths(string root)
     /// <summary>初回に作る設定ファイルのひな形（値が空の項目は使われない）。</summary>
     public const string UserConfigTemplate = """
         {
+          "Social": { "UseMock": false },
           "AI": {
             "Providers": {
               "anthropic": { "ApiKey": "" },
