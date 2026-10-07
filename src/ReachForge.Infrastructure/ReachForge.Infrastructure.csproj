@@ -23,5 +23,6 @@
     <PackageReference Include="Azure.Storage.Blobs" />
     <!-- QuestPDF は Community License（年商100万USD未満の営利企業・非営利・OSS は無償）。それ以外は商用ライセンスが必要 -->
     <PackageReference Include="QuestPDF" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
 </Project>

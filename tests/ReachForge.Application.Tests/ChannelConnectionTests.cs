@@ -93,7 +93,7 @@ public class ChannelConnectionTests
 
         // DB には平文のトークンを保存しない
         var db = f.Get<IAppDbContext>(scope);
-        var raw = await ((DbContext)db).Database.SqlQueryRaw<string>("SELECT Protected AS Value FROM ChannelSecrets").ToListAsync();
+        var raw = await ((DbContext)db).Database.SqlQueryRaw<string>("SELECT \"Protected\" AS \"Value\" FROM \"ChannelSecrets\"").ToListAsync();
         Assert.DoesNotContain(raw, r => r.Contains("page-token-2"));
 
         var credential = await f.Get<ChannelTokenService>(scope).GetCredentialAsync(channel, CancellationToken.None);

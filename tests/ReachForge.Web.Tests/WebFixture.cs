@@ -14,11 +14,21 @@ public sealed class WebFixture : WebApplicationFactory<Program>
     private readonly string _media = Path.Combine(Path.GetTempPath(), $"rf-web-media-{Guid.NewGuid():N}");
     private readonly Dictionary<string, string?> _settings;
 
+    private readonly string? _pgDatabase;
+
     public WebFixture(Dictionary<string, string?>? overrides = null)
     {
+        // RF_TEST_POSTGRES（管理者の接続文字列）があれば PostgreSQL（RLS 付き・アプリ専用ロール）で実行する
+        string? pg = null;
+        if (Environment.GetEnvironmentVariable("RF_TEST_POSTGRES") is { } admin)
+        {
+            _pgDatabase = $"rf_w_{Guid.NewGuid():N}";
+            pg = PostgresTestDatabase.Create(admin, _pgDatabase);
+        }
         _settings = new Dictionary<string, string?>
         {
-            ["ConnectionStrings:ReachForge"] = $"Data Source={_db}",
+            ["Database:Provider"] = pg is null ? "Sqlite" : "Postgres",
+            ["ConnectionStrings:ReachForge"] = pg ?? $"Data Source={_db}",
             ["Database:SeedDemo"] = "true",
             ["Media:LocalPath"] = _media,
             ["Worker:RunInWeb"] = "false",
@@ -74,6 +84,7 @@ public sealed class WebFixture : WebApplicationFactory<Program>
         SqliteConnection.ClearAllPools();
         if (File.Exists(_db)) File.Delete(_db);
         if (Directory.Exists(_media)) Directory.Delete(_media, recursive: true);
+        if (_pgDatabase is not null) PostgresTestDatabase.Drop(Environment.GetEnvironmentVariable("RF_TEST_POSTGRES")!, _pgDatabase);
     }
 }
 

@@ -46,6 +46,14 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - 外部 ID（Google / Microsoft / Entra External ID）：`Auth:Oidc:<名前>` に Authority・ClientId・ClientSecret を設定すると有効。既存利用者（同じ確認済みメールアドレス）に紐づける
 - 監査ログ：ログイン・ログアウト・MFA 変更・招待・ロール変更・チャネル連携
 
+## データベース（PostgreSQL・行レベルセキュリティ）
+
+- ローカル開発・テストは SQLite（モデルから作成）。本番は `Database:Provider=Postgres` と `ConnectionStrings:ReachForge`
+- スキーマは EF Core マイグレーション（`src/ReachForge.Infrastructure/Persistence/Migrations`）。CI/CD で表の所有者ロールとして適用し（例：`dotnet ef migrations bundle` で作った実行ファイル）、アプリは別ロールで接続する。`Database:MigrateOnStartup=true` で起動時に未適用分を適用することもできる（開発環境向け）
+- テナント分離はアプリのクエリフィルタと RLS の二重化。`TenantId` 列を持つ全表に、接続ごとに設定するセッション変数（`app.tenant_id`／`app.is_system`）と一致する行だけ読み書きできるポリシーを付けている（FORCE で所有者にも適用）。スーパーユーザーと BYPASSRLS のロールは RLS を回避するため、アプリは `deploy/postgres/setup-roles.sql` の `reachforge_app`（NOSUPERUSER・NOBYPASSRLS）で接続する
+- モデルを変えたら `dotnet ef migrations add <名前> -p src/ReachForge.Infrastructure -s src/ReachForge.Infrastructure -o Persistence/Migrations`。新しい表を作るマイグレーションでは `SELECT rf_enable_rls();` を呼ぶ（テストでマイグレーション漏れ・RLS 漏れを検出）
+- PostgreSQL でテストする：`RF_TEST_POSTGRES="Host=…;Username=postgres;Database=postgres" dotnet test`（テストごとに DB を作り、RLS 付き・アプリ専用ロールで実行）
+
 ## 外部連携 API（RF-DES-001 13章）
 
 - 認証：ログイン（Cookie）または API キー。キーは「設定 → API キー」でオーナー・管理者が発行（権限は編集者／承認者／返信担当／閲覧者から選択、有効期限つき、本体は一度だけ表示・DB にはハッシュのみ）。`Authorization: Bearer rfk_…` または `X-Api-Key: rfk_…`。キーは `/api/v1` 以外（画面）では使えない
@@ -193,6 +201,5 @@ tests/
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 生成 AI 動画（F-05 ①②）・BGM、C2PA 署名、参照画像の編集（背景差替・不要物除去）、X の動画投稿
 3. Hangfire ＋ Service Bus へのジョブ移行（PublishJob / MetricsCollectJob / TokenRefreshJob など）
-4. PostgreSQL のマイグレーションと RLS
-5. プロンプトのDB管理・AI Evals・SignalR による進捗通知
-6. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査
+4. プロンプトのDB管理・AI Evals・SignalR による進捗通知
+5. .NET Aspire AppHost、Playwright＋axe-core の E2E / アクセシビリティ自動検査

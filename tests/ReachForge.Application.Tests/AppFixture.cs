@@ -6,6 +6,7 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure;
 using ReachForge.Infrastructure.Persistence;
+using ReachForge.Tests;
 
 namespace ReachForge.Application.Tests;
 
@@ -21,12 +22,25 @@ public sealed class AppFixture : IAsyncDisposable
     /// <summary>テスト中に記録されたエラーログ。</summary>
     public CapturingLoggerProvider Logs { get; } = new();
 
+    /// <summary>
+    /// 環境変数 RF_TEST_POSTGRES（管理者の接続文字列）があれば PostgreSQL で実行する。テストごとに DB を作り、
+    /// 所有者としてマイグレーション（RLS を含む）を適用し、アプリは RLS を回避できない専用ロール rf_app で接続する。
+    /// </summary>
+    public static string? PostgresAdmin => Environment.GetEnvironmentVariable("RF_TEST_POSTGRES");
+    private string? _pgDatabase;
+    public string? PostgresAppConnection { get; private set; }
+
     private AppFixture(Dictionary<string, string?>? overrides, Action<IServiceCollection>? configure, bool prependConnector)
     {
+        if (PostgresAdmin is { } admin)
+        {
+            _pgDatabase = $"rf_t_{Guid.NewGuid():N}";
+            PostgresAppConnection = PostgresTestDatabase.Create(admin, _pgDatabase);
+        }
         var settings = new Dictionary<string, string?>
         {
-            ["Database:Provider"] = "Sqlite",
-            ["ConnectionStrings:ReachForge"] = $"Data Source={_dbPath}",
+            ["Database:Provider"] = PostgresAppConnection is null ? "Sqlite" : "Postgres",
+            ["ConnectionStrings:ReachForge"] = PostgresAppConnection ?? $"Data Source={_dbPath}",
             ["AI:Providers:local:Type"] = "Stub",
             ["AI:Routes:Default:0"] = "local",
             ["Social:UseMock"] = "true",
@@ -74,6 +88,7 @@ public sealed class AppFixture : IAsyncDisposable
     {
         await Services.DisposeAsync();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        if (_pgDatabase is not null) PostgresTestDatabase.Drop(PostgresAdmin!, _pgDatabase);
         if (Directory.Exists(MediaPath)) Directory.Delete(MediaPath, recursive: true);
         foreach (var f in new[] { _dbPath, _dbPath + "-wal", _dbPath + "-shm" })
         {

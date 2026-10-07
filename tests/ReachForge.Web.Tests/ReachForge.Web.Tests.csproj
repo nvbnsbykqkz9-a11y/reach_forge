@@ -13,6 +13,10 @@
     <ProjectReference Include="..\..\src\ReachForge.Web\ReachForge.Web.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\ReachForge.Application.Tests\PostgresTestDatabase.cs" Link="PostgresTestDatabase.cs" />
+  </ItemGroup>
+  <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="ReachForge.Tests" />
   </ItemGroup>
 </Project>

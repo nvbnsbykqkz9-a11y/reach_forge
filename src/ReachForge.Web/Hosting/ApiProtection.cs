@@ -146,9 +146,10 @@ public sealed class IdempotencyMiddleware(RequestDelegate next, DbContextOptions
         }
         catch (DbUpdateException)
         {
-            // 同時に同じキーで来た（一意制約）
+            // 同時に同じキーで来た（一意制約）。それ以外の保存エラーはそのまま投げる
             db.ChangeTracker.Clear();
-            var other = await db.IdempotencyRecords.AsNoTracking().FirstAsync(r => r.Scope == scope && r.Key == key, http.RequestAborted);
+            var other = await db.IdempotencyRecords.AsNoTracking().FirstOrDefaultAsync(r => r.Scope == scope && r.Key == key, http.RequestAborted);
+            if (other is null) throw;
             await ReplayAsync(http, other, hash);
             return;
         }

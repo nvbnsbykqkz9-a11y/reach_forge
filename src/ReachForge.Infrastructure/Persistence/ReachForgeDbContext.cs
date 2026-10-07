@@ -63,6 +63,17 @@ public sealed class ReachForgeDbContext(
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
+    /// <summary>RLS のセッション変数に設定する値（TenantSessionInterceptor が使う）。</summary>
+    internal (Guid TenantId, bool IsSystem) SessionTenant => (tenant.IsSystem ? Guid.Empty : tenant.TenantId, tenant.IsSystem);
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    {
+        if (optionsBuilder.Options.Extensions.Any(e => e.GetType().Name.StartsWith("Npgsql", StringComparison.Ordinal)))
+        {
+            optionsBuilder.AddInterceptors(TenantSessionInterceptor.Instance);
+        }
+    }
+
     // グローバルクエリフィルタから参照する（要求ごとに評価される）
     private Guid CurrentTenantId => tenant.TenantId;
     private bool IsSystem => tenant.IsSystem;
@@ -74,6 +85,10 @@ public sealed class ReachForgeDbContext(
             // SQLite は DateTimeOffset の比較・並べ替えができないため、バイナリ表現（UTC tick）で保存する
             builder.Properties<DateTimeOffset>().HaveConversion<DateTimeOffsetToBinaryConverter>();
             builder.Properties<decimal>().HaveConversion<double>();
+        }
+        else if (Database.IsNpgsql())
+        {
+            builder.Properties<DateTimeOffset>().HaveConversion<UtcDateTimeOffsetConverter>();
         }
     }
 
@@ -168,7 +183,7 @@ public sealed class ReachForgeDbContext(
             e.HasIndex(x => new { x.Scope, x.Key }).IsUnique();
             e.HasIndex(x => x.CreatedAt);
             e.Property(x => x.Key).HasMaxLength(128);
-            e.Property(x => x.Scope).HasMaxLength(64);
+            e.Property(x => x.Scope).HasMaxLength(100);
         });
         b.Entity<Campaign>().HasIndex(x => new { x.WorkspaceId, x.Code }).IsUnique();
     }

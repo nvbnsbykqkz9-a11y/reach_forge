@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Credits;
@@ -37,14 +38,25 @@ public static class DemoSeeder
         var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
         await using var db = new ReachForgeDbContext(options, new MutableTenantContext { IsSystem = true }, null, clock);
 
-        // TODO: 本番（PostgreSQL）は EF Core マイグレーション（Expand → Migrate → Contract）で管理する
-        await db.Database.EnsureCreatedAsync(ct);
-        if (seed && !await SchemaIsCurrentAsync(db, ct))
+        if (db.Database.IsNpgsql())
         {
-            // 開発用 DB（デモデータ）のみ：スキーマが古ければ作り直す。本番はマイグレーションで更新する
-            await db.Database.EnsureDeletedAsync(ct);
+            // PostgreSQL（本番）：EF Core マイグレーション（Expand → Migrate → Contract）。RLS もマイグレーションで適用する。
+            // 本番は CI/CD でマイグレーション（所有者ロール）を実行し、アプリは RLS を回避できない専用ロールで接続する
+            var migrate = seed || scope.ServiceProvider.GetService<IConfiguration>()
+                ?.GetValue("Database:MigrateOnStartup", false) == true;
+            if (migrate && (await db.Database.GetPendingMigrationsAsync(ct)).Any()) await db.Database.MigrateAsync(ct);
+        }
+        else
+        {
+            // SQLite（ローカル開発・テスト）：モデルから作成する
             await db.Database.EnsureCreatedAsync(ct);
-            await SchemaIsCurrentAsync(db, ct); // 新しいハッシュを記録する
+            if (seed && !await SchemaIsCurrentAsync(db, ct))
+            {
+                // 開発用 DB（デモデータ）のみ：スキーマが古ければ作り直す
+                await db.Database.EnsureDeletedAsync(ct);
+                await db.Database.EnsureCreatedAsync(ct);
+                await SchemaIsCurrentAsync(db, ct); // 新しいハッシュを記録する
+            }
         }
         if (!seed || await db.Tenants.AnyAsync(ct)) return;
 
