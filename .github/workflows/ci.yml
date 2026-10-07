@@ -12,13 +12,6 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_PASSWORD: postgres
-        ports: ["5432:5432"]
-        options: >-
-          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7
         ports: ["6379:6379"]
@@ -32,14 +25,10 @@ jobs:
       - run: dotnet build -c Release
       - name: Install Playwright Chromium (E2E・アクセシビリティ検査)
         run: pwsh tests/ReachForge.E2E.Tests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
-      - name: Test (SQLite)
+      - name: Test
         env:
           RF_TEST_REDIS: 127.0.0.1:6379
         run: dotnet test -c Release --no-build
-      - name: Test (PostgreSQL + RLS)
-        env:
-          RF_TEST_POSTGRES: Host=127.0.0.1;Port=5432;Username=postgres;Password=postgres;Database=postgres
-        run: dotnet test -c Release --no-build --project tests/ReachForge.Application.Tests
 
   # Windows 版（PC 単体）：発行してインストーラーを作り、成果物として残す
   desktop:

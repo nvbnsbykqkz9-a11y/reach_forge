@@ -30,40 +30,9 @@ public static class DemoSeeder
         ("viewer@example.com", "鈴木", Role.Viewer),
     ];
 
-    /// <summary>DB を作成し、空ならデモデータを投入する。</summary>
-    /// <summary>起動時の初期化（マイグレーション・プロンプトの初期版・デモデータ）を同時に行わないためのロックの番号。</summary>
-    public const long InitializationLockKey = 0x52_46_49_4E_49_54; // "RFINIT"
-
-    /// <summary>
-    /// DB の初期化。PostgreSQL では Web・Worker・複数のインスタンスが同時に起動しても1つずつ行うよう、
-    /// アドバイザリロック（pg_advisory_lock）を取ってから行う（同時にマイグレーションすると履歴表の重複で失敗するため）。
-    /// </summary>
-    public static async Task InitializeAsync(IServiceProvider services, bool seed, CancellationToken ct = default)
-    {
-        var options = services.GetRequiredService<DbContextOptions<ReachForgeDbContext>>();
-        var extension = options.Extensions.OfType<Microsoft.EntityFrameworkCore.Infrastructure.RelationalOptionsExtension>().FirstOrDefault();
-        if (extension?.ConnectionString is not { } connectionString || !options.Extensions.Any(e => e.GetType().Name.StartsWith("Npgsql", StringComparison.Ordinal)))
-        {
-            await InitializeCoreAsync(services, seed, ct);
-            return;
-        }
-
-        await using var lockConnection = new Npgsql.NpgsqlConnection(connectionString);
-        await lockConnection.OpenAsync(ct);
-        await using (var acquire = new Npgsql.NpgsqlCommand($"SELECT pg_advisory_lock({InitializationLockKey})", lockConnection))
-        {
-            await acquire.ExecuteNonQueryAsync(ct);
-        }
-        try
-        {
-            await InitializeCoreAsync(services, seed, ct);
-        }
-        finally
-        {
-            await using var release = new Npgsql.NpgsqlCommand($"SELECT pg_advisory_unlock({InitializationLockKey})", lockConnection);
-            await release.ExecuteNonQueryAsync(CancellationToken.None);
-        }
-    }
+    /// <summary>DB を作成（または新しい版にそろえ）、空ならデモデータを投入する。</summary>
+    public static Task InitializeAsync(IServiceProvider services, bool seed, CancellationToken ct = default) =>
+        InitializeCoreAsync(services, seed, ct);
 
     private static async Task InitializeCoreAsync(IServiceProvider services, bool seed, CancellationToken ct)
     {
@@ -72,15 +41,7 @@ public static class DemoSeeder
         var clock = scope.ServiceProvider.GetRequiredService<TimeProvider>();
         await using var db = new ReachForgeDbContext(options, new MutableTenantContext { IsSystem = true }, null, clock);
 
-        if (db.Database.IsNpgsql())
-        {
-            // PostgreSQL（本番）：EF Core マイグレーション（Expand → Migrate → Contract）。RLS もマイグレーションで適用する。
-            // 本番は CI/CD でマイグレーション（所有者ロール）を実行し、アプリは RLS を回避できない専用ロールで接続する
-            var migrate = seed || scope.ServiceProvider.GetService<IConfiguration>()
-                ?.GetValue("Database:MigrateOnStartup", false) == true;
-            if (migrate && (await db.Database.GetPendingMigrationsAsync(ct)).Any()) await db.Database.MigrateAsync(ct);
-        }
-        else if (scope.ServiceProvider.GetService<IConfiguration>()?.GetValue("Database:SqliteMigrations", false) == true)
+        if (scope.ServiceProvider.GetService<IConfiguration>()?.GetValue("Database:SqliteMigrations", false) == true)
         {
             // SQLite（Windows 版）：利用者の PC の DB をマイグレーションで新しい版にそろえる（データは残す）
             await db.Database.MigrateAsync(ct);
@@ -97,13 +58,10 @@ public static class DemoSeeder
                 await SchemaIsCurrentAsync(db, ct); // 新しいハッシュを記録する
             }
         }
-        // プロンプトの初期版（コードの既定テンプレート）を登録する。マイグレーションが未適用なら次回に回す
-        if (!db.Database.IsNpgsql() || !(await db.Database.GetPendingMigrationsAsync(ct)).Any())
-        {
-            await new Prompts.PromptAdminService(options, scope.ServiceProvider.GetService<Prompts.DbPromptStore>()
-                ?? new Prompts.DbPromptStore(options, new Microsoft.Extensions.Caching.Memory.MemoryCache(
-                    new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), clock), clock).EnsureSeededAsync(ct);
-        }
+        // プロンプトの初期版（コードの既定テンプレート）を登録する
+        await new Prompts.PromptAdminService(options, scope.ServiceProvider.GetService<Prompts.DbPromptStore>()
+            ?? new Prompts.DbPromptStore(options, new Microsoft.Extensions.Caching.Memory.MemoryCache(
+                new Microsoft.Extensions.Caching.Memory.MemoryCacheOptions()), clock), clock).EnsureSeededAsync(ct);
         if (!seed) return;
         if (!await db.Tenants.AnyAsync(ct)) await SeedAsync(db, clock.GetUtcNow(), ct);
 

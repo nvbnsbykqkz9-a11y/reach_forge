@@ -49,7 +49,7 @@ public static class SystemJobCatalog
             var r = await sp.GetRequiredService<DataRetentionService>().PurgeAsync(ct);
             return r.Total > 0
                 ? $"deleted {r.Idempotency} idempotency, {r.AuditLogs} audit, {r.AiJobs} AI job, {r.TrendIdeas} idea, {r.Invitations} invitation row(s); "
-                  + $"rolled up {r.PostMetricsRolledUp} post metric(s); partitions +{r.PartitionsCreated}/-{r.PartitionsDropped}"
+                  + $"rolled up {r.PostMetricsRolledUp} post metric(s)"
                 : null;
         }),
     ];

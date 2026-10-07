@@ -1,7 +1,6 @@
 using Hangfire;
 using Hangfire.Common;
 using Hangfire.InMemory;
-using Hangfire.PostgreSql;
 using Hangfire.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -90,8 +89,7 @@ public static class HangfireSetup
     private static bool s_filterAdded;
 
     /// <summary>
-    /// Hangfire のストレージを登録する。PostgreSQL 利用時は同じ DB の <c>hangfire</c> スキーマ、それ以外はメモリ
-    /// （プロセス間で共有されないため、Web と Worker を分ける構成では PostgreSQL を使う）。
+    /// Hangfire のストレージを登録する（メモリ。プロセス間で共有されないため、ジョブは1つのプロセスで動かす）。
     /// </summary>
     /// <param name="server">このプロセスでジョブを実行する（Worker）。false はダッシュボード表示だけ（Web）。</param>
     public static IServiceCollection AddReachForgeHangfire(this IServiceCollection services, IConfiguration configuration, bool server)
@@ -111,19 +109,7 @@ public static class HangfireSetup
             c.SetDataCompatibilityLevel(CompatibilityLevel.Version_180)
                 .UseSimpleAssemblyNameTypeSerializer()
                 .UseRecommendedSerializerSettings();
-            if (string.Equals(configuration["Database:Provider"], "Postgres", StringComparison.OrdinalIgnoreCase))
-            {
-                var connection = configuration.GetConnectionString("Hangfire") ?? configuration.GetConnectionString("ReachForge");
-                c.UsePostgreSqlStorage(o => o.UseNpgsqlConnection(connection), new PostgreSqlStorageOptions
-                {
-                    SchemaName = options.Hangfire.Schema,
-                    PrepareSchemaIfNecessary = options.Hangfire.PrepareSchema,
-                });
-            }
-            else
-            {
-                c.UseInMemoryStorage(new InMemoryStorageOptions { MaxExpirationTime = TimeSpan.FromHours(6) });
-            }
+            c.UseInMemoryStorage(new InMemoryStorageOptions { MaxExpirationTime = TimeSpan.FromHours(6) });
         });
         if (server)
         {

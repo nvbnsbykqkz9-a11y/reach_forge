@@ -91,7 +91,7 @@ iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 �
 
 - AI ジョブの段階（待機中 → 生成中 → 確認中 → 完了）と受信箱の更新（新着・対応状況・炎上アラート）は、保存した時点で画面へ届く（Blazor のサーキット＝SignalR）。ナビの未対応件数・クレジット残量もすぐ更新される
 - Web と Worker を分ける構成では `ConnectionStrings:Redis` を設定すると、Redis の Pub/Sub で Worker の出来事が全 Web インスタンスへ届く。未設定でも画面は数秒〜30秒ごとの読み直しで追いつく
-- 外部クライアント向けに SignalR Hub `/hubs/realtime`（ログインまたは API キー。WebSocket は `access_token` クエリ）を用意。メソッド `jobProgress` / `inboxUpdated` で、自分のワークスペースの出来事だけを受け取る
+- 外部クライアント向けに SignalR Hub `/hubs/realtime`（ログインした利用者のみ）を用意。メソッド `jobProgress` / `inboxUpdated` で、自分のワークスペースの出来事だけを受け取る
 - テスト：`RF_TEST_REDIS=127.0.0.1:6379 dotnet test` で Redis 経由の配信も確認する
 
 ## プロンプト管理・AI Evals（RF-DES-001 4.5・4.6）
@@ -102,13 +102,6 @@ iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 �
   - CLI：`dotnet run --project src/ReachForge.AI.Evals -- [--cases 50] [--prompt-file draft.sbn] [--out report.md]`（不合格なら終了コード 1）。モデルは `AI__Providers__…`／`AI__Routes__Copy__0`・`AI__Routes__Judge__0` で指定。未設定ならスタブで、評価の仕組みだけを確認する（スタブは指示をそのまま書くため不合格になる）
   - CI（`.github/workflows/ci.yml`）：AI・プロンプト・設定を変えたコミットで、`ANTHROPIC_API_KEY` などのシークレットがあれば実モデルで評価してレポートを残す
   - 管理画面の「評価する」は copy.generate・common.safety・judge.brand_fit が対象（既定 20 ケース。AI の利用料がかかる）
-
-## .NET Aspire（ローカルの一括起動）
-
-- `dotnet run --project src/ReachForge.AppHost`：PostgreSQL・Redis（コンテナ）と Web・Worker をまとめて起動し、Aspire ダッシュボードでログ・トレース・メトリクスを確認する（Docker または Podman が必要）。Web・Worker は PostgreSQL（起動時マイグレーション）・Hangfire・Redis のリアルタイム通知で動く
-- `-- --UseServiceBus=true` で Azure Service Bus エミュレーター（`webhooks`・`ai-jobs` キュー）も起動し、キューを Service Bus に切り替える
-- ローカルの PostgreSQL は管理者ロールで接続するため行レベルセキュリティは効かない（RLS の確認は `RF_TEST_POSTGRES` のテストで行う）
-- 起動時の初期化（マイグレーション・デモデータ）は PostgreSQL のアドバイザリロックで1プロセスずつ行う（Web と Worker の同時起動で競合しない）
 
 ## E2E・アクセシビリティ検査
 
@@ -124,28 +117,27 @@ iscc deploy/desktop/ReachForge.iss                             # Inno Setup 6 �
 - 外部 ID（Google / Microsoft / Entra External ID）：`Auth:Oidc:<名前>` に Authority・ClientId・ClientSecret を設定すると有効。既存利用者（同じ確認済みメールアドレス）に紐づける
 - 監査ログ：ログイン・ログアウト・MFA 変更・招待・ロール変更・チャネル連携
 
-## データベース（PostgreSQL・行レベルセキュリティ）
+## データベース（SQLite）
 
-- ローカル開発・テストは SQLite（モデルから作成）。本番は `Database:Provider=Postgres` と `ConnectionStrings:ReachForge`
-- スキーマは EF Core マイグレーション（`src/ReachForge.Infrastructure/Persistence/Migrations`）。CI/CD で表の所有者ロールとして適用し（例：`dotnet ef migrations bundle` で作った実行ファイル）、アプリは別ロールで接続する。`Database:MigrateOnStartup=true` で起動時に未適用分を適用することもできる（開発環境向け）
-- テナント分離はアプリのクエリフィルタと RLS の二重化。`TenantId` 列を持つ全表に、接続ごとに設定するセッション変数（`app.tenant_id`／`app.is_system`）と一致する行だけ読み書きできるポリシーを付けている（FORCE で所有者にも適用）。スーパーユーザーと BYPASSRLS のロールは RLS を回避するため、アプリは `deploy/postgres/setup-roles.sql` の `reachforge_app`（NOSUPERUSER・NOBYPASSRLS）で接続する
-- モデルを変えたら `dotnet ef migrations add <名前> -p src/ReachForge.Infrastructure -s src/ReachForge.Infrastructure -o Persistence/Migrations`。新しい表を作るマイグレーションでは `SELECT rf_enable_rls();` を呼ぶ（テストでマイグレーション漏れ・RLS 漏れを検出）。Windows 版の SQLite 用も同じ名前で `dotnet ef migrations add <名前> -p src/ReachForge.Migrations.Sqlite -s src/ReachForge.Migrations.Sqlite` で追加する（漏れは ReachForge.Desktop.Tests で検出）
-- PostgreSQL でテストする：`RF_TEST_POSTGRES="Host=…;Username=postgres;Database=postgres" dotnet test`（テストごとに DB を作り、RLS 付き・アプリ専用ロールで実行）
+- DB は SQLite だけを使う（Windows 版・1社で使う前提）。接続は `ConnectionStrings:ReachForge`（既定 `Data Source=reachforge.local.db`）
+- Windows 版は EF Core マイグレーション（`src/ReachForge.Migrations.Sqlite`）で、利用者の PC の DB を新しい版にそろえる（データは残す）。開発・テストはモデルから作成し、スキーマが変わったらデモ用 DB を作り直す
+- モデルを変えたら `dotnet ef migrations add <名前> -p src/ReachForge.Migrations.Sqlite -s src/ReachForge.Migrations.Sqlite -o Migrations` で追加する（漏れは ReachForge.Desktop.Tests で検出）
+- テナント・ワークスペースの分離はアプリのクエリフィルタで行う
 
 ## ジョブ基盤（RF-DES-001 14章）
 
 - 定期ジョブ：TokenRefreshJob（03:00）、MetricsCollectJob（15分ごと。アカウント指標は1日1回）、Weekly／MonthlyReportJob、InboxPollJob（毎分確認・チャネルごとに5〜15分）、A/B 判定、TrendResearchJob、CreditResetJob（毎月1日 00:00・テナントのタイムゾーン）、DataRetentionJob（02:00）。時刻は `Jobs:TimeZone`（既定 Asia/Tokyo）。一覧と再試行回数は `SystemJobCatalog`
-- 実行エンジン `Jobs:Engine`：`Hosted`（既定。プロセス内のタイマー）／`Hangfire`（PostgreSQL の `hangfire` スキーマ。複数 Worker でも1回だけ実行、14章の回数で再試行、失敗は残して運用者が再実行）。Hangfire は LGPL v3（改変せずに参照する限り商用利用可）
+- 実行エンジン `Jobs:Engine`：`Hosted`（既定。プロセス内のタイマー）／`Hangfire`（メモリのストレージ。14章の回数で再試行、失敗は運用者が再実行）。Hangfire は LGPL v3（改変せずに参照する限り商用利用可）
 - キュー `Jobs:Queue`：`InProcess`（既定）／`ServiceBus`（`webhooks`・`ai-jobs` キュー、5回失敗でデッドレター）。Webhook は Web で受けてキューへ渡し、Worker が取り込む。AI ジョブは保存後にキューで通知し、届かなかった分は巡回（`Jobs:AiSweepSeconds`）で拾う。Service Bus は `Jobs:ServiceBus:FullyQualifiedNamespace`（マネージド ID）か `ConnectionString`。`CreateQueues=true` で起動時にキューを作成
 - 予約配信（PublishJob）は ±60 秒の精度が要るため、どちらのエンジンでも Worker の短い間隔の巡回＋楽観排他で実行する
 - 運用管理（`/ops`）：`Ops:Operators` に書いたメールアドレスの利用者だけが見られる。定期ジョブの一覧、デッドレターの確認・再投入、Hangfire の実行履歴（`/ops/jobs`）
 - データ保存期限：Idempotency-Key 24時間、監査ログ2年、終了した AI ジョブ・使用済み／見送りのネタ・期限切れ招待 90日
-- 投稿指標（PostMetrics）：PostgreSQL では取得日時（`CapturedAt`）で月ごとにパーティション分割する。DataRetentionJob が3か月先までのパーティションを作り、13か月より前の明細を投稿×月の集計（`PostMetricRollups`、その月の最後の値）へ移して削除し、空になったパーティションを削除する（所有者権限の関数 `rf_ensure_post_metric_partitions`／`rf_drop_post_metric_partitions` を使うため、アプリ用ロールに CREATE 権限は不要）。分析は明細のない古い投稿を集計の値で表示する
+- 投稿指標（PostMetrics）：DataRetentionJob が13か月より前の明細を投稿×月の集計（`PostMetricRollups`、その月の最後の値）へ移して削除する
 
-## 外部連携 API（RF-DES-001 13章）
+## アクセスの保護
 
-- 認証：ログイン（Cookie）または API キー。キーは「設定 → API キー」でオーナー・管理者が発行（権限は編集者／承認者／返信担当／閲覧者から選択、有効期限つき、本体は一度だけ表示・DB にはハッシュのみ）。`Authorization: Bearer rfk_…` または `X-Api-Key: rfk_…`。キーは `/api/v1` 以外（画面）では使えない
-- レート制限：テナント単位 600 回/分、AI 生成系（投稿文・SNS 別変換・画像・レポート・返信案・A/B）60 回/分、ログイン前の POST（ログイン・パスワード再設定など）は IP 単位 20 回/分。超過時は 429・`Retry-After`。設定は `RateLimits:*`（複数インスタンスでは Front Door / API Management でも制限する）
+- 外部連携用の REST API と API キーは廃止し、操作は画面（ログイン）からだけ行う。`/api/v1` に残るのは SNS・広告アカウントの連携の戻り先（OAuth コールバック）、Webhook、メディアの配信
+- レート制限：テナント単位 600 回/分、AI 生成系 60 回/分、ログイン前の POST（ログイン・パスワード再設定など）は IP 単位 20 回/分。超過時は 429・`Retry-After`。設定は `RateLimits:*`（複数インスタンスでは Front Door / API Management でも制限する）
 - 冪等性：POST に `Idempotency-Key` を付けると、同じキーの再送には最初の応答を返す（`Idempotent-Replayed: true`、24時間保持）。内容の違う再送は 422、処理中は 409、5xx は保存しない
 - パスワード再設定：ログイン画面の「パスワードを忘れた場合」からメールで再設定（1時間・1回限り、登録の有無は表示しない）。ロック時・パスワード変更時・招待時にメールで通知
 
@@ -178,7 +170,7 @@ dotnet test   # xUnit v3（Microsoft.Testing.Platform）
 
 ## つくる（SNS ごと）・有料広告
 
-左のメニューの「つくる」に SNS（Instagram・X・Facebook・Threads・TikTok・YouTube・LINE）が並び、SNS ごとの画面（`/create/<sns>`）で「投稿をつくる」「広告を出す」を選びます。初心者向けに、1画面ではやることを1つにし、手順を番号で示します。予定（カレンダー）・承認キュー・分析・メンバー・API キーの画面はメニューから外しました（投稿は承認なしで「今すぐ投稿」）。
+左のメニューの「つくる」に SNS（Instagram・X・Facebook・Threads・TikTok・YouTube・LINE）が並び、SNS ごとの画面（`/create/<sns>`）で「投稿をつくる」「広告を出す」を選びます。初心者向けに、1画面ではやることを1つにし、手順を番号で示します。予定（カレンダー）・承認キュー・分析・メンバー・API キーの画面は削除しました（投稿は承認なしで「今すぐ投稿」）。
 
 - **投稿をつくる**：伝えたいこと → 画像・動画（写真・AI 画像・AI 動画・LP から動画）→ AI の文章（3案、SNS 向けに自動で整える）→ 確認して今すぐ投稿
 - **広告を出す**：目的（サイトに来てほしい／知ってほしい／動画を見てほしい）→ 画像・動画 → AI の広告文（各社の文字数の上限に合わせた3案、ガードレール付き）→ だれに（日本全国・年齢・性別）・いくら（1日の予算・期間、最大の広告費を表示）→ 請求の確認のチェック → 出稿。出した広告は状態（審査中・配信中・一時停止中・終了・承認されませんでした）と成果（表示回数・クリック・使った金額）を表示し、一時停止・再開できる（30分ごとに各社から読み直す `ad-sync` ジョブ）
@@ -304,7 +296,7 @@ src/
   ReachForge.Application/     ユースケース（スタジオ・承認・予約・配信・チャネル・ダッシュボード）、権限マトリクス、AI/SNS の抽象
   ReachForge.AI/              設定駆動モデルルータ（フェイルオーバー・サーキットブレーカー・計量）、プロンプト、投稿文生成・SNS別変換・承認要約
   ReachForge.Social/          SNS アダプタ（X / Meta / Threads / LINE / TikTok / YouTube ＋デモ接続）
-  ReachForge.Infrastructure/  EF Core（SQLite / PostgreSQL）、テナント分離、デモデータ、ジョブ基盤（Hangfire・Service Bus）
+  ReachForge.Infrastructure/  EF Core（SQLite）、テナント分離、デモデータ、ジョブ基盤（Hangfire・Service Bus）
   ReachForge.ServiceDefaults/ OpenTelemetry・ヘルスチェック・HTTP 回復性
   ReachForge.Web/             Blazor Web App（MudBlazor 9）＋ Minimal API（/api/v1）
   ReachForge.Worker/          予約配信・定期ジョブ・キューの処理
@@ -343,4 +335,4 @@ Blazor Server の DI スコープはサーキット（タブを開いている�
 
 1. 実アカウントでの SNS 接続確認（各社アプリ審査：Meta App Review など）と、SNS 契約テスト（日次）
 2. 実際の Veo・Sora・c2patool（署名証明書）での動作確認
-3. 実環境での Hangfire（PostgreSQL）・Service Bus の負荷確認
+3. 実環境での Hangfire・Service Bus の負荷確認

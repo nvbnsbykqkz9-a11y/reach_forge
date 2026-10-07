@@ -6,7 +6,6 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
-    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.EntityFrameworkCore" />
@@ -16,7 +15,6 @@
     <PackageReference Include="Azure.Identity" />
     <!-- ジョブ基盤（14章）：Hangfire（LGPL v3。DLL を改変せずに参照する限り商用利用可）と Azure Service Bus -->
     <PackageReference Include="Hangfire.NetCore" />
-    <PackageReference Include="Hangfire.PostgreSql" />
     <PackageReference Include="Hangfire.InMemory" />
     <PackageReference Include="Cronos" />
     <PackageReference Include="Newtonsoft.Json" />

@@ -18,8 +18,7 @@ using ReachForge.Infrastructure.Security;
 namespace ReachForge.Infrastructure.Persistence;
 
 /// <summary>
-/// EF Core のコンテキスト。テナント分離はグローバルクエリフィルタで担保する
-/// （本番の PostgreSQL では行レベルセキュリティ（RLS）と二重化する：RF-DES-001 6.2）。
+/// EF Core のコンテキスト（SQLite）。テナント分離はグローバルクエリフィルタで担保する。
 /// </summary>
 public sealed class ReachForgeDbContext(
     DbContextOptions<ReachForgeDbContext> options,
@@ -69,33 +68,15 @@ public sealed class ReachForgeDbContext(
     /// <summary>Data Protection の鍵（Web・Worker で共有。本番は Key Vault の鍵で保護する）。</summary>
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
-    /// <summary>RLS のセッション変数に設定する値（TenantSessionInterceptor が使う）。</summary>
-    internal (Guid TenantId, bool IsSystem) SessionTenant => (tenant.IsSystem ? Guid.Empty : tenant.TenantId, tenant.IsSystem);
-
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-    {
-        if (optionsBuilder.Options.Extensions.Any(e => e.GetType().Name.StartsWith("Npgsql", StringComparison.Ordinal)))
-        {
-            optionsBuilder.AddInterceptors(TenantSessionInterceptor.Instance);
-        }
-    }
-
     // グローバルクエリフィルタから参照する（要求ごとに評価される）
     private Guid CurrentTenantId => tenant.TenantId;
     private bool IsSystem => tenant.IsSystem;
 
     protected override void ConfigureConventions(ModelConfigurationBuilder builder)
     {
-        if (Database.IsSqlite())
-        {
-            // SQLite は DateTimeOffset の比較・並べ替えができないため、バイナリ表現（UTC tick）で保存する
-            builder.Properties<DateTimeOffset>().HaveConversion<DateTimeOffsetToBinaryConverter>();
-            builder.Properties<decimal>().HaveConversion<double>();
-        }
-        else if (Database.IsNpgsql())
-        {
-            builder.Properties<DateTimeOffset>().HaveConversion<UtcDateTimeOffsetConverter>();
-        }
+        // SQLite は DateTimeOffset の比較・並べ替えができないため、バイナリ表現（UTC tick）で保存する
+        builder.Properties<DateTimeOffset>().HaveConversion<DateTimeOffsetToBinaryConverter>();
+        builder.Properties<decimal>().HaveConversion<double>();
     }
 
     protected override void OnModelCreating(ModelBuilder b)

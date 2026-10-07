@@ -168,29 +168,6 @@ public class JobTests
     }
 
     [Fact]
-    public async Task Postgres_post_metrics_are_partitioned_by_month()
-    {
-        Assert.SkipWhen(AppFixture.PostgresAdmin is null, "RF_TEST_POSTGRES が未設定");
-        await using var f = await AppFixture.CreateAsync();
-        await using var worker = f.Scope(c => c.IsSystem = true);
-        var db = f.Get<ReachForgeDbContext>(worker);
-        var kind = await db.Database.SqlQueryRaw<string>("SELECT c.relkind::text AS \"Value\" FROM pg_class c WHERE c.relname = 'PostMetrics'").SingleAsync();
-        Assert.Equal("p", kind); // partitioned table
-
-        async Task<List<string>> PartitionsAsync() => await db.Database.SqlQueryRaw<string>(
-            "SELECT c.relname AS \"Value\" FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid WHERE i.inhparent = '\"PostMetrics\"'::regclass").ToListAsync();
-        var monthOf = (DateTimeOffset d) => $"PostMetrics_{d.UtcDateTime:yyyyMM}";
-        Assert.Contains(monthOf(f.Clock.GetUtcNow()), await PartitionsAsync());
-
-        f.Clock.Advance(TimeSpan.FromDays(31 * 15));
-        var result = await f.Get<DataRetentionService>(worker).PurgeAsync(CancellationToken.None);
-        Assert.True(result.PartitionsDropped > 0);
-        Assert.True(result.PartitionsCreated > 0);
-        var partitions = await PartitionsAsync();
-        Assert.DoesNotContain(monthOf(f.Clock.GetUtcNow().AddDays(-31 * 15)), partitions);
-    }
-
-    [Fact]
     public async Task Every_system_job_runs_in_system_context()
     {
         await using var f = await AppFixture.CreateAsync();

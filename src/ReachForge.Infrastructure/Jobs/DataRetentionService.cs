@@ -7,9 +7,9 @@ using ReachForge.Infrastructure.Persistence;
 namespace ReachForge.Infrastructure.Jobs;
 
 public sealed record RetentionResult(int Idempotency, int AuditLogs, int AiJobs, int TrendIdeas, int Invitations,
-    int PostMetricsRolledUp = 0, int PartitionsCreated = 0, int PartitionsDropped = 0)
+    int PostMetricsRolledUp = 0)
 {
-    public int Total => Idempotency + AuditLogs + AiJobs + TrendIdeas + Invitations + PostMetricsRolledUp + PartitionsCreated + PartitionsDropped;
+    public int Total => Idempotency + AuditLogs + AiJobs + TrendIdeas + Invitations + PostMetricsRolledUp;
 }
 
 /// <summary>DataRetentionJob（14章：毎日 02:00 JST）。保存期限を過ぎたデータを削除する。</summary>
@@ -29,9 +29,6 @@ public sealed class DataRetentionService(ReachForgeDbContext db, ITenantContext 
 
     /// <summary>投稿指標の明細を残す月数（これより古い月は PostMetricRollups へ移して明細を削除する）。</summary>
     public const int PostMetricDetailMonths = 13;
-
-    /// <summary>先に作っておく月次パーティションの数（PostgreSQL）。</summary>
-    public const int PartitionsAhead = 3;
 
     private const int RollupBatch = 200;
 
@@ -63,9 +60,8 @@ public sealed class DataRetentionService(ReachForgeDbContext db, ITenantContext 
 
         var cutoff = MetricCutoff(now);
         var rolledUp = await RollupPostMetricsAsync(cutoff, ct);
-        var (created, dropped) = await MaintainPartitionsAsync(cutoff, now, ct);
 
-        return new RetentionResult(idempotency, audits, jobs, ideas, invitations, rolledUp, created, dropped);
+        return new RetentionResult(idempotency, audits, jobs, ideas, invitations, rolledUp);
     }
 
     /// <summary>明細を残す最初の月（UTC の月初）。これより前に取得した指標を集計へ移す。</summary>
@@ -108,18 +104,5 @@ public sealed class DataRetentionService(ReachForgeDbContext db, ITenantContext 
             moved += await db.PostMetrics.Where(m => variantIds.Contains(m.PostVariantId) && m.CapturedAt < cutoff).ExecuteDeleteAsync(ct);
             await tx.CommitAsync(ct);
         }
-    }
-
-    /// <summary>PostgreSQL：先の月のパーティションを作り、明細を移し終えた古いパーティションを削除する。</summary>
-    private async Task<(int Created, int Dropped)> MaintainPartitionsAsync(DateTimeOffset cutoff, DateTimeOffset now, CancellationToken ct)
-    {
-        if (!db.Database.IsNpgsql()) return (0, 0);
-        var thisMonth = new DateOnly(now.UtcDateTime.Year, now.UtcDateTime.Month, 1);
-        var created = await db.Database.SqlQuery<int>(
-                $"SELECT rf_ensure_post_metric_partitions({thisMonth}, {thisMonth.AddMonths(PartitionsAhead)}) AS \"Value\"")
-            .SingleAsync(ct);
-        var dropped = await db.Database.SqlQuery<int>($"SELECT rf_drop_post_metric_partitions({DateOnly.FromDateTime(cutoff.UtcDateTime)}) AS \"Value\"")
-            .SingleAsync(ct);
-        return (created, dropped);
     }
 }

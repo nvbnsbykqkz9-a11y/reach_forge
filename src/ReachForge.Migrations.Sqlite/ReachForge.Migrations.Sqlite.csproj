@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- SQLite 用のマイグレーション（Windows 版：PC の中の DB を版を上げても使い続けるため）。PostgreSQL 用は Infrastructure の Persistence/Migrations -->
+  <!-- SQLite 用のマイグレーション（Windows 版：PC の中の DB を版を上げても使い続けるため） -->
   <ItemGroup>
     <ProjectReference Include="..\ReachForge.Infrastructure\ReachForge.Infrastructure.csproj" />
   </ItemGroup>

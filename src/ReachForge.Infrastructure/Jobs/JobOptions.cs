@@ -5,7 +5,7 @@ public enum JobEngine
     /// <summary>プロセス内のタイマーで定期ジョブを動かす（開発・単一インスタンス向け。追加の基盤は不要）。</summary>
     Hosted,
 
-    /// <summary>Hangfire（PostgreSQL ストレージ）で動かす。複数インスタンスでも1回だけ実行し、履歴と再試行をダッシュボードで確認できる。</summary>
+    /// <summary>Hangfire（メモリのストレージ）で動かす。履歴と再試行をダッシュボードで確認できる。</summary>
     Hangfire,
 }
 
@@ -58,11 +58,5 @@ public sealed class ServiceBusQueueOptions
 
 public sealed class HangfireJobOptions
 {
-    /// <summary>Hangfire のテーブルを置くスキーマ（PostgreSQL）。</summary>
-    public string Schema { get; set; } = "hangfire";
-
-    /// <summary>起動時に Hangfire のテーブルを作成・更新する。</summary>
-    public bool PrepareSchema { get; set; } = true;
-
     public int WorkerCount { get; set; } = 5;
 }

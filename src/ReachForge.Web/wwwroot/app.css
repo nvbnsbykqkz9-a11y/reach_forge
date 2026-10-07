@@ -262,7 +262,7 @@ body { font-variant-numeric: tabular-nums; }
 .rf-steps li[aria-current="step"] .rf-step-num { background: rgba(255,255,255,.25); }
 .rf-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 16px; border: 1px solid var(--rf-color-border); border-radius: 12px; background: transparent; text-align: left; cursor: pointer; width: 100%; color: inherit; font: inherit; }
 .rf-choice:hover, .rf-choice:focus-visible { border-color: var(--rf-color-primary); }
-.rf-choice[aria-pressed="true"] { border: 2px solid var(--rf-color-primary); background: rgba(10, 91, 214, .06); }
+.rf-choice[aria-pressed="true"], .rf-choice[aria-checked="true"] { border: 2px solid var(--rf-color-primary); background: rgba(10, 91, 214, .06); }
 
 /* 広告の確認表（項目名と値） */
 .rf-summary { border-collapse: collapse; width: 100%; }

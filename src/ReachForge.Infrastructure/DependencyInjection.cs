@@ -36,14 +36,13 @@ public static class DependencyInjection
         services.AddReachForgeAi(configuration);
         services.AddReachForgeSocial(configuration);
 
-        var provider = configuration["Database:Provider"] ?? "Sqlite";
+        // DB は SQLite（Windows 版・1社で使う）
         var connection = configuration.GetConnectionString("ReachForge") ?? "Data Source=reachforge.local.db";
         // 設定は要求に依存しないため、オプションはシングルトンにする（プロンプトの保存先など、シングルトンからも短命の DbContext を作るため）
         services.AddDbContext<ReachForgeDbContext>(o =>
         {
-            if (provider.Equals("Postgres", StringComparison.OrdinalIgnoreCase)) o.UseNpgsql(connection);
-            // Windows 版は SQLite もマイグレーションで更新する（ReachForge.Migrations.Sqlite）。開発・テストはモデルから作る
-            else if (configuration.GetValue("Database:SqliteMigrations", false)) o.UseSqlite(connection, x => x.MigrationsAssembly(SqliteMigrationsAssembly));
+            // Windows 版はマイグレーションで更新する（ReachForge.Migrations.Sqlite）。開発・テストはモデルから作る
+            if (configuration.GetValue("Database:SqliteMigrations", false)) o.UseSqlite(connection, x => x.MigrationsAssembly(SqliteMigrationsAssembly));
             else o.UseSqlite(connection);
         }, optionsLifetime: ServiceLifetime.Singleton);
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<ReachForgeDbContext>());

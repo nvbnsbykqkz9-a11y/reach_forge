@@ -123,7 +123,7 @@ else
                                 @foreach (var (objective, title, note, icon) in Objectives)
                                 {
                                     <button type="button" class="rf-choice" role="radio" aria-checked="@(_objective == objective ? "true" : "false")"
-                                            aria-pressed="@(_objective == objective ? "true" : "false")" @onclick="() => _objective = objective">
+                                            @onclick="() => _objective = objective">
                                         <MudIcon Icon="@icon" Color="Color.Primary" aria-hidden="true" />
                                         <b>@title</b>
                                         <span class="mud-typography-body2">@note</span>
