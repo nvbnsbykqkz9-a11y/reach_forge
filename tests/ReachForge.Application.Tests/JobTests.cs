@@ -242,9 +242,7 @@ public class JobTests
             .Select(f => f.Instance).OfType<AutomaticRetryAttribute>().Single().Attempts;
 
         Assert.Equal(3, Attempts("token-refresh"));
-        Assert.Equal(3, Attempts("metrics-collect"));
-        Assert.Equal(2, Attempts("report-schedule"));
-        Assert.Equal(1, Attempts("trend-research"));
+        Assert.Equal(0, Attempts("inbox-poll"));
         Assert.Equal(0, Attempts("credit-reset"));
         Assert.Equal(0, Attempts("data-retention"));
     }

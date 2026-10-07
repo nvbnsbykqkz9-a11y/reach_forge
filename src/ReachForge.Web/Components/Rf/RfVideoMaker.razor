@@ -146,6 +146,9 @@
 
     /// <summary>最初に選んでおく作り方。</summary>
     [Parameter] public VideoMode InitialMode { get; set; } = VideoMode.Template;
+
+    /// <summary>LP から作るときの URL（入力済みにする）。</summary>
+    [Parameter] public string? DefaultUrl { get; set; }
     [Parameter] public EventCallback<Guid> OnCreated { get; set; }
 
     private IReadOnlyList<MediaAsset> _images = [];
@@ -202,6 +205,7 @@
     {
         _theme ??= DefaultTheme;
         _mode = InitialMode;
+        _lpUrl ??= DefaultUrl;
         _images = (await Media.ListAsync(MediaFilter.All, CancellationToken.None)).Where(m => m.Kind == MediaKind.Image).ToList();
     }
 

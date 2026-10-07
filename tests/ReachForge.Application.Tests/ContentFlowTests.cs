@@ -245,19 +245,31 @@ public class ContentFlowTests
     }
 
     [Fact]
-    public async Task Editing_approved_variant_requires_reapproval()
+    public async Task Publish_now_posts_immediately_without_approval()
     {
+        // 承認の流れは廃止：つくった人がその場で投稿する
         await using var f = await AppFixture.CreateAsync();
         var (_, variants) = await CreatePostAsync(f);
-        var v = variants[0];
+        var v = variants.First(x => x.Platform != SocialPlatform.X);
         await using var scope = f.Scope();
-        await f.Get<ApprovalService>(scope).SubmitAsync([v.Id], null, null, CancellationToken.None);
-        await f.Get<ApprovalService>(scope).ApproveAsync(v.Id, null, null, CancellationToken.None);
+        var published = await f.Get<PublishingService>(scope).PublishNowAsync(v.Id, CancellationToken.None);
+        Assert.Equal(VariantStatus.Published, published.Status);
+        Assert.NotNull(published.ExternalPostId);
 
-        var result = await f.Get<StudioService>(scope).UpdateVariantAsync(v.Id, "内容を変更しました。", [], null, null, CancellationToken.None);
+        // 投稿済みのものはもう一度投稿できない
+        await Assert.ThrowsAsync<DomainException>(() => f.Get<PublishingService>(scope).PublishNowAsync(v.Id, CancellationToken.None));
 
-        Assert.True(result.ReapprovalRequired);
-        Assert.Equal(VariantStatus.Draft, result.Variant.Status);
+        // 文章を直しても再承認は不要
+        var other = variants.First(x => x.Platform == SocialPlatform.X);
+        var edited = await f.Get<StudioService>(scope).UpdateVariantAsync(other.Id, "内容を変更しました。", [], null, null, CancellationToken.None);
+        Assert.False(edited.ReapprovalRequired);
+
+        // X で URL 付きは費用の確認が必要
+        await f.Get<StudioService>(scope).UpdateVariantAsync(other.Id, "新作です https://example.com", [], null, null, CancellationToken.None);
+        var ex = await Assert.ThrowsAsync<DomainException>(() => f.Get<PublishingService>(scope).PublishNowAsync(other.Id, CancellationToken.None));
+        Assert.Equal(ErrorCodes.PubXUrlCost, ex.ErrorCode);
+        await f.Get<StudioService>(scope).UpdateVariantAsync(other.Id, "新作です https://example.com", [], null, true, CancellationToken.None);
+        Assert.Equal(VariantStatus.Published, (await f.Get<PublishingService>(scope).PublishNowAsync(other.Id, CancellationToken.None)).Status);
     }
 
     [Fact]

@@ -237,6 +237,28 @@ public sealed class PostVariant : Entity
         Status = VariantStatus.Scheduled;
     }
 
+    /// <summary>
+    /// 今すぐ投稿する（予約はしない）。下書き・失敗・保留から投稿待ちにし、すぐに投稿処理へ渡す。
+    /// 一時的なエラーで再試行になった場合も、同じ状態から自動でやり直す。
+    /// </summary>
+    public void PublishNow(DateTimeOffset now)
+    {
+        EnsureNot([VariantStatus.Publishing, VariantStatus.Published, VariantStatus.Canceled], "投稿");
+        if (HasGuardrailErrors)
+        {
+            throw new DomainException(ErrorCodes.AprBlockedByGuardrail, "確認結果にエラーがあるため投稿できません。文章を直してからもう一度お試しください。");
+        }
+        ApprovedContentHash = ComputeContentHash();
+        ScheduledAt = now.ToUniversalTime();
+        RequestedPublishAt = ScheduledAt;
+        NextAttemptAt = ScheduledAt;
+        RetryCount = 0;
+        LastError = null;
+        LastErrorCode = null;
+        HoldReason = null;
+        Status = VariantStatus.Scheduled;
+    }
+
     /// <summary>予約を取り消して予約前の状態に戻す。</summary>
     public void Unschedule(bool requiresApproval)
     {

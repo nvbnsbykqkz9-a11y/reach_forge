@@ -29,10 +29,10 @@
             @(State.Workspace?.Name ?? "")
         </MudText>
         <MudSpacer />
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" Href="/studio"
-                   Class="mr-3 d-none d-sm-flex" Style="white-space:nowrap">新規投稿</MudButton>
-        <MudIconButton Icon="@Icons.Material.Rounded.Add" Variant="Variant.Filled" Color="Color.Primary" Href="/studio"
-                       Class="mr-1 d-flex d-sm-none" aria-label="新規投稿" />
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Rounded.Add" Href="/"
+                   Class="mr-3 d-none d-sm-flex" Style="white-space:nowrap">つくる</MudButton>
+        <MudIconButton Icon="@Icons.Material.Rounded.Add" Variant="Variant.Filled" Color="Color.Primary" Href="/"
+                       Class="mr-1 d-flex d-sm-none" aria-label="つくる" />
         <RfCreditMeter Account="State.Credits" />
         <MudTooltip Text="通知">
             <MudIconButton Icon="@Icons.Material.Rounded.NotificationsNone" Color="Color.Inherit" aria-label="通知" />
@@ -77,19 +77,13 @@
             <MudNavMenu Class="pt-2">
                 <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Rounded.Home">ホーム</MudNavLink>
                 <MudNavGroup Title="つくる" Icon="@Icons.Material.Rounded.AutoAwesome" IconColor="Color.Secondary" Expanded="true">
-                    <MudNavLink Href="/studio">スタジオ</MudNavLink>
-                    <MudNavLink Href="/media">メディア</MudNavLink>
-                    <MudNavLink Href="/ideas">ネタ帳</MudNavLink>
-                    <MudNavLink Href="/campaigns">キャンペーン</MudNavLink>
-                </MudNavGroup>
-                <MudNavLink Href="/calendar" Icon="@Icons.Material.Rounded.CalendarMonth">予定</MudNavLink>
-                <MudNavLink Href="/approvals" Icon="@Icons.Material.Rounded.FactCheck">
-                    承認キュー
-                    @if (State.PendingApprovals > 0)
+                    @foreach (var c in RfSns.Creatable)
                     {
-                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Class="ml-2">@(State.PendingApprovals > 99 ? "99+" : State.PendingApprovals)</MudChip>
+                        <MudNavLink Href="@RfSns.CreateHref(c.Platform)">
+                            <span class="rf-sns-dot" style="background:@RfSns.Color(c.Platform)" aria-hidden="true"></span>@c.DisplayName
+                        </MudNavLink>
                     }
-                </MudNavLink>
+                </MudNavGroup>
                 <MudNavLink Href="/inbox" Icon="@Icons.Material.Rounded.Inbox">
                     受信箱
                     @if (State.OpenInbox > 0)
@@ -97,7 +91,6 @@
                         <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="ml-2" aria-label="@($"未対応 {State.OpenInbox}件")">@(State.OpenInbox > 99 ? "99+" : State.OpenInbox)</MudChip>
                     }
                 </MudNavLink>
-                <MudNavLink Href="/analytics" Icon="@Icons.Material.Rounded.Insights">分析</MudNavLink>
                 <MudNavLink Href="/settings" Icon="@Icons.Material.Rounded.Settings">設定</MudNavLink>
                 <AuthorizeView Policy="@OpsAccess.Policy">
                     <MudNavLink Href="/ops" Icon="@Icons.Material.Rounded.MonitorHeart">運用</MudNavLink>

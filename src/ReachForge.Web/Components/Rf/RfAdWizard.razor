@@ -1,0 +1,7 @@
+@* 広告を出す（準備中：広告アカウントの連携と出稿は次の段階で追加する） *@
+<MudAlert Severity="Severity.Info">広告の出稿は準備中です。</MudAlert>
+
+@code {
+    [Parameter, EditorRequired] public SocialPlatform Platform { get; set; }
+    [Parameter, EditorRequired] public Channel? Channel { get; set; }
+}

@@ -82,13 +82,7 @@ public class CampaignTests
         {
             await f.Get<AbTestService>(editor).StartAsync(test.Id, startAt, null, CancellationToken.None);
         }
-        await using (var approver = f.Scope(c => { c.Role = Role.Approver; c.UserName = "高橋"; }))
-        {
-            foreach (var id in new[] { test.VariantAId, test.VariantBId })
-            {
-                await f.Get<ApprovalService>(approver).ApproveAsync(id, null, null, CancellationToken.None);
-            }
-        }
+        // 承認の流れは廃止したため、開始と同時に A・B とも予約される
         await using (var scope = f.Scope())
         {
             var db = f.Get<IAppDbContext>(scope);

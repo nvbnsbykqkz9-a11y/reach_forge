@@ -7,7 +7,8 @@ using ReachForge.Application.Services;
 namespace ReachForge.Infrastructure.Jobs;
 
 /// <summary>
-/// 定期ジョブの定義（14章）。<paramref name="Cron"/> は <see cref="JobOptions.TimeZone"/>（既定 JST）で解釈する。
+/// 定期ジョブの定義（14章）。分析・レポート・A/B テスト・ネタ帳の機能は削除したため、それらのジョブ（指標の取得・レポート・A/B の判定・話題の調査）は登録しない。
+/// <paramref name="Cron"/> は <see cref="JobOptions.TimeZone"/>（既定 JST）で解釈する。
 /// 実行内容はどれも「期限が来たものだけを処理する」冪等な処理で、取りこぼしても次の周期で追いつく。
 /// </summary>
 /// <param name="Retries">失敗時の再試行回数（0 は次の周期まで待つ、または運用者が確認して再実行する）。</param>
@@ -24,18 +25,6 @@ public static class SystemJobCatalog
             var (refreshed, reauth) = await sp.GetRequiredService<ChannelTokenService>().RefreshExpiringAsync(ct);
             return refreshed + reauth > 0 ? $"{refreshed} refreshed, {reauth} need reconnection" : null;
         }),
-        // 投稿指標（公開後 1h〜30d のチェックポイント）と、その日に未取得のアカウント指標（AccountMetricsDailyJob）
-        new("metrics-collect", "MetricsCollectJob", "*/15 * * * *", 3, async (sp, ct) =>
-        {
-            var r = await sp.GetRequiredService<MetricsCollectionService>().CollectDueAsync(ct);
-            return r.Posts + r.Accounts + r.Failed > 0 ? $"{r.Posts} posts, {r.Accounts} accounts, {r.Failed} failed" : null;
-        }),
-        // 月曜 07:00／毎月1日 07:00（テナントのタイムゾーン）を過ぎたワークスペースのレポートを登録する
-        new("report-schedule", "WeeklyReportJob/MonthlyReportJob", "*/15 * * * *", 2, async (sp, ct) =>
-        {
-            var n = await sp.GetRequiredService<ReportService>().ScheduleDueAsync(ct);
-            return n > 0 ? $"{n} report(s) scheduled" : null;
-        }),
         // チャネルごとの間隔（5〜15分）は InboxService.PollInterval で判定する
         new("inbox-poll", "InboxPollJob", "* * * * *", 0, async (sp, ct) =>
         {
@@ -44,18 +33,6 @@ public static class SystemJobCatalog
                 ? $"{r.Ingested} new from {r.Channels} channel(s), {r.AutoHandled} handled automatically, {r.Failed} failed"
                 : null;
         }),
-        new("ab-test-evaluate", "AbTestEvaluateJob", "5 * * * *", 1, async (sp, ct) =>
-        {
-            var n = await sp.GetRequiredService<AbTestService>().EvaluateDueAsync(ct);
-            return n > 0 ? $"{n} A/B test(s) evaluated" : null;
-        }),
-        // 毎日 06:00（テナントのタイムゾーン）。その日の分がなければ更新する
-        new("trend-research", "TrendResearchJob", "*/30 * * * *", 1, async (sp, ct) =>
-        {
-            var n = await sp.GetRequiredService<TrendService>().RefreshDueAsync(ct);
-            return n > 0 ? $"{n} idea(s) refreshed" : null;
-        }),
-        // 毎月1日 00:00（テナントのタイムゾーン）。タイムゾーンの違うテナントがあるため毎時確認する。失敗は自動で再試行せず運用者が確認する
         new("credit-reset", "CreditResetJob", "0 * * * *", 0, async (sp, ct) =>
         {
             var n = await sp.GetRequiredService<CreditResetService>().ResetDueAsync(ct);

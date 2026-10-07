@@ -283,7 +283,7 @@ public class MediaServiceTests
     }
 
     [Fact]
-    public async Task Outpaint_job_replaces_variant_image_and_requires_reapproval()
+    public async Task Outpaint_job_replaces_variant_image()
     {
         await using var f = await AppFixture.CreateAsync();
         Guid variantId, sourceId;
@@ -314,7 +314,7 @@ public class MediaServiceTests
             var asset = await db.MediaAssets.SingleAsync(m => m.Id == v.MediaAssetIds[0]);
             Assert.Equal((MediaSource.AiEdited, sourceId), (asset.Source, asset.ParentAssetId!.Value));
             Assert.Equal(AspectMethod.Outpaint, v.AspectMethod);
-            Assert.Equal(VariantStatus.Draft, v.Status); // 承認後に画像が変わったため再承認
+            Assert.Equal(VariantStatus.Approved, v.Status); // 承認の流れは廃止したため、画像が変わっても再承認にしない
             Assert.Equal(1495, (await db.CreditAccounts.SingleAsync()).Balance);
         }
     }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ReachForge.Application.Abstractions;
+using ReachForge.Application.Security;
 using ReachForge.Application.Social;
 using ReachForge.Domain.Common;
 using ReachForge.Domain.Entities;
@@ -58,6 +59,33 @@ public sealed class PublishingService(
             }
         }
         return new PublishRunResult(published, retrying, failed, held);
+    }
+
+    /// <summary>
+    /// 今すぐ投稿する（つくる画面）。投稿待ちにしてから、その場で投稿処理を行う。
+    /// 一時的なエラーのときは再試行の予定にして返す（予約配信の巡回が自動でやり直す）。
+    /// </summary>
+    public async Task<PostVariant> PublishNowAsync(Guid variantId, CancellationToken ct)
+    {
+        RolePolicy.Demand(context.Role, Permission.Schedule);
+        var v = await db.PostVariants.FirstOrDefaultAsync(x => x.Id == variantId, ct) ?? throw new NotFoundException("投稿");
+        var channel = await db.Channels.FirstOrDefaultAsync(c => c.Id == v.ChannelId, ct) ?? throw new NotFoundException("SNS");
+        var constraint = PlatformCatalog.Get(v.Platform);
+        if (channel.Status != ChannelStatus.Active)
+        {
+            throw new DomainException(ErrorCodes.SnsReauthRequired, $"{constraint.DisplayName}の再接続が必要です。「SNS連携」から接続し直してください。");
+        }
+        if (constraint.LinkPolicy == LinkPolicy.DiscouragedByCost && PostText.ContainsUrl(PostText.Compose(v.Body, v.Hashtags)) && !v.UrlCostAcknowledged)
+        {
+            throw new DomainException(ErrorCodes.PubXUrlCost,
+                $"X で URL を含む投稿は費用が高くなります（1件あたり約 ${constraint.CostPerPostWithUrlUsd:0.00}）。確認のチェックを入れてから投稿してください。");
+        }
+        v.PublishNow(clock.GetUtcNow());
+        db.Record(context, "variant.publish_now", nameof(PostVariant), v.Id, null);
+        await db.SaveChangesAsync(ct);
+        await PublishOneAsync(v.Id, ct);
+        await db.ReloadAsync(v, ct);
+        return v;
     }
 
     /// <summary>1件を公開する。戻り値は処理後の状態（他プロセスが処理済みなら null）。</summary>

@@ -21,6 +21,7 @@ public static class DependencyInjection
         services.AddScoped<MediaService>();
         services.AddScoped<AiJobProcessor>();
         services.AddScoped<DashboardService>();
+        services.AddScoped<HomeService>();
         services.AddScoped<AnalyticsService>();
         services.AddScoped<ReportService>();
         services.AddScoped<InboxService>();

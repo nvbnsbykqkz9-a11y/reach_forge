@@ -13,7 +13,8 @@ public sealed class Workspace : Entity
     /// <summary>承認ルートの段数（0〜3）。0 の場合は承認不要（F-07）。</summary>
     public int ApprovalSteps { get; set; } = 1;
 
-    public bool RequiresApproval => ApprovalSteps > 0;
+    /// <summary>承認の流れは使わない（作った人がその場で投稿する）。ApprovalSteps は以前のデータのために残している。</summary>
+    public bool RequiresApproval => false;
 
     public ReportSettings Reports { get; set; } = new();
 

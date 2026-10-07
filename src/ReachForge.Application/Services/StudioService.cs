@@ -170,6 +170,34 @@ public sealed class StudioService(
     }
 
     /// <summary>
+    /// 自分で書いた文章のまま、1つの SNS の投稿をつくる（AI の変換はしない・0 クレジット）。画像は SNS の比率に合わせる。
+    /// すでにその SNS の下書きがあれば内容を置き換える。
+    /// </summary>
+    public async Task<PostVariant> CreateVariantAsIsAsync(Guid masterPostId, Guid channelId, CancellationToken ct)
+    {
+        RolePolicy.Demand(tenant.Role, Permission.Generate);
+        var post = await db.MasterPosts.FirstOrDefaultAsync(p => p.Id == masterPostId, ct) ?? throw new NotFoundException("投稿");
+        var channel = await db.Channels.FirstOrDefaultAsync(c => c.Id == channelId && c.WorkspaceId == post.WorkspaceId, ct)
+                      ?? throw new NotFoundException("SNS");
+        var variant = await db.PostVariants.FirstOrDefaultAsync(v => v.MasterPostId == post.Id && v.ChannelId == channelId, ct);
+        var title = PlatformCatalog.Get(channel.Platform).MaxTitleLength is { } max ? PostText.Truncate(post.Title, max) : null;
+        if (variant is null)
+        {
+            variant = PostVariant.Create(post, channel, post.CoreMessage, post.Hashtags, title);
+            db.PostVariants.Add(variant);
+        }
+        else
+        {
+            variant.Edit(post.CoreMessage, post.Hashtags, title, requiresApproval: false);
+        }
+        variant.SetMedia(await DeriveMediaAsync(post, channel.Platform, AspectMethod.SmartCrop, ct), requiresApproval: false);
+        var ctx = await brand.BuildAsync(post.WorkspaceId, post.ProductIds, post.CampaignId, ct);
+        variant.ApplyGuardrail(CheckVariant(variant, ctx.ToGuardrailContext()));
+        await db.SaveChangesAsync(ct);
+        return variant;
+    }
+
+    /// <summary>
     /// バリアントの画像の比率変換方法を変える（F-04-6）。自動トリミング・余白は即時（0 クレジット）、
     /// 「AIで広げる」はジョブを登録し（5 クレジット）、完了時にバリアントの画像が差し替わる。
     /// </summary>
