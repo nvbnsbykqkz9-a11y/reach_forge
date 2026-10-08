@@ -67,7 +67,10 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 
 - 動画の書き出しに使う ffmpeg を同梱する：`publish.ps1` が決めた版（8.1.2、gyan.dev の essentials ビルド・libx264 入りの GPL v3 版）を取得し、SHA-256 を確かめて `app\ffmpeg` に入れる（`LICENSE.txt`・`README.txt`・`SOURCE.txt` も）。ffmpeg のソースコードは `artifacts/desktop/ffmpeg-source` に保管し、CI の成果物にも残す。手元の ffmpeg を使うときは `-FfmpegDir`、同梱しないときは `-NoFfmpeg`。版を上げるときは `publish.ps1` の版・URL・SHA-256 をそろえて変える
 - WebView2 ランタイムがなければインストーラーが案内する
-- CI（`desktop` ジョブ）で Windows 上で発行・インストーラーの作成まで行い、成果物として残す
+- 本番用のインストーラーは GitHub Actions の「Windows installer」（`.github/workflows/desktop-release.yml`）が Windows 上でつくる
+  - リリース：`ReachForge.Desktop.csproj` の `Version` をそろえ、`v{Version}` のタグ（例：`v1.0.0`）を push する → インストーラー（`ReachForge-Setup-{Version}.exe`）と SHA-256 を「リリースの下書き」に添付する。確認してから公開する
+  - main への push・手動実行でも、成果物（Artifacts）としてつくる。同梱した ffmpeg（GPL v3）のソースコードも別の成果物として保管する
+  - コード署名：シークレット `WINDOWS_PFX_BASE64`（コード署名証明書 .pfx を Base64 にしたもの）と `WINDOWS_PFX_PASSWORD` を登録すると、アプリ本体とインストーラーに署名する（タイムスタンプ付き）。署名がないと、初回に Windows SmartScreen の警告が出る
 - プロセス内での起動・自動ログイン・画面の静的ファイル・終了・マイグレーションは `tests/ReachForge.Desktop.Tests` で Linux でも確認する
 
 ### SNS ごとの画像・動画の形式

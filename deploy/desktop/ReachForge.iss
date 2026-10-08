@@ -1,10 +1,13 @@
-; Windows 版のインストーラー（Inno Setup 6）。先に deploy/desktop/publish.ps1 で artifacts/desktop/app を作る。
+﻿; Windows 版のインストーラー（Inno Setup 6）。先に deploy/desktop/publish.ps1 で artifacts/desktop/app を作る。
 ;   iscc deploy/desktop/ReachForge.iss
 ; 管理者権限なしで利用者のフォルダー（%LOCALAPPDATA%\Programs\ReachForge）に入れる。
 ; データ（%LOCALAPPDATA%\ReachForge）はアンインストールしても残す（入れ直しても投稿・設定を引き継ぐ）。
 
 #define AppName "ReachForge"
-#define AppVersion "1.0.0"
+; バージョンは CI が ReachForge.Desktop.csproj の Version から渡す（iscc /DAppVersion=1.0.0）。手元でつくるときは既定の値
+#ifndef AppVersion
+  #define AppVersion "1.0.0"
+#endif
 #define AppExe "ReachForge.exe"
 
 [Setup]
@@ -13,6 +16,14 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher=株式会社TechnologyFrontier
 AppPublisherURL=https://www.technologyfrontier.co.jp
+AppSupportURL=https://www.technologyfrontier.co.jp
+AppCopyright=Copyright (C) 株式会社TechnologyFrontier
+AppVerName={#AppName} {#AppVersion}
+UninstallDisplayName={#AppName}
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=株式会社TechnologyFrontier
+VersionInfoDescription={#AppName} セットアップ
+VersionInfoProductName={#AppName}
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
