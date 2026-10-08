@@ -25,11 +25,17 @@ public sealed class AiJobProcessor(
     IImageSafetyChecker safety,
     IAltTextGenerator alt,
     VideoService videos,
+    LpMediaService lpMedia,
     TimeProvider clock,
     ILogger<AiJobProcessor> log)
 {
     /// <summary>実行中のまま止まったジョブを失敗扱いにする時間（F-04 例外：生成タイムアウト 120 秒＋再試行の余裕）。</summary>
     public static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(10);
+
+    /// <summary>動画生成 AI を使うジョブは長くかかる（1本15分まで × 向き・シーンの数）。</summary>
+    public static readonly TimeSpan StaleAfterLong = TimeSpan.FromMinutes(90);
+
+    public static TimeSpan StaleLimit(AiTaskType task) => task is AiTaskType.LpMedia or AiTaskType.Video ? StaleAfterLong : StaleAfter;
 
     public async Task ProcessAsync(Guid jobId, CancellationToken ct)
     {
@@ -49,6 +55,11 @@ public sealed class AiJobProcessor(
         if (job.TaskType == AiTaskType.Video)
         {
             await ProcessVideoAsync(job, ct);
+            return;
+        }
+        if (job.TaskType == AiTaskType.LpMedia)
+        {
+            await ProcessLpMediaAsync(job, ct);
             return;
         }
 
@@ -98,6 +109,25 @@ public sealed class AiJobProcessor(
         }
     }
 
+    /// <summary>LP の広告の画像・動画（キービジュアル・SNS の形式ごとの画像・縦型と横型の動画）。</summary>
+    private async Task ProcessLpMediaAsync(AiJob job, CancellationToken ct)
+    {
+        try
+        {
+            var created = await lpMedia.ProcessAsync(job, ct);
+            job.Succeed(created, clock.GetUtcNow());
+            await db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            if (ex is not DomainException) log.LogError(ex, "LP media job {JobId} failed", job.Id);
+            DiscardUnsaved();
+            job.Fail(ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected,
+                ex is DomainException ? ex.Message : $"画像・動画を作成できませんでした（{Reason(ex)}）。もう一度お試しください。", clock.GetUtcNow());
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+    }
+
     /// <summary>想定外のエラーの理由（画面に出す。詳しくはログに残す）。</summary>
     private static string Reason(Exception ex)
     {
@@ -110,7 +140,7 @@ public sealed class AiJobProcessor(
     {
         var now = clock.GetUtcNow();
         var stale = (await db.AiJobs.Where(j => j.Status == AiJobStatus.Running).ToListAsync(ct))
-            .Where(j => j.IsStale(now, StaleAfter))
+            .Where(j => j.IsStale(now, StaleLimit(j.TaskType)))
             .ToList();
         foreach (var job in stale)
         {

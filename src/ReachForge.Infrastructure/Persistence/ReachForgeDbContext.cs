@@ -11,6 +11,7 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Domain.Common;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
+using ReachForge.Domain.Platforms;
 using ReachForge.Domain.Guardrails;
 using ReachForge.Infrastructure.Identity;
 
@@ -116,6 +117,9 @@ public sealed class ReachForgeDbContext(
             e.Property(x => x.SourceImageAssetIds).HasConversion(Json<List<Guid>>(), JsonComparer<List<Guid>>());
             e.Property(x => x.Outputs).HasConversion(Json<Dictionary<SocialPlatform, LpPlatformOutput>>(),
                 JsonComparer<Dictionary<SocialPlatform, LpPlatformOutput>>());
+            e.Property(x => x.Sources).HasConversion(Json<List<LpSourceImage>>(), JsonComparer<List<LpSourceImage>>());
+            e.Property(x => x.Visuals).HasConversion(Json<List<LpVisual>>(), JsonComparer<List<LpVisual>>());
+            e.Property(x => x.Videos).HasConversion(Json<Dictionary<MediaOrientation, Guid>>(), JsonComparer<Dictionary<MediaOrientation, Guid>>());
         });
         b.Entity<AppSetting>(e =>
         {

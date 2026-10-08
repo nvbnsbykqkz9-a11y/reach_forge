@@ -19,3 +19,7 @@ public sealed record ScriptStubPayload(string Theme, int SceneCount, int TargetS
 public sealed record LandingPageStubPayload(WebPage Page, int SceneCount, int TargetSeconds, string BrandName);
 
 public sealed record LpCreativeStubPayload(WebPage Page, SocialPlatform Platform, string BrandName);
+
+public sealed record LpImagesStubPayload(IReadOnlyList<LpImageCandidate> Candidates, int Max);
+
+public sealed record LpVisualsStubPayload(WebPage Page, IReadOnlyList<string> Sources, string BrandName);

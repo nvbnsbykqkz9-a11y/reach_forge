@@ -57,6 +57,9 @@ public enum AiTaskType : short
 
     /// <summary>生成 AI による動画（テキスト→動画・画像→動画）。テンプレート合成（Video）とは別のルート。</summary>
     VideoGeneration = 14,
+
+    /// <summary>LP からの広告の画像・動画をまとめてつくるジョブ（AI のルートには使わない。中の処理はそれぞれのタスクのルートを使う）。</summary>
+    LpMedia = 15,
 }
 
 public enum AiJobStatus : short { Queued = 1, Running = 2, Succeeded = 3, Failed = 4, Canceled = 5 }

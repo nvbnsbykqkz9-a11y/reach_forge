@@ -91,7 +91,7 @@ public class JobTests
             running.Start(f.Clock.GetUtcNow());
             var project = new LpProject
             {
-                TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, Url = "https://example.com", VideoJobId = video.Id,
+                TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, Url = "https://example.com", MediaJobId = video.Id,
             };
             db.AddRange(audit, done, video, running, project);
             await db.SaveChangesAsync();

@@ -93,7 +93,9 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
         var band = Hex(overlay.BandColorHex);
         // 帯の色に対してコントラストが高い方の文字色（WCAG の相対輝度で判定）
         var text = Luminance(band) > 0.4 ? SKColors.Black : SKColors.White;
-        var padding = w * 0.06f;
+        // 文字の大きさの基準：縦長・正方形は幅、横長は高さ（横長の画像で文字が大きくなりすぎないように）
+        var basis = Math.Min(w, h * 0.75f);
+        var padding = basis * 0.06f;
         var maxWidth = w - padding * 2;
 
         // まず1行に収まる大きさを探し（読みやすさ優先・最小は幅の5.5%）、収まらなければ2行で折り返す
@@ -101,7 +103,7 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
         {
             foreach (var (maxLines, minRatio) in new[] { (1, 0.055f), (2, 0.03f) })
             {
-                for (var size = w * startRatio; size >= w * minRatio; size *= 0.94f)
+                for (var size = basis * startRatio; size >= basis * minRatio; size *= 0.94f)
                 {
                     var font = CreateFont(typeface, size);
                     var lines = Wrap(value, font, maxWidth);
@@ -109,12 +111,12 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
                     font.Dispose();
                 }
             }
-            var smallest = CreateFont(typeface, w * 0.03f);
+            var smallest = CreateFont(typeface, basis * 0.03f);
             return (smallest, Wrap(value, smallest, maxWidth));
         }
 
         var (headlineFont, headlineLines) = Fit(overlay.Headline, 0.085f);
-        var (subFont, subLines) = overlay.Sub is { Length: > 0 } ? Fit(overlay.Sub, Math.Min(0.045f, headlineFont.Size / w * 0.6f)) : (null, []);
+        var (subFont, subLines) = overlay.Sub is { Length: > 0 } ? Fit(overlay.Sub, Math.Min(0.045f, headlineFont.Size / basis * 0.6f)) : (null, []);
         try
         {
             var headlineHeight = headlineLines.Count * LineHeight(headlineFont);
@@ -125,7 +127,7 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
             {
                 TextPosition.Top => 0f,
                 TextPosition.Center => (h - bandHeight) / 2,
-                _ => h - bandHeight,
+                _ => h - bandHeight - h * Math.Clamp(overlay.SafeBottom, 0f, 0.4f),
             };
 
             using var canvas = new SKCanvas(image);
@@ -232,7 +234,7 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
     }
 
     public async Task<ProcessedImage> ConvertAspectAsync(byte[] source, AspectRatio target, (int Width, int Height) size,
-        AspectMethod method, string padColorHex, CancellationToken ct)
+        AspectMethod method, string padColorHex, CancellationToken ct, bool exact = false)
     {
         using var image = Decode(source);
         var current = (double)image.Width / image.Height;
@@ -254,7 +256,7 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
         // 目標サイズより大きい場合のみ縮小する（小さい画像を拡大してぼかさない）
         using (converted)
         {
-            using var fitted = FitWithin(converted, size.Width, size.Height);
+            using var fitted = exact ? Resize(converted, size.Width, size.Height) : FitWithin(converted, size.Width, size.Height);
             return await PngAsync(fitted, ct);
         }
     }
@@ -312,6 +314,41 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
             canvas.DrawBitmap(resized, image.Width - resized.Width - margin, image.Height - resized.Height - margin, SKSamplingOptions.Default);
         }
         return HasTransparency(image) ? await PngAsync(image, ct) : await JpegAsync(image, 90, ct);
+    }
+
+    public Task<(int Width, int Height)> MeasureAsync(byte[] source, CancellationToken ct)
+    {
+        using var image = Decode(source);
+        return Task.FromResult((image.Width, image.Height));
+    }
+
+    public async Task<ProcessedImage> FitWithBackdropAsync(byte[] source, (int Width, int Height) size, CancellationToken ct)
+    {
+        using var image = Decode(source);
+        var (w, h) = size;
+        // 背景：枠を覆うまで拡大して中央を使い、強くぼかして少し暗くする
+        var cover = Math.Max((double)w / image.Width, (double)h / image.Height);
+        using var backdrop = Resize(image, Math.Max(1, (int)Math.Ceiling(image.Width * cover)), Math.Max(1, (int)Math.Ceiling(image.Height * cover)));
+        // 前景：枠の内側（四辺に少し余白）に全体が入る大きさ。小さい画像は2倍まで拡大する
+        var contain = Math.Min(Math.Min(w * 0.94 / image.Width, h * 0.94 / image.Height), 2.0);
+        var fw = Math.Max(1, (int)Math.Round(image.Width * contain));
+        var fh = Math.Max(1, (int)Math.Round(image.Height * contain));
+        using var front = Resize(image, fw, fh);
+        using var result = Draw(w, h, SKColors.Black, c =>
+        {
+            using (var blur = new SKPaint { ImageFilter = SKImageFilter.CreateBlur(Math.Max(w, h) / 40f, Math.Max(w, h) / 40f),
+                       ColorFilter = SKColorFilter.CreateBlendMode(new SKColor(0, 0, 0, 70), SKBlendMode.SrcOver) })
+            {
+                c.DrawBitmap(backdrop, (w - backdrop.Width) / 2f, (h - backdrop.Height) / 2f, SKSamplingOptions.Default, blur);
+            }
+            using var shadow = new SKPaint { Color = SKColors.Black.WithAlpha(90), IsAntialias = true,
+                MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, Math.Max(w, h) / 120f) };
+            var x = (w - fw) / 2f;
+            var y = (h - fh) / 2f;
+            c.DrawRect(SKRect.Create(x, y + Math.Max(w, h) / 160f, fw, fh), shadow);
+            c.DrawBitmap(front, x, y, SKSamplingOptions.Default);
+        });
+        return await PngAsync(result, ct);
     }
 
     public async Task<ProcessedImage> RenderPlaceholderAsync(int width, int height, int seed, IReadOnlyList<string> colorsHex,

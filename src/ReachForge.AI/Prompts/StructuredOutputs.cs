@@ -48,3 +48,11 @@ public sealed record LandingPlanDraft(string Title, string Product, string Targe
 public sealed record AdCopyDraft(string PrimaryText, string? Headline, string? Description, string? CallToAction);
 
 public sealed record LpCreativeDraft(AdCopyDraft[] AdCopies, string? PostText, string[]? Hashtags);
+
+public sealed record LpImagePickDraft(int Index, string? Description);
+
+public sealed record LpImagePicksDraft(LpImagePickDraft[]? Picks);
+
+public sealed record LpVisualDraft(int SourceIndex, string? Angle, string? Headline, string? ImagePrompt, string? MotionPrompt);
+
+public sealed record LpVisualsDraft(LpVisualDraft[]? Visuals);

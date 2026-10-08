@@ -160,3 +160,30 @@ public interface ILpCreativeWriter
 {
     Task<LpCreative> WriteAsync(Services.BrandContext brand, WebPage page, SocialPlatform platform, CancellationToken ct);
 }
+
+/// <summary>LP の画像の候補（AI に見せる縮小画像と、元の大きさ・代替テキスト）。</summary>
+public sealed record LpImageCandidate(int Index, byte[] Thumbnail, string ThumbnailMime, int Width, int Height, string? Alt);
+
+/// <summary>AI が選んだ LP の画像。<paramref name="Description"/> は何が写っているか（日本語）。</summary>
+public sealed record LpImagePick(int Index, string Description);
+
+/// <summary>
+/// LP の画像から、商品・サービスの特色が伝わる画像を選ぶ（画像理解モデル）。ロゴ・アイコン・画面のスクリーンショット・
+/// 文字だけのバナーは選ばない。おすすめの順に返す。
+/// </summary>
+public interface ILpImageCurator
+{
+    Task<IReadOnlyList<LpImagePick>> PickAsync(WebPage page, IReadOnlyList<LpImageCandidate> candidates, int max, CancellationToken ct);
+}
+
+/// <summary>広告のビジュアル案（元にする画像・切り口・画像に入れる見出し・画像生成と動画生成への指示）。</summary>
+public sealed record LpVisualConcept(int SourceIndex, string Angle, string Headline, string ImagePrompt, string MotionPrompt);
+
+/// <summary>
+/// LP の内容と選んだ画像から、広告のビジュアル案をつくる（画像ごとに1案）。見出しは NG 語・規制表現・LP にない価格を確認する。
+/// </summary>
+public interface ILpVisualPlanner
+{
+    Task<IReadOnlyList<LpVisualConcept>> PlanAsync(Services.BrandContext brand, WebPage page, IReadOnlyList<string> sourceDescriptions,
+        CancellationToken ct);
+}

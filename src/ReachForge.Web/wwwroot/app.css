@@ -281,3 +281,7 @@ body { font-variant-numeric: tabular-nums; }
   border: 3px solid var(--mud-palette-secondary-lighten, #c4b5fd); border-top-color: var(--mud-palette-secondary); animation: rf-spin .8s linear infinite; }
 @keyframes rf-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .rf-spinner { animation-duration: 2.4s; } }
+
+/* LP の画像の候補：AI のおすすめと説明 */
+.rf-media-badge { position: absolute; left: 6px; top: 6px; background: #B45309; color: #fff; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+.rf-media-caption { display: block; margin-top: 4px; font-size: .75rem; line-height: 1.35; color: var(--rf-color-text-secondary); text-align: left; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }

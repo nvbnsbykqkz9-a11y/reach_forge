@@ -8,8 +8,13 @@ public sealed record ProcessedImage(byte[] Bytes, string Mime, int Width, int He
 public enum TextPosition { Top = 1, Center = 2, Bottom = 3 }
 
 /// <summary>画像に入れる文字（F-04 文字入れ）。帯の色に合わせて文字色は読みやすい方（白／黒）を自動で選ぶ。</summary>
-public sealed record TextOverlay(string Headline, string? Sub, TextPosition Position, string BandColorHex, float BandOpacity = 0.78f)
+/// <param name="SafeBottom">下からあける割合（0〜0.4）。ストーリーズ・リール・TikTok など、画面の下にアプリのボタンや説明文が重なる縦型で使う。</param>
+public sealed record TextOverlay(string Headline, string? Sub, TextPosition Position, string BandColorHex, float BandOpacity = 0.78f,
+    float SafeBottom = 0)
 {
+    /// <summary>縦型（9:16）で、アプリの表示に隠れないよう下からあける割合。</summary>
+    public const float VerticalSafeBottom = 0.2f;
+
     public const int MaxHeadline = 30;
     public const int MaxSub = 40;
 }
@@ -38,9 +43,12 @@ public interface IImageProcessor
     /// <summary>取り込み時の正規化：向きの補正、メタデータ（位置情報など）の削除、sRGB 化、最大辺の縮小、再エンコード。</summary>
     Task<ProcessedImage> NormalizeAsync(Stream input, int maxDimension, CancellationToken ct);
 
-    /// <summary>比率変換（引き伸ばし禁止）：SmartCrop（被写体中心）または Pad（背景色の余白）。</summary>
+    /// <summary>
+    /// 比率変換（引き伸ばし禁止）：SmartCrop（被写体中心）または Pad（背景色の余白）。
+    /// <paramref name="exact"/> が true なら、比率をそろえたうえで指定の大きさちょうどにする（SNS の入稿サイズ。少しの拡大を含む）。
+    /// </summary>
     Task<ProcessedImage> ConvertAspectAsync(byte[] source, AspectRatio target, (int Width, int Height) size, AspectMethod method,
-        string padColorHex, CancellationToken ct);
+        string padColorHex, CancellationToken ct, bool exact = false);
 
     /// <summary>アウトペインティング用のキャンバス（目標比率で、元画像の外側を透明にした PNG）。</summary>
     Task<ProcessedImage> PrepareOutpaintCanvasAsync(byte[] source, AspectRatio target, (int Width, int Height) size, CancellationToken ct);
@@ -80,6 +88,15 @@ public interface IImageProcessor
     /// <summary>切り抜いた商品を背景に配置する（商品の画素は変えない。接地の影を付ける）。</summary>
     Task<ProcessedImage> CompositeAsync(byte[] background, byte[] cutout, ProductPlacement placement, double scale, CancellationToken ct);
 
+    /// <summary>画像の大きさ（向きの補正後）。読めない画像は例外。</summary>
+    Task<(int Width, int Height)> MeasureAsync(byte[] source, CancellationToken ct);
+
+    /// <summary>
+    /// 画像を切らずに、指定の大きさの中に全体を収める（余白は同じ画像を拡大してぼかした背景で埋める）。
+    /// 比率の合わない画像を、縦型・横型の動画や広告の形式に入れるときに使う。
+    /// </summary>
+    Task<ProcessedImage> FitWithBackdropAsync(byte[] source, (int Width, int Height) size, CancellationToken ct);
+
     /// <summary>ローカル用スタブの画像（ブランド色のグラデーションと図形）。</summary>
     Task<ProcessedImage> RenderPlaceholderAsync(int width, int height, int seed, IReadOnlyList<string> colorsHex, CancellationToken ct);
 }
@@ -106,7 +123,9 @@ public sealed record ComposedVideo(byte[] Mp4, int DurationMs, int Width, int He
 /// </summary>
 public interface IVideoComposer
 {
-    Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null);
+    /// <param name="size">書き出す大きさ（既定は縦型 1080×1920。横型は 1920×1080）。シーンの画像はこの比率でつくっておく。</param>
+    Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null,
+        (int Width, int Height)? size = null);
 
     /// <summary>生成 AI の動画クリップを 1080×1920・H.264/AAC・faststart に整え、BGM を重ねる（F-05 ①②）。</summary>
     Task<ComposedVideo> FinishClipAsync(byte[] clip, VideoAudioOptions? audio, CancellationToken ct);

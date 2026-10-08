@@ -38,6 +38,8 @@ public static class DependencyInjection
         services.AddScoped<IAltTextGenerator, AltTextGenerator>();
         services.AddScoped<IBrandAnalyzer, BrandAnalyzer>();
         services.AddScoped<ILpCreativeWriter, LpCreativeWriter>();
+        services.AddScoped<ILpImageCurator, LpImageCurator>();
+        services.AddScoped<ILpVisualPlanner, LpVisualPlanner>();
         services.AddScoped<IVideoScriptWriter, VideoScriptWriter>();
         services.AddScoped<ILandingPageVideoPlanner, LandingPageVideoPlanner>();
         services.AddScoped<ITextToSpeech, TextToSpeechService>();

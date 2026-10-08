@@ -56,9 +56,11 @@ public static class LpEndpoints
                     }
                 }
 
-                if (await lp.VideoJobAsync(project, ct) is { Status: AiJobStatus.Succeeded, ResultAssetIds: [var video, ..] })
+                // 動画：向きごとに1本（どの SNS で使うかは各 SNS の文章.txt に書く）
+                foreach (var (orientation, video) in project.Videos.OrderBy(v => v.Key))
                 {
-                    await AddFileAsync("動画（縦型）.mp4", video);
+                    var (w, h) = LpMediaService.VideoSize(orientation);
+                    await AddFileAsync($"動画_{MediaFormat.OrientationLabel(orientation)}_{w}x{h}.mp4", video);
                 }
                 foreach (var (platform, output) in project.Outputs.OrderBy(o => LpStudioService.Supported.ToList().IndexOf(o.Key)))
                 {
@@ -68,9 +70,16 @@ public static class LpEndpoints
                     {
                         await writer.WriteAsync(LpStudioService.TextFile(platform, output, project.Url).Replace("\n", "\r\n"));
                     }
+                    foreach (var group in output.Images.GroupBy(x => x.Key))
+                    {
+                        foreach (var (image, i) in group.Select((x, i) => (x, i + 1)))
+                        {
+                            await AddFileAsync($"{folder}/画像_{Safe(image.Label)}_{image.Width}x{image.Height}_{i}.jpg", image.AssetId);
+                        }
+                    }
                     foreach (var (assetId, i) in output.ImageAssetIds.Select((a, i) => (a, i + 1)))
                     {
-                        await AddFileAsync($"{folder}/画像{i}.jpg", assetId);
+                        await AddFileAsync($"{folder}/画像{i}.jpg", assetId); // 以前の形式でつくったもの
                     }
                 }
                 if (missing.Count > 0)

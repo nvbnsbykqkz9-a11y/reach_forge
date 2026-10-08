@@ -30,10 +30,10 @@ public sealed record VideoGenerationSpec
     /// <summary>長さ（秒）。プロバイダが対応する長さのうち近いものにする。</summary>
     public int Seconds { get; init; } = 8;
 
-    /// <summary>縦型（9:16）。</summary>
+    /// <summary>縦型（9:16、既定）または横型（16:9）。</summary>
     public (int Width, int Height) Size { get; init; } = (1080, 1920);
 
-    /// <summary>② 画像→動画の起点の画像（9:16 に整えたもの）。</summary>
+    /// <summary>② 画像→動画の起点の画像（<see cref="Size"/> と同じ比率に整えたもの）。</summary>
     public byte[]? StartImage { get; init; }
     public string? StartImageMime { get; init; }
 

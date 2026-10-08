@@ -62,7 +62,7 @@ public sealed class SoraVideoGenerator(HttpClient http, AiProviderOptions option
             { new StringContent(string.IsNullOrEmpty(modelId) ? "sora-2" : modelId), "model" },
             { new StringContent(spec.Prompt), "prompt" },
             { new StringContent(Seconds(spec.Seconds).ToString(System.Globalization.CultureInfo.InvariantCulture)), "seconds" },
-            { new StringContent("720x1280"), "size" },
+            { new StringContent(Landscape(spec) ? "1280x720" : "720x1280"), "size" },
         };
         if (spec.StartImage is { } image)
         {
@@ -93,6 +93,9 @@ public sealed class SoraVideoGenerator(HttpClient http, AiProviderOptions option
         }
     }
 
+    /// <summary>横型（16:9）でつくるか。それ以外は縦型（9:16）。起点の画像も同じ向き・大きさ（720×1280 / 1280×720）で渡すこと。</summary>
+    public static bool Landscape(VideoGenerationSpec spec) => spec.Size.Width > spec.Size.Height;
+
     /// <summary>Sora が受け付ける長さ（4・8・12 秒）のうち近いもの。</summary>
     public static int Seconds(int requested) => requested <= 6 ? 4 : requested <= 10 ? 8 : 12;
 
@@ -111,7 +114,7 @@ public sealed class SoraVideoGenerator(HttpClient http, AiProviderOptions option
 
 /// <summary>
 /// Google Veo（Gemini API の predictLongRunning）。依頼 → 操作（operation）の完了を確認 → 動画の URI から取得。
-/// 縦型（9:16）、長さは 4〜8 秒。② は起点の画像を image として渡す。
+/// 縦型（9:16）または横型（16:9）、長さは 4〜8 秒。② は起点の画像を image として渡す。
 /// </summary>
 public sealed class VeoVideoGenerator(HttpClient http, AiProviderOptions options) : IVideoGenerator
 {
@@ -133,7 +136,7 @@ public sealed class VeoVideoGenerator(HttpClient http, AiProviderOptions options
             ["instances"] = new JsonArray { instance },
             ["parameters"] = new JsonObject
             {
-                ["aspectRatio"] = "9:16",
+                ["aspectRatio"] = SoraVideoGenerator.Landscape(spec) ? "16:9" : "9:16",
                 ["durationSeconds"] = Math.Clamp(spec.Seconds, 4, 8),
                 ["personGeneration"] = "dont_allow", // 実在の人物を生成しない（肖像権）
             },

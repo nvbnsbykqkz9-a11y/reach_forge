@@ -64,8 +64,10 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
         return problem;
     }
 
-    public async Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null)
+    public async Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null,
+        (int Width, int Height)? size = null)
     {
+        var (width, height) = size ?? (Width, Height);
         if (scenes.Count == 0) throw new ArgumentException("シーンがありません。", nameof(scenes));
         var dir = Directory.CreateTempSubdirectory("rf-video-");
         try
@@ -116,8 +118,8 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
                 var frames = (int)Math.Round(scenes[i].Seconds * Fps);
                 if (scenes[i].Clip is not null)
                 {
-                    // クリップは 1080×1920 を覆うように拡大して中央を切り出し（引き伸ばさない）、長さをそろえる
-                    var fit = $"[{i}:v]scale={Width}:{Height}:force_original_aspect_ratio=increase,crop={Width}:{Height},fps={Fps},setsar=1," +
+                    // クリップは書き出す大きさを覆うように拡大して中央を切り出し（引き伸ばさない）、長さをそろえる
+                    var fit = $"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps={Fps},setsar=1," +
                               $"trim=duration={Sec(scenes[i].Seconds)},setpts=PTS-STARTPTS";
                     filters.Add(overlayInputs.TryGetValue(i, out var caption)
                         ? $"{fit}[c{i}];[c{i}][{caption}:v]overlay=0:0:format=auto,format=yuv420p[v{i}]"
@@ -126,8 +128,9 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
                 else
                 {
                     // わずかにズームインして静止画に動きを出す（1.0 → 1.06）
-                    filters.Add($"[{i}:v]scale={Width * 2}:{Height * 2},zoompan=z='min(1+0.06*on/{Math.Max(1, frames)},1.06)':" +
-                                $"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={Width}x{Height}:fps={Fps},setsar=1,format=yuv420p[v{i}]");
+                    // 画像は比率を保ったまま枠を覆う大きさにしてから（引き伸ばさない）ズームする
+                    filters.Add($"[{i}:v]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,crop={width * 2}:{height * 2},zoompan=z='min(1+0.06*on/{Math.Max(1, frames)},1.06)':" +
+                                $"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps={Fps},setsar=1,format=yuv420p[v{i}]");
                 }
                 var a = audioInputs[i];
                 filters.Add(a >= 0
@@ -148,7 +151,7 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
             await RunAsync(args, ct);
             var bytes = await File.ReadAllBytesAsync(output, ct);
             var durationMs = (int)Math.Round(scenes.Sum(s => s.Seconds) * 1000);
-            return new ComposedVideo(bytes, durationMs, Width, Height);
+            return new ComposedVideo(bytes, durationMs, width, height);
         }
         finally
         {

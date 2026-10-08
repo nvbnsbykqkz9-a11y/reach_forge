@@ -51,7 +51,7 @@ public class ImageProcessorTests
     [Fact]
     public async Task Small_images_are_not_upscaled()
     {
-        var c = PlatformCatalog.Get(SocialPlatform.X);
+        var c = PlatformCatalog.Get(SocialPlatform.YouTube); // 16:9 のサムネイル
         var result = await _p.ConvertAspectAsync(WideImageWithSubjectOnRight(320, 180), c.ImageAspect, c.ImageSize, AspectMethod.SmartCrop,
             "#FFFFFF", CancellationToken.None);
         Assert.Equal((320, 180), (result.Width, result.Height));

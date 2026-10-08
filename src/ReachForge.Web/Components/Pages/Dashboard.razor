@@ -28,7 +28,8 @@
 
 <MudText Typo="Typo.h5" Class="mb-1">LP から広告・動画をつくる</MudText>
 <MudText Typo="Typo.body1" Class="mb-4">
-    お店・商品のページ（LP）の URL を入れるだけで、SNS ごとの広告文・投稿文・画像と、縦型の動画をつくります。
+    お店・商品のページ（LP）の URL を入れるだけで、AI が LP から特色のある画像を選び、SNS ごとの広告文・投稿文と、
+    各 SNS の形式に合わせた広告の画像・動画をつくります。
     できたものはダウンロードして、各 SNS に自分でアップロードしてください。
 </MudText>
 
@@ -52,6 +53,13 @@
                 <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" Class="mt-1" StartIcon="@Icons.Material.Rounded.Download"
                            Disabled="@(_busy || string.IsNullOrWhiteSpace(_url))" OnClick="LoadAsync">@(_busy ? "読み込み中…" : "読み込む")</MudButton>
             </div>
+            @if (_busy && _step == 1)
+            {
+                <MudProgressLinear Indeterminate="true" Color="Color.Secondary" Class="mt-2" />
+                <MudText Typo="Typo.caption">LP を読み込み、AI が商品・サービスの特色が伝わる画像を選んでいます…</MudText>
+            }
+            <div>
+            </div>
             @if (_page is { } lp)
             {
                 <MudPaper Class="pa-3 mt-4" Elevation="0" Outlined="true">
@@ -60,22 +68,29 @@
                     <MudText Typo="Typo.caption" Style="word-break:break-all">@lp.Url</MudText>
                 </MudPaper>
 
-                <MudText Typo="Typo.subtitle1" Class="mt-4">広告・動画に使う画像を選んでください（@(_images.Count)／@LpStudioService.MaxImages 枚）</MudText>
-                @if (lp.ImageList.Count == 0)
+                <MudText Typo="Typo.subtitle1" Class="mt-4">広告の素材にする画像（@(_images.Count)／@LpStudioService.MaxImages 枚）</MudText>
+                <MudText Typo="Typo.body2" Class="mb-1" Style="color:var(--rf-color-text-secondary)">
+                    AI が、商品・サービスの特色が伝わる画像を選びました（★）。選んだ画像ごとに、AI がその商品を使った広告の写真と動画のシーンをつくります。
+                    ロゴ・小さい画像・細長いバナーは除いています。
+                </MudText>
+                @if (_preview is null || _preview.Images.Count == 0)
                 {
-                    <MudText Typo="Typo.body2">この LP には使える画像が見つかりませんでした。文章と、文字だけの動画をつくります。</MudText>
+                    <MudText Typo="Typo.body2">この LP には素材にできる画像が見つかりませんでした。AI が LP の内容から広告の写真をつくります。</MudText>
                 }
                 else
                 {
-                    <div class="rf-media-grid mt-2" role="group" aria-label="使う画像を選ぶ">
-                        @foreach (var img in lp.ImageList.Take(12))
+                    <div class="rf-media-grid mt-2" role="group" aria-label="素材にする画像を選ぶ">
+                        @foreach (var img in _preview.Images.Take(12))
                         {
-                            var url = img.Url.ToString();
+                            var url = img.Url;
                             var on = _images.Contains(url);
                             <button type="button" class="rf-media-pick @(on ? "rf-media-pick-on" : "")" aria-pressed="@(on ? "true" : "false")"
-                                    aria-label="@(img.Alt ?? Path.GetFileName(img.Url.AbsolutePath))" @onclick="() => Toggle(url)">
+                                    aria-label="@($"{(img.Recommended is { } r ? $"AI のおすすめ{r}：" : "")}{img.Description ?? img.Alt ?? Path.GetFileName(new Uri(url).AbsolutePath)}")"
+                                    @onclick="() => Toggle(url)">
                                 <img src="@url" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px" />
                                 @if (on) { <span class="rf-media-order">@(_images.IndexOf(url) + 1)</span> }
+                                @if (img.Recommended is { } rank) { <span class="rf-media-badge" aria-hidden="true">★ おすすめ@(rank)</span> }
+                                <span class="rf-media-caption">@(img.Description ?? $"{img.Width}×{img.Height}")</span>
                             </button>
                         }
                     </div>
@@ -106,8 +121,25 @@
                 }
             </div>
             <MudText Typo="Typo.caption" Class="d-block mt-2">
-                SNS ごとに、広告文の案3つ・投稿文とハッシュタグ・その SNS のサイズの画像をつくります（YouTube は動画だけ）。
+                SNS ごとに、広告文の案3つ・投稿文とハッシュタグと、その SNS の形式に合わせた画像・動画をつくります。
             </MudText>
+            @if (_platforms.Count > 0)
+            {
+                <table class="rf-summary mt-3" aria-label="つくる画像・動画の形式">
+                    <thead><tr><th scope="col">SNS</th><th scope="col">画像</th><th scope="col">動画</th></tr></thead>
+                    <tbody>
+                        @foreach (var p in LpStudioService.Supported.Where(_platforms.Contains))
+                        {
+                            var c = PlatformCatalog.Get(p);
+                            <tr>
+                                <td>@c.DisplayName</td>
+                                <td>@string.Join("／", c.ImageFormats.Select(f => f.Description))</td>
+                                <td>@(_video ? string.Join("／", c.VideoFormats.Select(f => f.Description)) : "つくらない")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
 
             <MudDivider Class="my-4" />
             <MudSwitch T="bool" @bind-Value="_video" Color="Color.Primary" Label="縦型の動画もつくる（Instagram のリール・TikTok・YouTube ショートなどに使えます）" />
@@ -137,11 +169,11 @@
                 <tbody>
                     <tr><th scope="row">LP</th><td style="word-break:break-all">@(_page?.Title)<br /><span class="mud-typography-caption">@(_page?.Url)</span></td></tr>
                     <tr><th scope="row">SNS</th><td>@string.Join("・", _platforms.Select(p => PlatformCatalog.Get(p).DisplayName))</td></tr>
-                    <tr><th scope="row">画像</th><td>@(_images.Count == 0 ? "使わない" : $"LP の画像 {_images.Count}枚を、SNS ごとのサイズにします")</td></tr>
-                    <tr><th scope="row">動画</th><td>@(_video ? $"縦型 {_seconds}秒{(_narration ? "・ナレーションあり" : "")}" : "つくらない")</td></tr>
+                    <tr><th scope="row">画像</th><td>@ImageSummary</td></tr>
+                    <tr><th scope="row">動画</th><td>@VideoSummary</td></tr>
                 </tbody>
             </table>
-            <MudText Typo="Typo.caption" Class="d-block mt-2">文章と画像は1分ほどでできます。動画はそのあと数分かけてつくります（画面を閉じても続きます）。</MudText>
+            <MudText Typo="Typo.caption" Class="d-block mt-2">文章は1分ほどでできます。画像と動画は AI でつくるため、そのあと数分〜十数分かかります（画面を閉じても続きます）。</MudText>
             @if (_steps is { } steps)
             {
                 var done = Math.Min(_progress?.StepIndex ?? 0, steps.Count);
@@ -214,6 +246,7 @@
     private int _step = 1;
     private string? _url;
     private WebPage? _page;
+    private LpPreview? _preview;
     private List<string> _images = [];
     private bool _rights;
     private List<SocialPlatform> _platforms = [SocialPlatform.Instagram, SocialPlatform.X, SocialPlatform.Facebook];
@@ -226,9 +259,33 @@
     private bool AiReady => Ai.Value.Providers.Any(p => p.Value.Type is ReachForge.AI.AiProviderType.Anthropic or ReachForge.AI.AiProviderType.OpenAI
                                                        && !string.IsNullOrWhiteSpace(p.Value.ApiKey));
 
+    private string ImageSummary
+    {
+        get
+        {
+            var (images, _) = LpMediaService.FormatsFor(_platforms, false);
+            var count = images.Count * Math.Max(1, _images.Count);
+            var basis = _images.Count == 0 ? "LP の内容から" : $"選んだ画像 {_images.Count}枚それぞれの商品を使って";
+            return $"AI が{basis}広告の写真をつくり、SNS の形式ごとに見出しを入れて書き出します（計 {count}枚）";
+        }
+    }
+
+    private string VideoSummary
+    {
+        get
+        {
+            if (!_video) return "つくらない";
+            var (_, videos) = LpMediaService.FormatsFor(_platforms, true);
+            var kinds = videos.Select(v => v.Format.Orientation).Distinct().OrderBy(o => o)
+                .Select(o => o == ReachForge.Domain.Platforms.MediaOrientation.Landscape ? "横型（16:9・1920×1080）" : "縦型（9:16・1080×1920）");
+            return $"{string.Join("と", kinds)}を各 {_seconds}秒{(_narration ? "・ナレーションあり" : "")}。シーンは AI の写真を動画生成 AI で動かします";
+        }
+    }
+
     private LpProjectRequest Request => new()
     {
         Url = _page?.Url.ToString() ?? _url ?? "", Platforms = _platforms, ImageUrls = _images, RightsConfirmed = _rights,
+        ImageDescriptions = _preview?.Images.Where(i => i.Description is not null).ToDictionary(i => i.Url, i => i.Description!) ?? [],
         MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration,
     };
 
@@ -257,8 +314,9 @@
         _busy = true;
         try
         {
-            _page = await Lp.PreviewAsync(_url.Trim(), CancellationToken.None);
-            _images = _page.ImageList.Take(Math.Min(2, LpStudioService.MaxImages)).Select(i => i.Url.ToString()).ToList();
+            _preview = await Lp.PreviewAsync(_url.Trim(), CancellationToken.None);
+            _page = _preview.Page;
+            _images = _preview.Recommended.Take(LpStudioService.RecommendCount).Select(i => i.Url).ToList();
             _rights = false;
         }
         catch (Exception ex)

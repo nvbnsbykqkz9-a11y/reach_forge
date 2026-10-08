@@ -1,5 +1,5 @@
 @page "/lp/{Id:guid}"
-@* LP からつくったもの：縦型の動画と、SNS ごとの画像・広告文・投稿文。ダウンロード・コピーして、各 SNS に手動でアップロードする *@
+@* LP からつくったもの：縦型・横型の動画と、SNS の形式ごとの広告画像・広告文・投稿文。ダウンロード・コピーして、各 SNS に手動でアップロードする *@
 @inherits RfComponentBase
 @inject TimeDisplay Time
 @inject IJSRuntime JS
@@ -48,46 +48,72 @@ else
         </MudAlert>
     }
 
-    @if (p.VideoJobId is not null)
+    @if (p.MediaJobId is not null)
     {
         <MudPaper Class="pa-4 mb-4 rf-card" Elevation="0" Outlined="true">
-            <MudText Typo="Typo.h6">縦型の動画</MudText>
-            <MudText Typo="Typo.caption" Class="d-block mb-2">Instagram のリール・TikTok・YouTube ショート・X・Facebook などに使えます（1080×1920）。</MudText>
+            <MudText Typo="Typo.h6">広告の画像と動画</MudText>
+            <MudText Typo="Typo.caption" Class="d-block mb-2">
+                AI が LP の画像の商品を使って広告の写真をつくり、SNS の形式ごとに書き出します。動画は縦型（9:16）・横型（16:9）を、使う SNS に合わせてつくります。
+            </MudText>
             @if (_job is null || !_job.IsFinished)
             {
                 @if (_job is not null)
                 {
-                    <RfJobProgress JobId="_job.Id" Title="動画をつくっています" EstimatedSeconds="90" OnFinished="JobFinishedAsync" />
+                    <RfJobProgress JobId="_job.Id" Title="広告の画像と動画をつくっています" EstimatedSeconds="600" OnFinished="JobFinishedAsync" />
                 }
             }
-            else if (_job is { Status: AiJobStatus.Succeeded, ResultAssetIds: [var video, ..] })
+            else if (_job.Status != AiJobStatus.Succeeded)
             {
-                @if (_summary?.NarrationError is { } narrationError)
-                {
-                    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="narration-warning">
-                        ナレーションなしで仕上げました。@narrationError
-                    </MudAlert>
-                }
-                <div class="d-flex flex-wrap gap-4 align-start">
-                    <div style="width:240px;max-width:100%">
-                        <RfMediaImage AssetId="video" Controls="true" Alt="LP からつくった縦型の動画" />
-                    </div>
-                    <div style="flex:1;min-width:240px">
-                        <MudButton Href="@($"/api/v1/files/{video}")" download="" Variant="Variant.Outlined" Color="Color.Primary"
-                                   StartIcon="@Icons.Material.Rounded.Download">動画をダウンロード（MP4）</MudButton>
-                        @if (_summary is { } s)
-                        {
-                            <MudText Typo="Typo.subtitle2" Class="mt-3">動画に添える文章の例</MudText>
-                            <MudPaper Class="pa-2 mt-1" Elevation="0" Outlined="true" Style="white-space:pre-wrap">@PostText.Compose(s.PostText, s.Hashtags)</MudPaper>
-                            <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ContentCopy" Class="mt-1"
-                                       OnClick="() => CopyAsync(PostText.Compose(s.PostText, s.Hashtags))">コピー</MudButton>
-                        }
-                    </div>
-                </div>
+                <MudAlert Severity="Severity.Error">画像・動画をつくれませんでした：@(_job.Error ?? "もう一度お試しください。")</MudAlert>
             }
             else
             {
-                <MudAlert Severity="Severity.Error">動画をつくれませんでした：@(_job.Error ?? "もう一度お試しください。")</MudAlert>
+                @if (p.Visuals.Any(v => v.Fallback))
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="fallback-warning">
+                        一部の画像は AI でつくれなかったため、LP の画像を切らずに枠に収めて使いました（画像生成の AI の設定・API キーを確認してください）。
+                    </MudAlert>
+                }
+                @if (p.Visuals.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2">広告のビジュアル案</MudText>
+                    <ul class="mb-3" style="margin-top:4px">
+                        @foreach (var (v, i) in p.Visuals.Select((v, i) => (v, i + 1)))
+                        {
+                            <li><MudText Typo="Typo.body2">案@(i)：@(v.Angle.Length > 0 ? v.Angle : "商品の魅力")@(v.Headline.Length > 0 ? $"（見出し「{v.Headline}」）" : "")</MudText></li>
+                        }
+                    </ul>
+                }
+                @foreach (var (orientation, video) in p.Videos.OrderBy(v => v.Key))
+                {
+                    var summary = _summaries.GetValueOrDefault(orientation);
+                    var label = MediaFormat.OrientationLabel(orientation);
+                    var landscape = orientation == MediaOrientation.Landscape;
+                    var uses = LpStudioService.Supported.Where(p.Outputs.ContainsKey)
+                        .SelectMany(sns => p.Outputs[sns].Videos.Where(x => x.AssetId == video).Select(x => $"{PlatformCatalog.Get(sns).DisplayName}（{x.Label}）"));
+                    <div class="d-flex flex-wrap gap-4 align-start mb-4" data-testid="@($"video-{orientation.ToString().ToLowerInvariant()}")">
+                        <div style="@(landscape ? "width:420px" : "width:220px");max-width:100%">
+                            <RfMediaImage AssetId="video" Controls="true" Alt="@($"LP からつくった{label}の動画")" />
+                        </div>
+                        <div style="flex:1;min-width:240px">
+                            <MudText Typo="Typo.subtitle1"><b>@(label)の動画（@(landscape ? "16:9・1920×1080" : "9:16・1080×1920")）</b></MudText>
+                            <MudText Typo="Typo.caption" Class="d-block mb-2">使う SNS：@string.Join("、", uses)</MudText>
+                            @if (summary?.NarrationError is { } narrationError)
+                            {
+                                <MudAlert Severity="Severity.Warning" Class="mb-2" data-testid="narration-warning">ナレーションなしで仕上げました。@narrationError</MudAlert>
+                            }
+                            <MudButton Href="@($"/api/v1/files/{video}")" download="" Variant="Variant.Outlined" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Rounded.Download">@(label)の動画をダウンロード（MP4）</MudButton>
+                            @if (summary is { } s)
+                            {
+                                <MudText Typo="Typo.subtitle2" Class="mt-3">動画に添える文章の例</MudText>
+                                <MudPaper Class="pa-2 mt-1" Elevation="0" Outlined="true" Style="white-space:pre-wrap">@PostText.Compose(s.PostText, s.Hashtags)</MudPaper>
+                                <MudButton Size="Size.Small" Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ContentCopy" Class="mt-1"
+                                           OnClick="() => CopyAsync(PostText.Compose(s.PostText, s.Hashtags))">コピー</MudButton>
+                            }
+                        </div>
+                    </div>
+                }
             }
         </MudPaper>
     }
@@ -109,10 +135,29 @@ else
                                 <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Rounded.ContentCopy" Class="mt-2"
                                            OnClick="() => CopyAsync(LpStudioService.PostTextOf(o))">投稿文をコピー</MudButton>
 
-                                @if (o.ImageAssetIds.Count > 0)
+                                @if (o.Images.Count > 0)
+                                {
+                                    @foreach (var group in o.Images.GroupBy(x => x.Key))
+                                    {
+                                        var first = group.First();
+                                        <MudText Typo="Typo.h6" Class="mt-5">画像：@first.Label</MudText>
+                                        <MudText Typo="Typo.caption" Class="d-block mb-2">@c.DisplayName の@(first.Label)の形式（@first.Width×@first.Height）です。</MudText>
+                                        <div class="rf-media-grid">
+                                            @foreach (var (image, i) in group.Select((x, i) => (x, i + 1)))
+                                            {
+                                                <div>
+                                                    <RfMediaImage AssetId="image.AssetId" Alt="@($"{c.DisplayName} {first.Label}の画像 {i}")" ShowAiBadge="true"
+                                                                  Style="@($"aspect-ratio:{first.Width}/{first.Height}")" />
+                                                    <MudButton Href="@($"/api/v1/files/{image.AssetId}")" download="" Size="Size.Small" Variant="Variant.Text" FullWidth="true"
+                                                               StartIcon="@Icons.Material.Rounded.Download" aria-label="@($"{first.Label}の画像 {i} をダウンロード")">ダウンロード</MudButton>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                }
+                                else if (o.ImageAssetIds.Count > 0)
                                 {
                                     <MudText Typo="Typo.h6" Class="mt-5">画像</MudText>
-                                    <MudText Typo="Typo.caption" Class="d-block mb-2">@c.DisplayName のサイズ（@c.ImageSize.Width×@c.ImageSize.Height）にしました。</MudText>
                                     <div class="rf-media-grid">
                                         @foreach (var (asset, i) in o.ImageAssetIds.Select((a, i) => (a, i + 1)))
                                         {
@@ -123,6 +168,19 @@ else
                                             </div>
                                         }
                                     </div>
+                                }
+                                else if (_job is { IsFinished: false })
+                                {
+                                    <MudText Typo="Typo.body2" Class="mt-5" Style="color:var(--rf-color-text-secondary)">画像は上でつくっています…</MudText>
+                                }
+                                @if (o.Videos.Count > 0)
+                                {
+                                    <MudText Typo="Typo.h6" Class="mt-5">動画</MudText>
+                                    @foreach (var v in o.Videos)
+                                    {
+                                        <MudButton Href="@($"/api/v1/files/{v.AssetId}")" download="" Size="Size.Small" Variant="Variant.Outlined" Class="mr-2 mt-1"
+                                                   StartIcon="@Icons.Material.Rounded.Download">@v.Label（@v.Width×@v.Height）</MudButton>
+                                    }
                                 }
                                 <MudText Typo="Typo.subtitle2" Class="mt-4">アップロードするところ</MudText>
                                 <div class="d-flex flex-wrap gap-2 mt-1">
@@ -165,7 +223,7 @@ else
 
     private LpProject? _project;
     private AiJob? _job;
-    private LandingPageVideoSummary? _summary;
+    private Dictionary<MediaOrientation, LandingPageVideoSummary> _summaries = [];
     private bool _notFound;
 
     protected override async Task OnParametersSetAsync()
@@ -173,7 +231,7 @@ else
         await Time.ZoneAsync();
         try
         {
-            _project = await Lp.GetAsync(Id, CancellationToken.None);
+            _project = await Lp.ReloadAsync(Id, CancellationToken.None);
             await LoadJobAsync();
         }
         catch (NotFoundException)
@@ -184,15 +242,23 @@ else
 
     private async Task LoadJobAsync(AiJob? finished = null)
     {
-        _job = finished ?? await Lp.VideoJobAsync(_project!, CancellationToken.None);
-        _summary = null;
-        if (_job is { Status: AiJobStatus.Succeeded, ResultAssetIds: [var video, ..] })
+        _job = finished ?? await Lp.MediaJobAsync(_project!, CancellationToken.None);
+        _summaries = [];
+        foreach (var (orientation, video) in _project!.Videos)
         {
-            _summary = VideoService.LandingPageSummaryOf(await Scoped<MediaService>().GetAsync(video, CancellationToken.None));
+            if (VideoService.LandingPageSummaryOf(await Scoped<MediaService>().GetAsync(video, CancellationToken.None)) is { } summary)
+            {
+                _summaries[orientation] = summary;
+            }
         }
     }
 
-    private async Task JobFinishedAsync(AiJob job) => await LoadJobAsync(job);
+    /// <summary>ジョブが終わったら、ジョブが書き込んだ画像・動画を読み直す。</summary>
+    private async Task JobFinishedAsync(AiJob job)
+    {
+        _project = await Lp.ReloadAsync(Id, CancellationToken.None);
+        await LoadJobAsync(job);
+    }
 
     private async Task CopyAsync(string text)
     {

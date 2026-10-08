@@ -18,7 +18,14 @@
                 {
                     <span class="mud-typography-caption"><span class="rf-sns-dot" style="background:@RfSns.Color(platform)" aria-hidden="true"></span>@PlatformCatalog.Get(platform).DisplayName</span>
                 }
-                @if (p.VideoJobId is not null) { <span class="mud-typography-caption">＋ 縦型の動画</span> }
+                @if (p.Videos.Count > 0)
+                {
+                    <span class="mud-typography-caption">＋ 動画（@string.Join("・", p.Videos.Keys.OrderBy(k => k).Select(MediaFormat.OrientationLabel))）</span>
+                }
+                else if (p.MakeVideo && p.MediaJobId is not null)
+                {
+                    <span class="mud-typography-caption">＋ 動画</span>
+                }
             </div>
         </MudPaper>
     }

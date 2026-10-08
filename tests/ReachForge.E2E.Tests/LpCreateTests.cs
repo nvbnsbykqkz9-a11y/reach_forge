@@ -26,6 +26,8 @@ public class LpCreateTests(E2EFixture app)
         await page.GetByLabel("LP の URL").FillAsync(FakeLandingPageFetcher.Url);
         await page.GetByRole(AriaRole.Button, new() { Name = "読み込む" }).ClickAsync();
         await page.GetByText("秋限定さつまいもラテ | ほっこりカフェ").WaitForAsync(new() { Timeout = 15000 });
+        // AI が特色のある画像を選び、最初から選んでおく
+        await Assertions.Expect(page.GetByText("★ おすすめ1")).ToBeVisibleAsync();
         var next = page.GetByRole(AriaRole.Button, new() { Name = "次へ：SNS を選ぶ" });
         await Assertions.Expect(next).ToBeDisabledAsync(); // 画像を使う権利の確認が必要
         await page.GetByText("選んだ画像を広告・動画に使う権利があります", new() { Exact = false }).ClickAsync();
@@ -34,6 +36,10 @@ public class LpCreateTests(E2EFixture app)
 
         await page.GetByText("どの SNS 向けにつくりますか？").WaitForAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "TikTok" }).ClickAsync(); // 既定の3つに追加
+        // SNS ごとの画像・動画の形式（仕様）が出る
+        var formats = page.GetByRole(AriaRole.Table, new() { Name = "つくる画像・動画の形式" });
+        await Assertions.Expect(formats.GetByText("フィード（4:5・1080×1350）／ストーリーズ（9:16・1080×1920）")).ToBeVisibleAsync();
+        await Assertions.Expect(formats.GetByText("リンク広告（1.91:1・1200×628）", new() { Exact = false })).ToBeVisibleAsync();
         await ShotAsync(page, "lp-step2");
         await page.GetByRole(AriaRole.Button, new() { Name = "次へ：確認" }).ClickAsync();
 
@@ -45,8 +51,8 @@ public class LpCreateTests(E2EFixture app)
         // 進み具合：手順の一覧と割合が出る
         var progress = page.GetByTestId("create-progress");
         await progress.WaitForAsync();
-        await Assertions.Expect(progress.GetByText("Instagram：広告文・投稿文・画像をつくる")).ToBeVisibleAsync();
-        await Assertions.Expect(progress.GetByText("縦型の動画づくりを始める")).ToBeVisibleAsync();
+        await Assertions.Expect(progress.GetByText("Instagram：広告文・投稿文をつくる")).ToBeVisibleAsync();
+        await Assertions.Expect(progress.GetByText("広告の画像と動画づくりを始める")).ToBeVisibleAsync();
         await ShotAsync(page, "lp-progress");
 
         // つくったものの画面：SNS ごとのタブ（投稿文・画像・広告文）と動画
@@ -54,19 +60,20 @@ public class LpCreateTests(E2EFixture app)
         await page.GetByRole(AriaRole.Button, new() { Name = "投稿文をコピー" }).First.WaitForAsync(new() { Timeout = 30000 });
         await Assertions.Expect(page.GetByRole(AriaRole.Tab)).ToHaveCountAsync(4);
         await Assertions.Expect(page.GetByRole(AriaRole.Button, new() { NameRegex = new("^案 1 をコピー") }).First).ToBeVisibleAsync();
-        await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { NameRegex = new("画像 1 をダウンロード") }).First).ToBeVisibleAsync();
-        // 動画：いまの作業と割合が出る
+        // 画像と動画：いまの作業と割合が出る
         await page.GetByTestId("job-progress-text").WaitForAsync(new() { Timeout = 30000 });
         await ShotAsync(page, "lp-video-progress");
         try
         {
-            await page.GetByRole(AriaRole.Link, new() { NameRegex = new("動画をダウンロード") }).WaitForAsync(new() { Timeout = 120_000 });
+            await page.GetByRole(AriaRole.Link, new() { NameRegex = new("縦型の動画をダウンロード") }).WaitForAsync(new() { Timeout = 240_000 });
         }
         catch (TimeoutException)
         {
             await ShotAsync(page, "lp-video-timeout");
             throw;
         }
+        await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { NameRegex = new("横型の動画をダウンロード") })).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByRole(AriaRole.Link, new() { NameRegex = new("フィードの画像 1 をダウンロード") }).First).ToBeVisibleAsync();
         await ShotAsync(page, "lp-result");
 
         // まとめてダウンロード（ZIP）

@@ -61,12 +61,12 @@ public class LandingPageVideoTests
             ImageUrls = ["https://example.com/og.jpg", "https://example.com/img/latte.png"], RightsConfirmed = true, MakeVideo = false,
         };
         var steps = LpStudioService.CreateSteps(request);
-        Assert.Equal(["LP を読み込む", "LP の画像を取り込む", "Instagram：広告文・投稿文・画像をつくる", "YouTube：広告文・投稿文をつくる"], steps);
+        Assert.Equal(["LP を読み込む", "LP の画像を取り込む", "Instagram：広告文・投稿文をつくる", "YouTube：広告文・投稿文をつくる", "広告の画像づくりを始める"], steps);
 
         var reports = new List<LpCreateProgress>();
         await f.Get<LpStudioService>(scope).CreateAsync(request, CancellationToken.None, new SyncProgress(reports.Add));
         Assert.Equal(
-            [new(0), new(1, "1/2枚"), new(1, "2/2枚"), new(2), new(3), new(4)],
+            [new(0), new(1, "1/2枚"), new(1, "2/2枚"), new(2), new(3), new(4), new(5)],
             reports);
         Assert.Equal(steps.Count, reports[^1].StepIndex); // 最後は「すべて終わった」
     }

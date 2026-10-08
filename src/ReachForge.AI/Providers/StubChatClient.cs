@@ -32,6 +32,15 @@ public sealed class StubChatClient : IChatClient
             LpCreativeStubPayload p => Serialize(LpCreativeOf(p)),
             ScriptStubPayload p => Serialize(Script(p)),
             LandingPageStubPayload p => Serialize(LandingPage(p)),
+            LpImagesStubPayload p => Serialize(new LpImagePicksDraft([.. p.Candidates
+                .OrderByDescending(c => (long)c.Width * c.Height)
+                .Take(p.Max)
+                .Select(c => new LpImagePickDraft(c.Index, string.IsNullOrWhiteSpace(c.Alt) ? "商品の魅力が伝わる写真" : PostText.Truncate(c.Alt, 30)))])),
+            LpVisualsStubPayload p => Serialize(new LpVisualsDraft([.. p.Sources.Select((d, i) => new LpVisualDraft(i,
+                new[] { "こだわり", "使うシーン", "できあがり", "おすすめ" }[i % 4],
+                PostText.Truncate((p.Page.Title.Split('|', '｜', '-')[0]).Trim() is { Length: > 0 } t ? t : p.BrandName, 15),
+                "Place the product on a warm wooden table in soft morning light, with a few natural props, shallow depth of field.",
+                "Slow push-in camera move with gentle light flicker."))])),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
                 : $"{PostText.Truncate(p.Hint, 40)}を表したイメージ",

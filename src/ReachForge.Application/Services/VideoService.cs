@@ -352,7 +352,7 @@ public sealed class VideoService(
             MediaAsset? source = scene.ImageIndex is { } k ? imported[k].Asset : imported.Count > 0 ? imported[i % imported.Count].Asset : null;
             var background = source is null
                 ? await images.CreateBackgroundAsync(band, Size, ct)
-                : await images.ConvertAspectAsync(await media.ReadAsync(source, ct), new AspectRatio(9, 16), Size, AspectMethod.SmartCrop, band, ct);
+                : await images.FitWithBackdropAsync(await media.ReadAsync(source, ct), Size, ct); // LP の画像は切らずに枠に収める
             var caption = string.IsNullOrWhiteSpace(scene.Caption)
                 ? null
                 : new TextOverlay(PostText.Truncate(scene.Caption, TextOverlay.MaxHeadline), null,
@@ -423,29 +423,6 @@ public sealed class VideoService(
         return asset;
     }
 
-    /// <summary>
-    /// ナレーション。音声合成に失敗したら、そのあとは作らずに理由を残す（動画はナレーションなしで仕上げる）。
-    /// </summary>
-    private sealed class Narrator(ITextToSpeech tts, ILogger log, Guid jobId)
-    {
-        public string? Failure { get; private set; }
-
-        public async Task<SpeechAudio?> SpeakAsync(string? text, CancellationToken ct)
-        {
-            if (Failure is not null || string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                return await tts.SynthesizeAsync(text, ct);
-            }
-            catch (AiUnavailableException ex)
-            {
-                Failure = ex.Message;
-                log.LogWarning(ex, "Narration failed for job {JobId}; finishing without narration", jobId);
-                return null;
-            }
-        }
-    }
-
     private async Task ReportAsync(AiJob job, AiJobStage stage, int percent, string text, CancellationToken ct)
     {
         job.Report(stage, percent, text);
@@ -479,4 +456,27 @@ public sealed class VideoService(
     }
 
     private static int Clamp(int seconds) => Math.Clamp(seconds, VideoJobRequest.MinSeconds, VideoJobRequest.MaxSeconds);
+}
+
+/// <summary>
+/// ナレーション。音声合成に失敗したら、そのあとは作らずに理由を残す（動画はナレーションなしで仕上げる）。
+/// </summary>
+internal sealed class Narrator(ITextToSpeech tts, ILogger log, Guid jobId)
+{
+    public string? Failure { get; private set; }
+
+    public async Task<SpeechAudio?> SpeakAsync(string? text, CancellationToken ct)
+    {
+        if (Failure is not null || string.IsNullOrWhiteSpace(text)) return null;
+        try
+        {
+            return await tts.SynthesizeAsync(text, ct);
+        }
+        catch (AiUnavailableException ex)
+        {
+            Failure = ex.Message;
+            log.LogWarning(ex, "Narration failed for job {JobId}; finishing without narration", jobId);
+            return null;
+        }
+    }
 }

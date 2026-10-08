@@ -22,7 +22,7 @@ public enum LinkPolicy
 public sealed record AspectRatio(int Width, int Height)
 {
     public double Value => (double)Width / Height;
-    public override string ToString() => $"{Width}:{Height}";
+    public override string ToString() => Height == 100 ? $"{(Width / 100.0).ToString(System.Globalization.CultureInfo.InvariantCulture)}:1" : $"{Width}:{Height}";
 }
 
 /// <summary>
@@ -58,6 +58,12 @@ public sealed record PlatformConstraint
     public required AspectRatio ImageAspect { get; init; }
     public required (int Width, int Height) ImageSize { get; init; }
     public AspectRatio? VideoAspect { get; init; }
+
+    /// <summary>つくる画像の形式（用途ごと）。先頭が主な形式で、<see cref="ImageAspect"/>・<see cref="ImageSize"/> と同じ。</summary>
+    public IReadOnlyList<MediaFormat> ImageFormats { get; init; } = [];
+
+    /// <summary>つくる動画の形式（用途ごと）。</summary>
+    public IReadOnlyList<MediaFormat> VideoFormats { get; init; } = [];
 
     /// <summary>1投稿に添付できる画像の数（現状の実装範囲。Instagram・Threads のカルーセルは今後対応）。</summary>
     public int MaxImages { get; init; } = 1;

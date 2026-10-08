@@ -32,7 +32,7 @@ public sealed class DataRetentionService(ReachForgeDbContext db, ITenantContext 
 
         // LP からつくった動画のジョブは、つくったものの画面で参照するため残す
         var jobBefore = now - AiJobRetention;
-        var keep = db.LpProjects.Where(p => p.VideoJobId != null).Select(p => p.VideoJobId!.Value);
+        var keep = db.LpProjects.Where(p => p.MediaJobId != null).Select(p => p.MediaJobId!.Value);
         var jobs = await db.AiJobs
             .Where(j => (j.Status == AiJobStatus.Succeeded || j.Status == AiJobStatus.Failed || j.Status == AiJobStatus.Canceled)
                 && j.CompletedAt != null && j.CompletedAt < jobBefore && !keep.Contains(j.Id))
