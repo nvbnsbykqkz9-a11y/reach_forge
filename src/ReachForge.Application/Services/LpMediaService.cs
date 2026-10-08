@@ -36,6 +36,7 @@ public sealed class LpMediaService(
     ILandingPageVideoPlanner videoPlanner,
     ITextToSpeech tts,
     IVideoComposer composer,
+    IMotionRenderer motion,
     IVideoGenerationService videoGenerator,
     IWebPageFetcher fetcher,
     IBrandContextProvider brand,
@@ -92,7 +93,11 @@ public sealed class LpMediaService(
     /// キービジュアル。画面の案では <paramref name="Backdrop"/>（端末を置く前の背景）を持ち、SNS の形式・動画の大きさごとに組み直す。
     /// <paramref name="Fallback"/>：AI でつくれなかった（写真を枠に収めた・背景を模様で描いた）。
     /// </summary>
-    private sealed record KeyVisual(MediaAsset Asset, byte[] Bytes, bool Fallback, bool Retried, byte[]? Backdrop = null);
+    private sealed record KeyVisual(MediaAsset Asset, byte[] Bytes, bool Fallback, bool Retried, byte[]? Backdrop = null)
+    {
+        /// <summary>絵になる素材がない（LP の画像も AI の画像もない）。文字と図形のデザイン（モーショングラフィックス）でつくる。</summary>
+        public bool Graphic { get; init; }
+    }
 
     /// <summary>ジョブを実行する（AiJobProcessor から、ジョブのテナント・ワークスペースのコンテキストで呼ぶ）。つくったファイルを返す。</summary>
     public async Task<IReadOnlyList<Guid>> ProcessAsync(AiJob job, CancellationToken ct)
@@ -256,7 +261,7 @@ public sealed class LpMediaService(
             {
                 // AI でつくれなかった：素材画像を切らずに枠に収める（素材もなければ LP の色で模様を描いた背景）
                 bytes = source is null
-                    ? (await images.RenderBackdropAsync(GenerationSize(orientation), Style(project, direction, concept), ct)).Bytes
+                    ? (await motion.RenderStillAsync(Poster(project, direction, concept, c, ctx, null), GenerationSize(orientation), ct)).Bytes
                     : (await images.FitWithBackdropAsync(source.Bytes, GenerationSize(orientation), ct)).Bytes;
             }
             using var input = new MemoryStream(bytes);
@@ -286,7 +291,10 @@ public sealed class LpMediaService(
                 asset.IsAiLabeled = source?.Asset.IsAiLabeled ?? false;
             }
             asset.AltText = string.IsNullOrWhiteSpace(c.Angle) ? source?.Asset.AltText : $"{c.Angle}が伝わる広告{(screen ? "（サービスの画面）" : "写真")}";
-            saved[(concept, orientation)] = new KeyVisual(asset, normalized.Bytes, generated.Image is null, generated.Retried, backdrop);
+            saved[(concept, orientation)] = new KeyVisual(asset, normalized.Bytes, generated.Image is null, generated.Retried, backdrop)
+            {
+                Graphic = !screen && source is null && generated.Image is null,
+            };
         }
         await db.SaveChangesAsync(ct);
         return saved;
@@ -396,7 +404,13 @@ public sealed class LpMediaService(
             ? new TextOverlay(concept.Headline, null, TextPosition.Bottom, band, SafeBottom: SafeBottom(format.Width, format.Height))
             : null;
         byte[] bytes;
-        if (screen is not null && keyVisual.Backdrop is { } backdrop)
+        if (keyVisual.Graphic)
+        {
+            // 絵になる素材がない：見出し・ボタン・URL を、LP の色の背景にデザインした広告にする（形式ちょうどの大きさで組む）
+            var copy = project.Outputs.GetValueOrDefault(platform)?.AdCopies.FirstOrDefault();
+            bytes = (await motion.RenderStillAsync(Poster(project, direction, index, concept, ctx, copy), size, ct)).Bytes;
+        }
+        else if (screen is not null && keyVisual.Backdrop is { } backdrop)
         {
             var background = await images.ConvertAspectAsync(backdrop, format.Aspect, size, AspectMethod.SmartCrop, "#000000", ct, exact: true);
             bytes = (await images.ComposeDeviceAsync(background.Bytes, screen, size, caption, ct)).Bytes;
@@ -416,6 +430,74 @@ public sealed class LpMediaService(
         asset.SafetyResult = keyVisual.Asset.SafetyResult;
         asset.Provenance = keyVisual.Asset.Provenance;
         return asset;
+    }
+
+    /// <summary>
+    /// 絵になる素材がないときの広告画像のデザイン：ブランド名（小）・見出し（大）・補足・ボタン・URL を、LP の色の背景に置く。
+    /// </summary>
+    private static MotionScene Poster(LpProject project, LpArtDirection direction, int concept, LpVisualConcept visual, BrandContext ctx, LpAdCopy? copy)
+    {
+        var url = Uri.TryCreate(project.Url, UriKind.Absolute, out var u) ? u.Host : null;
+        var headline = visual.Headline.Length > 0 ? visual.Headline : copy?.Headline is { Length: > 0 } h ? h : project.Title;
+        var sub = copy?.Description is { Length: > 0 } d && d != headline ? PostText.Truncate(d, 40) : null;
+        return new MotionScene
+        {
+            Layout = MotionLayout.Statement,
+            Backdrop = Style(project, direction, concept),
+            Kicker = string.IsNullOrWhiteSpace(ctx.Profile.BrandName) ? null : ctx.Profile.BrandName,
+            Title = PostText.Truncate(headline, 30),
+            Items = sub is null ? [] : [sub],
+            Button = "詳しくはこちら",
+            Footer = url,
+        };
+    }
+
+    /// <summary>ボタンの文字（行動を促す言葉。長すぎるものは使わない）。</summary>
+    private static string ButtonText(LandingPageVideoPlan plan) =>
+        plan.CallToAction.Trim() is { Length: > 0 and <= 14 } cta ? cta : "詳しくはこちら";
+
+    /// <summary>
+    /// 動画のシーンの見せ方：シーンの役割（課題・解決・良さ・行動など）と、使える素材（写真・画面）から選ぶ。
+    /// 課題はカード、解決は光る円（画面があれば端末）、良さはチェックリスト（写真・画面があればそれを）、最後はボタンと URL。
+    /// </summary>
+    private MotionScene MotionFor(LandingPageScene scene, int index, LandingPageVideoPlan plan, LpProject project, LpArtDirection direction,
+        LpVisualConcept concept, int conceptIndex, KeyVisual kv, byte[]? screen, byte[]? backdrop, BrandContext ctx, WebPage page)
+    {
+        var role = scene.Role;
+        var photo = !kv.Graphic && screen is null; // AI の写真、または LP の写真
+        var motif = role switch
+        {
+            "problem" => BackdropMotif.Smoke,
+            "solution" or "cta" => BackdropMotif.Rays,
+            "benefit" or "proof" => direction.Motif == BackdropMotif.Rays ? BackdropMotif.Aurora : direction.Motif,
+            _ => direction.Motif,
+        };
+        var style = Style(project, direction, conceptIndex) with { Motif = motif, Seed = Style(project, direction, conceptIndex).Seed + index * 31 };
+        var points = scene.Points;
+        var product = PostText.Truncate(plan.Product.Length > 0 ? plan.Product : ctx.Profile.BrandName, 16);
+        var layout = role switch
+        {
+            "problem" => points.Count > 0 ? MotionLayout.Cards : MotionLayout.Statement,
+            "cta" => MotionLayout.CallToAction,
+            "offer" => MotionLayout.Statement,
+            "hook" => photo ? MotionLayout.Photo : MotionLayout.Statement,
+            "solution" => screen is not null ? MotionLayout.Device : photo ? MotionLayout.Photo : MotionLayout.Orb,
+            _ => screen is not null ? MotionLayout.Device : photo ? MotionLayout.Photo : points.Count > 0 ? MotionLayout.Checklist : MotionLayout.Statement,
+        };
+        return new MotionScene
+        {
+            Layout = layout,
+            Backdrop = style,
+            // 画面の後ろは AI がつくった背景（あれば）。模様の背景は動かして描く
+            Background = layout == MotionLayout.Device && !kv.Fallback ? backdrop : null,
+            Title = scene.Caption,
+            Kicker = layout is MotionLayout.Orb or MotionLayout.CallToAction ? product : null,
+            Items = layout == MotionLayout.Statement && role == "hook" ? [] : points,
+            Image = layout == MotionLayout.Device ? screen : layout == MotionLayout.Photo ? kv.Bytes : null,
+            Button = layout == MotionLayout.CallToAction ? ButtonText(plan) : null,
+            Footer = layout == MotionLayout.CallToAction ? page.Url.Host : null,
+            Alert = role == "problem",
+        };
     }
 
     /// <summary>見出し・テロップの帯の色：ブランドの色 → LP の世界観の色 → LP の色の順。</summary>
@@ -485,7 +567,9 @@ public sealed class LpMediaService(
             }
 
             // 動かすシーン：違うビジュアルを使う最初のシーンから。写真を AI でつくれなかったもの（枠に収めた写真）は動かさない
+            // 課題（カード）と最後（ボタン）のシーンは図形で見せるので動かさない
             var clipScenes = visualOf.Select((v, i) => (v, i))
+                .Where(x => plan.Scenes[x.i].Role is not ("problem" or "cta"))
                 .Where(x => IsScreen(concepts[x.v], sources) || !keyVisuals[(x.v, orientation)].Fallback)
                 .DistinctBy(x => x.v).Take(MaxGeneratedClips).Select(x => x.i).ToHashSet();
             await ReportAsync(job, AiJobStage.Generating, basePercent,
@@ -523,9 +607,20 @@ public sealed class LpMediaService(
                     ? null
                     : new TextOverlay(PostText.Truncate(scene.Caption, TextOverlay.MaxHeadline), null, TextPosition.Bottom, band,
                         SafeBottom: SafeBottom(size.Width, size.Height));
+                if (clips[i] is null)
+                {
+                    // 動画生成 AI で動かさないシーンは、モーショングラフィックス（文字・図形・端末・写真を動かす）でつくる
+                    var concept = concepts[visualOf[i]];
+                    var spec = MotionFor(scene, i, plan, project, direction, concept, visualOf[i], keyVisuals[(visualOf[i], orientation)],
+                        ScreenOf(concept, sources), backdrops[i], ctx, page);
+                    var rendered = await motion.RenderAsync(spec, size, narrations[i].Seconds, ct);
+                    var poster = i == 0 ? (await motion.RenderStillAsync(spec, size, ct)).Bytes : frames[i];
+                    scenes.Add(new VideoSceneInput(poster, narrations[i].Seconds, narrations[i].Wav, rendered));
+                    timeline.Add((new VideoScene(scene.Caption, scene.Narration, narrations[i].Seconds), narrations[i].Seconds));
+                    continue;
+                }
                 var still = caption is null ? frames[i] : (await images.RenderTextAsync(frames[i], caption, ct)).Bytes;
                 byte[]? overlay = null;
-                if (clips[i] is not null)
                 {
                     // クリップの上に重ねるもの：画面のシーンは端末の枠に入れた画面（とテロップ）、写真のシーンはテロップだけ
                     overlay = ScreenOf(concepts[visualOf[i]], sources) is { } screen

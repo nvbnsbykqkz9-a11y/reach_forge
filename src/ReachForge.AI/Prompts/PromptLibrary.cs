@@ -95,9 +95,12 @@ public static class PromptLibrary
 
             ## 手順
             1. 訴求を整理する：product（何を売るか、20字以内）、target（誰に、30字以内）、benefits（お客様にとっての良さを3つまで、各20字以内）、offer（特典・価格・期間。LP に書かれていなければ空）、callToAction（取ってほしい行動、20字以内）
-            2. 絵コンテをつくる：scenes の各シーンに role（hook／problem／solution／benefit／proof／offer／cta のいずれか）、caption（テロップ、15字以内）、narration（読み上げ、1シーン30字程度）、seconds（2〜8秒）、imageIndex（使う画像の番号。合う画像がなければ null）
+            2. 絵コンテをつくる：scenes の各シーンに role（hook／problem／solution／benefit／proof／offer／cta のいずれか）、caption（テロップ、15字以内）、narration（読み上げ、1シーン30字程度）、seconds（2〜8秒）、imageIndex（使う画像の番号。合う画像がなければ null）、
+               points（画面に図解として出す短い言葉を0〜4個、各12字以内。problem はお客様の困りごと（例：アラートが多すぎる）、
+               solution・benefit・proof は LP に書かれた良さ・機能・実績、offer は特典。hook・cta は空でよい）
                - 1シーン目は冒頭2秒で手を止めさせるフック（問いかけ・意外な事実・ベネフィットの断言）。最後のシーンは行動を促す
                - 同じ画像を続けて使わない。商品の写真があれば benefit／offer のシーンで使う
+               - 画像がなくても伝わるよう、caption と points で「困りごと → 解決 → 良さ → 行動」の流れをはっきりさせる
             3. 投稿文：postText（動画に添える本文、120字以内）と hashtags（3〜5個）
             4. hookMotion：1シーン目の画像に付ける動きの説明（英語、カメラワークや光・湯気などの自然な動き。文字・人物の顔・ロゴは描き足さない）
 

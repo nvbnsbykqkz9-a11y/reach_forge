@@ -37,7 +37,11 @@ public sealed partial class LandingPageVideoPlanner(IModelRouter router, IPrompt
                 PostText.Truncate(s.Caption?.Trim() ?? "", TextOverlay.MaxHeadline),
                 s.Narration?.Trim() ?? "",
                 Math.Clamp(s.Seconds, 2, 8),
-                s.ImageIndex is { } i && i >= 0 && i < images ? i : null))
+                s.ImageIndex is { } i && i >= 0 && i < images ? i : null)
+            {
+                Points = [.. (s.Points ?? []).Select(x => PostText.Truncate((x ?? "").Trim().TrimEnd('。'), LandingPageScene.MaxPointLength))
+                    .Where(x => x.Length > 0).Distinct().Take(LandingPageScene.MaxPoints)],
+            })
             .ToList();
         if (scenes.Count < 2) throw new AiUnavailableException("動画の構成をつくれませんでした。もう一度お試しください。");
 
@@ -60,7 +64,7 @@ public sealed partial class LandingPageVideoPlanner(IModelRouter router, IPrompt
     internal static void Check(LandingPageVideoPlan plan, WebPage page, BrandContext brand)
     {
         var guard = brand.ToGuardrailContext();
-        var texts = plan.Scenes.SelectMany(s => new[] { s.Caption, s.Narration }).Append(plan.PostText).Append(plan.Offer).ToList();
+        var texts = plan.Scenes.SelectMany(s => new[] { s.Caption, s.Narration }.Concat(s.Points)).Append(plan.PostText).Append(plan.Offer).ToList();
         if (texts.Any(t => GuardrailChecker.CheckContent(t, guard).Findings.Any(f => f.Level == GuardrailLevel.Error
                                                                                      || f.Code is GuardrailCodes.RegulatedExpression or GuardrailCodes.PharmaExpression)))
         {

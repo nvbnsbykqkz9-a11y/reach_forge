@@ -275,6 +275,68 @@ public class LpMediaTests
     }
 
     [Fact]
+    public async Task Without_image_ai_or_lp_images_the_ad_is_designed_with_motion_graphics()
+    {
+        if (!HasFfmpeg()) Assert.Skip("ffmpeg がない環境では実行しない");
+        await using var f = await AppFixture.CreateAsync(new Dictionary<string, string?>
+        {
+            ["AI:Routes:Image:0"] = "none",
+            ["AI:Routes:ImageEdit:0"] = "none",
+            ["AI:Routes:VideoGeneration:0"] = "none",
+        }, configure: s => s.AddSingleton<IWebPageFetcher>(new SaasFetcher()));
+        Guid projectId, jobId;
+        await using (var scope = f.Scope())
+        {
+            var project = await f.Get<LpStudioService>(scope).CreateAsync(new LpProjectRequest
+            {
+                Url = SaasPage.Url.ToString(), Platforms = [SocialPlatform.Instagram, SocialPlatform.Line], ImageUrls = [],
+                MakeVideo = true, VideoSeconds = 20, Narration = false,
+            }, CancellationToken.None);
+            projectId = project.Id;
+            jobId = project.MediaJobId!.Value;
+        }
+        await using (var scope = f.Scope())
+        {
+            await f.Get<AiJobProcessor>(scope).ProcessAsync(jobId, CancellationToken.None);
+        }
+        Assert.True(f.Logs.Errors.IsEmpty, string.Join("\n", f.Logs.Errors));
+        await using (var scope = f.Scope())
+        {
+            var db = f.Get<IAppDbContext>(scope);
+            var job = await db.AiJobs.SingleAsync(j => j.Id == jobId);
+            Assert.True(job.Status == AiJobStatus.Succeeded, job.Error);
+            var project = await db.LpProjects.AsNoTracking().SingleAsync(p => p.Id == projectId);
+            var media = f.Get<MediaService>(scope);
+            Assert.True(project.Visuals.Single().Fallback);
+            var images = project.Outputs[SocialPlatform.Instagram].Images.Concat(project.Outputs[SocialPlatform.Line].Images).ToList();
+            foreach (var image in images)
+            {
+                var asset = await media.GetAsync(image.AssetId, CancellationToken.None);
+                Assert.Equal((image.Width, image.Height), (asset.Width, asset.Height));
+                Assert.True(Contrast(await media.ReadAsync(asset, CancellationToken.None)) > 12, image.Description); // 見出し・ボタンのあるデザイン
+            }
+            var video = await media.GetAsync(project.Videos[MediaOrientation.Portrait], CancellationToken.None);
+            Assert.Equal((1080, 1920), (video.Width, video.Height));
+
+            if (Environment.GetEnvironmentVariable("RF_TEST_DUMP") is { Length: > 0 } dump)
+            {
+                Directory.CreateDirectory(dump);
+                await File.WriteAllBytesAsync(Path.Combine(dump, "graphic-portrait.mp4"), await media.ReadAsync(video, CancellationToken.None));
+                if (project.Videos.TryGetValue(MediaOrientation.Landscape, out var landscape))
+                {
+                    await File.WriteAllBytesAsync(Path.Combine(dump, "graphic-landscape.mp4"),
+                        await media.ReadAsync(await media.GetAsync(landscape, CancellationToken.None), CancellationToken.None));
+                }
+                foreach (var (x, i) in images.Select((x, i) => (x, i)))
+                {
+                    await File.WriteAllBytesAsync(Path.Combine(dump, $"graphic-{x.Key}-{x.Width}x{x.Height}-{i}.jpg"),
+                        await media.ReadAsync(await media.GetAsync(x.AssetId, CancellationToken.None), CancellationToken.None));
+                }
+            }
+        }
+    }
+
+    [Fact]
     public async Task Without_image_ai_or_lp_images_the_ad_is_never_a_flat_color()
     {
         await using var f = await AppFixture.CreateAsync(new Dictionary<string, string?>

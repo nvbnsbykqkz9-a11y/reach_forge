@@ -51,7 +51,14 @@ public interface IVideoGenerationService
 }
 
 /// <summary>LP 動画の1シーン。<paramref name="ImageIndex"/> は使う LP の画像の番号（0 始まり、なければ null）。</summary>
-public sealed record LandingPageScene(string Role, string Caption, string Narration, double Seconds, int? ImageIndex);
+/// <remarks><paramref name="Points"/>：シーンで見せる短い言葉（困りごと・良さ・機能など。動画の図解に使う）。</remarks>
+public sealed record LandingPageScene(string Role, string Caption, string Narration, double Seconds, int? ImageIndex)
+{
+    public IReadOnlyList<string> Points { get; init; } = [];
+
+    public const int MaxPoints = 4;
+    public const int MaxPointLength = 14;
+}
 
 /// <summary>
 /// LP（ランディングページ）から作る集客動画の企画（訴求の整理＋絵コンテ）。

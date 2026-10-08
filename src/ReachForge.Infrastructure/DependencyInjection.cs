@@ -82,7 +82,8 @@ public static class DependencyInjection
         // ---- メディア（F-04 / SCR-13） ----
         services.Configure<MediaOptions>(configuration.GetSection(MediaOptions.SectionName));
         services.Configure<ContentSafetyOptions>(configuration.GetSection(ContentSafetyOptions.SectionName));
-        services.AddSingleton<IImageProcessor, SkiaImageProcessor>();
+        services.AddSingleton<SkiaImageProcessor>();
+        services.AddSingleton<IImageProcessor>(sp => sp.GetRequiredService<SkiaImageProcessor>());
         services.AddSingleton<IProvenanceStamper, C2paProvenanceStamper>();
         var media = configuration.GetSection(MediaOptions.SectionName).Get<MediaOptions>() ?? new MediaOptions();
         if (!string.IsNullOrWhiteSpace(media.BlobServiceUri))
@@ -113,6 +114,7 @@ public static class DependencyInjection
         services.AddSingleton<BgmLibrary>();
         services.AddSingleton<IBgmLibrary>(sp => sp.GetRequiredService<BgmLibrary>());
         services.AddSingleton<IVideoComposer, FfmpegVideoComposer>();
+        services.AddSingleton<IMotionRenderer, SkiaMotionRenderer>();
 
         // ---- 操作説明書（PDF） ----
         services.AddSingleton<Help.ManualPdfRenderer>();

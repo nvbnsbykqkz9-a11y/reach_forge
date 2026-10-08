@@ -18,6 +18,10 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
 
     private readonly Lazy<SKTypeface?> _font = new(() => FindFont(options?.Value ?? new MediaOptions()));
 
+    /// <summary>文字を描く日本語フォント（見つからなければ、対処を添えて知らせる）。</summary>
+    internal SKTypeface Typeface => _font.Value ?? throw new ReachForge.Domain.Common.DomainException(ReachForge.Domain.Common.ErrorCodes.MediaFontMissing,
+        "文字入れに使う日本語フォントが見つかりません。Noto Sans JP などの日本語フォントをインストールするか、設定ファイルの Media:FontPath にフォントファイルの場所を指定してください。");
+
     /// <summary>日本語フォントを探す（設定のファイル → OS のフォント）。日本語の字形を持たないフォントは使わない。</summary>
     private static SKTypeface? FindFont(MediaOptions o)
     {
@@ -149,9 +153,9 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
     }
 
     /// <summary>行の高さ（折り返した行どうしが詰まらないよう、文字の大きさの 1.35 倍以上）。</summary>
-    private static float LineHeight(SKFont font) => Math.Max(font.Spacing, font.Size * 1.35f);
+    internal static float LineHeight(SKFont font) => Math.Max(font.Spacing, font.Size * 1.35f);
 
-    private static SKFont CreateFont(SKTypeface typeface, float size) =>
+    internal static SKFont CreateFont(SKTypeface typeface, float size) =>
         new(typeface, size) { Subpixel = true, Edging = SKFontEdging.Antialias, Embolden = typeface.FontWeight < (int)SKFontStyleWeight.SemiBold };
 
     /// <summary>中央揃えで行を描き、次の行の上端を返す。</summary>

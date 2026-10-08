@@ -230,7 +230,7 @@ public sealed partial class SkiaImageProcessor
     }
 
     /// <summary>枠を覆う大きさにして中央を切り出す。</summary>
-    private static SKBitmap Cover(byte[] source, int width, int height)
+    internal static SKBitmap Cover(byte[] source, int width, int height)
     {
         using var image = Decode(source);
         var cover = Math.Max((double)width / image.Width, (double)height / image.Height);

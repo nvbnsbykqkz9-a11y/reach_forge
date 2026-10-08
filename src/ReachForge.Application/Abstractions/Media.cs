@@ -115,6 +115,76 @@ public interface IImageProcessor
     Task<ProcessedImage> RenderPlaceholderAsync(int width, int height, int seed, IReadOnlyList<string> colorsHex, CancellationToken ct);
 }
 
+/// <summary>動画のシーンの見せ方（モーショングラフィックス）。</summary>
+public enum MotionLayout
+{
+    /// <summary>大きな見出しを1つ（フック・特典など）。</summary>
+    Statement,
+
+    /// <summary>困りごとのカードが次々に現れる（課題の提起）。</summary>
+    Cards,
+
+    /// <summary>光る円（解決策の登場）と、商品・サービス名。</summary>
+    Orb,
+
+    /// <summary>良さ・機能にチェックが付いていく。</summary>
+    Checklist,
+
+    /// <summary>端末の枠に入れた画面がせり上がる（サービスの画面）。</summary>
+    Device,
+
+    /// <summary>写真にゆっくりズームをかけ、見出しを重ねる。</summary>
+    Photo,
+
+    /// <summary>商品・サービス名、ボタン、URL（行動を促す）。</summary>
+    CallToAction,
+}
+
+/// <summary>
+/// 動画の1シーン（モーショングラフィックス）の内容。背景は <see cref="Background"/>（画像）か、<see cref="Backdrop"/> の模様を動かして描く。
+/// </summary>
+public sealed record MotionScene
+{
+    public required MotionLayout Layout { get; init; }
+    public required BackdropStyle Backdrop { get; init; }
+
+    /// <summary>大きな見出し（テロップ）。</summary>
+    public string Title { get; init; } = "";
+
+    /// <summary>見出しの上の小さな言葉、または商品・サービス名（Orb・CallToAction）。</summary>
+    public string? Kicker { get; init; }
+
+    /// <summary>カード・チェックリストの言葉（Statement では最初の1つを補足として出す）。</summary>
+    public IReadOnlyList<string> Items { get; init; } = [];
+
+    /// <summary>写真（Photo）またはサービスの画面（Device）。</summary>
+    public byte[]? Image { get; init; }
+
+    /// <summary>背景の画像（AI がつくった背景など）。なければ模様を描く。</summary>
+    public byte[]? Background { get; init; }
+
+    /// <summary>ボタンの文字（CallToAction）。</summary>
+    public string? Button { get; init; }
+
+    /// <summary>いちばん下の小さな文字（URL など）。</summary>
+    public string? Footer { get; init; }
+
+    /// <summary>課題の提起など、注意をひく色（赤系）にする。</summary>
+    public bool Alert { get; init; }
+}
+
+/// <summary>
+/// モーショングラフィックスの描画（文字・図形・端末の枠を動かす）。生成 AI を使わずに、伝わる動画のシーンと広告画像をつくる。
+/// </summary>
+public interface IMotionRenderer
+{
+    /// <summary>シーンを動画（MP4、音声なし、30fps）にする。</summary>
+    Task<byte[]> RenderAsync(MotionScene scene, (int Width, int Height) size, double seconds, CancellationToken ct);
+
+    /// <summary>シーンの最後の状態を1枚の画像（JPEG）にする（静止画の広告に使う）。</summary>
+    Task<ProcessedImage> RenderStillAsync(MotionScene scene, (int Width, int Height) size, CancellationToken ct);
+}
+
 /// <summary>広告の背景の描き方（色は濃い色から順に。足りない色は補う）。</summary>
 public sealed record BackdropStyle(IReadOnlyList<string> Colors, ReachForge.Domain.Entities.BackdropMotif Motif, int Seed, float Time = 0);
 

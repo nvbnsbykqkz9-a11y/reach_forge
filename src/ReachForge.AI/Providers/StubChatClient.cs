@@ -153,20 +153,20 @@ public sealed class StubChatClient : IChatClient
     private static LandingPlanDraft LandingPage(LandingPageStubPayload p)
     {
         var product = PostText.Truncate((p.Page.Title.Split('|', '｜', '-')[0]).Trim() is { Length: > 0 } t ? t : p.BrandName, 14);
-        var roles = new (string Role, string Caption, string Narration)[]
+        var roles = new (string Role, string Caption, string Narration, string[] Points)[]
         {
-            ("hook", $"{product}、知ってる？", $"{product}、もう試しましたか？"),
-            ("problem", "こんなお悩みに", "毎日の小さな悩み、ありませんか。"),
-            ("solution", $"{product}で解決", $"{product}なら、気軽に始められます。"),
-            ("benefit", "うれしいポイント", "選ばれている理由をチェック。"),
-            ("offer", "詳しくはLPで", "詳しい内容はページで確認できます。"),
-            ("cta", "プロフィールから", "プロフィールのリンクからどうぞ。"),
+            ("hook", $"{product}、知ってる？", $"{product}、もう試しましたか？", []),
+            ("problem", "こんなお悩みに", "毎日の小さな悩み、ありませんか。", ["時間が足りない", "手間がかかる", "続かない"]),
+            ("solution", $"{product}で解決", $"{product}なら、気軽に始められます。", ["すぐに始められる"]),
+            ("benefit", "うれしいポイント", "選ばれている理由をチェック。", ["気軽に始められる", "わかりやすい", "続けやすい"]),
+            ("offer", "詳しくはLPで", "詳しい内容はページで確認できます。", []),
+            ("cta", "プロフィールから", "プロフィールのリンクからどうぞ。", []),
         };
         var count = Math.Clamp(p.SceneCount, 2, roles.Length);
         var picked = roles.Take(count - 1).Append(roles[^1]).ToArray();
         var per = Math.Round((double)p.TargetSeconds / count, 1);
         var images = p.Page.ImageList.Count;
-        var scenes = picked.Select((r, i) => new LandingSceneDraft(r.Role, r.Caption, r.Narration, per, images == 0 ? null : i % images)).ToArray();
+        var scenes = picked.Select((r, i) => new LandingSceneDraft(r.Role, r.Caption, r.Narration, per, images == 0 ? null : i % images, r.Points)).ToArray();
         return new LandingPlanDraft($"{product}の紹介動画", product, "はじめての方", ["気軽に始められる"], "", "プロフィールのリンクから",
             scenes, $"{product}をショート動画で紹介します。詳しくはプロフィールのリンクから。", ["PR", PostText.Normalize(product)],
             "slow push-in camera move, soft natural light, subtle steam");
