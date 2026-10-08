@@ -198,6 +198,21 @@ public interface ILpVisualPlanner
     Task<LpVisualPlan> PlanAsync(Services.BrandContext brand, WebPage page, IReadOnlyList<LpSourceBrief> sources, CancellationToken ct);
 }
 
+/// <summary>
+/// LP の文言から書いた、動画生成 AI への指示（場面・場面の名前・元にした LP の文言・英語の指示）。
+/// 場面（Slot）は hook（冒頭）・solution（解決）・backdrop（画面を重ねる背景）・image（画像から動画）。
+/// </summary>
+public sealed record LpVideoPrompt(string Slot, string Title, string SourceText, string Prompt);
+
+/// <summary>
+/// LP の文言（キャッチコピー・困りごと・機能など）を、動画生成 AI が描ける映像の描写（英語）に書き換える。
+/// 文字は映像に描かせない（LP の言葉はアプリがテロップとして正確に重ねる）。
+/// </summary>
+public interface ILpVideoPromptWriter
+{
+    Task<IReadOnlyList<LpVideoPrompt>> WriteAsync(Services.BrandContext brand, WebPage page, CancellationToken ct);
+}
+
 /// <summary>AI がつくった広告写真の確認結果（合格か、点数 1〜5、作り直すときの指示（英語））。</summary>
 public sealed record LpVisualReview(bool Approved, int Score, string Feedback)
 {

@@ -47,6 +47,17 @@ public sealed class StubChatClient : IChatClient
                 "Slow push-in camera move with gentle light flicker.",
                 "A softly lit modern desk with a blurred city view behind, cinematic depth of field."))])),
             LpReviewStubPayload => Serialize(new LpReviewDraft(5, true, "", "")),
+            LpVideoPromptsStubPayload p => Serialize(new LpVideoPromptsDraft(
+            [
+                new("hook", "困りごとの場面", PostText.Truncate(p.Page.Title, 60),
+                    "A dim office at night, a person's hands hovering over a keyboard while warning lights flash on blurred monitors, slow dolly-in, tense cinematic lighting, photorealistic."),
+                new("solution", "解決の場面", PostText.Truncate(p.Page.Description.Length > 0 ? p.Page.Description : p.Page.Title, 60),
+                    "The same office becomes calm as soft blue light fills the room and the warning lights fade one by one, slow push-in, relief, cinematic photorealistic."),
+                new("backdrop", "画面を重ねる背景", PostText.Truncate(p.Page.Title, 60),
+                    "A modern dark workspace at dusk with blurred city lights, soft light particles drifting, the center of the frame stays empty and out of focus, slow gentle camera drift."),
+                new("image", "画像から動画", "",
+                    "Slow push-in camera move with subtle light reflections across the scene, keep the composition, colors and all details of the image exactly."),
+            ])),
             AltStubPayload p => string.IsNullOrWhiteSpace(p.Hint) || p.Hint.Contains('.')
                 ? "お店の雰囲気が伝わる、明るい色合いのイメージ"
                 : $"{PostText.Truncate(p.Hint, 40)}を表したイメージ",

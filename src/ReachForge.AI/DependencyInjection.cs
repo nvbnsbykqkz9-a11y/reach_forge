@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<ILpImageCurator, LpImageCurator>();
         services.AddScoped<ILpVisualPlanner, LpVisualPlanner>();
         services.AddScoped<ILpVisualReviewer, LpVisualReviewer>();
+        services.AddScoped<ILpVideoPromptWriter, LpVideoPromptWriter>();
         services.AddScoped<IVideoScriptWriter, VideoScriptWriter>();
         services.AddScoped<ILandingPageVideoPlanner, LandingPageVideoPlanner>();
         services.AddScoped<ITextToSpeech, TextToSpeechService>();

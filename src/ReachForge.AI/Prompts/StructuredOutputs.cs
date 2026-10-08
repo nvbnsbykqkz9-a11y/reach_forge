@@ -62,5 +62,10 @@ public sealed record LpDirectionDraft(string? Mood, string[]? Palette, string? M
 
 public sealed record LpVisualsDraft(LpDirectionDraft? Direction, LpVisualDraft[]? Visuals);
 
+/// <summary>LP の文言から書いた、動画生成 AI への指示（場面ごと）。</summary>
+public sealed record LpVideoPromptDraft(string? Slot, string? Title, string? SourceText, string? Prompt);
+
+public sealed record LpVideoPromptsDraft(LpVideoPromptDraft[]? Scenes);
+
 /// <summary>広告写真の確認（点数 1〜5・合格か・問題点（日本語）・作り直しの指示（英語））。</summary>
 public sealed record LpReviewDraft(int Score, bool Approved, string? Problems, string? Fix);

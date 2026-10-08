@@ -31,15 +31,24 @@ public sealed record VideoLabRequest
     /// <summary>試した内容の名前（プリセット名など。結果の一覧に表示する）。</summary>
     public string? Label { get; init; }
 
+    /// <summary>元にした LP の文言（LP からつくったプロンプトのとき。結果の一覧に表示する）。</summary>
+    public string? SourceText { get; init; }
+
     public byte[]? StartImage { get; init; }
 }
 
 /// <summary>動画生成のテストの結果（保存した動画と、つくったときの設定・かかった時間・評価）。</summary>
 public sealed record VideoLabResult(Guid AssetId, DateTimeOffset CreatedAt, string Label, string Provider, string Model, string Prompt,
-    string NegativePrompt, bool Landscape, int Seconds, bool HighQuality, bool StartImage, long ElapsedMs, decimal CostUsd, int Rating, string Note);
+    string NegativePrompt, bool Landscape, int Seconds, bool HighQuality, bool StartImage, long ElapsedMs, decimal CostUsd, int Rating, string Note,
+    string SourceText = "");
 
-/// <summary>試すプロンプトのひな形（LP の広告動画でアプリが使う場面ごと）。</summary>
-public sealed record VideoLabPreset(string Name, string Description, string Prompt, bool NeedsStartImage = false);
+/// <summary>
+/// 試すプロンプトのひな形（LP の広告動画でアプリが使う場面ごと）。<paramref name="SourceText"/> は LP からつくったときの元の文言。
+/// </summary>
+public sealed record VideoLabPreset(string Name, string Description, string Prompt, bool NeedsStartImage = false, string? SourceText = null);
+
+/// <summary>LP から考えたプロンプト（LP のタイトル・URL、場面ごとのプロンプト、起点にできる LP の画像）。</summary>
+public sealed record VideoLabLpPlan(string Title, string Url, IReadOnlyList<VideoLabPreset> Presets, IReadOnlyList<LpImageOption> Images);
 
 /// <summary>
 /// 動画生成 AI（Kling・Veo など）の品質テスト。プロバイダ・モデル・プロンプトを変えて生成し、動画と設定を残して見比べる。
@@ -48,6 +57,10 @@ public sealed record VideoLabPreset(string Name, string Description, string Prom
 public sealed class VideoLabService(
     IAppDbContext db,
     MediaService media,
+    LpStudioService studio,
+    ILpVideoPromptWriter writer,
+    IBrandContextProvider brand,
+    IWebPageFetcher fetcher,
     IVideoGenerationService generator,
     IVideoComposer composer,
     IImageProcessor images,
@@ -81,6 +94,59 @@ public sealed class VideoLabService(
     ];
 
     public IReadOnlyList<VideoProviderInfo> Providers() => generator.Providers();
+
+    /// <summary>比べるための「LP の文言をそのまま（日本語）」のプロンプトの長さの上限。</summary>
+    public const int LiteralMaxLength = 300;
+
+    /// <summary>
+    /// LP を読み、LP の文言から場面ごとのプロンプト（英語の映像の描写）をつくる。比べるために「LP の文言をそのまま」のプロンプトも付ける。
+    /// 起点の画像に使える LP の画像（AI のおすすめ順）も返す。
+    /// </summary>
+    public async Task<VideoLabLpPlan> FromLpAsync(string url, CancellationToken ct)
+    {
+        var preview = await studio.PreviewAsync(url, ct);
+        var page = preview.Page;
+        var ctx = await brand.BuildAsync(tenant.WorkspaceId, [], ct);
+        var written = await writer.WriteAsync(ctx, page, ct);
+        var presets = written.Select(p => new VideoLabPreset(
+            $"LP：{SlotName(p.Slot)}",
+            string.IsNullOrWhiteSpace(p.Title) ? SlotName(p.Slot) : p.Title,
+            p.Prompt,
+            NeedsStartImage: p.Slot == "image",
+            SourceText: p.SourceText.Length > 0 ? p.SourceText : null)).ToList();
+        var literal = Literal(page);
+        if (literal.Length > 0)
+        {
+            presets.Add(new VideoLabPreset("LP：文言そのまま（比較用）", "LP の文言をそのまま日本語で渡す（書き換えた場合と比べる）", literal, SourceText: literal));
+        }
+        return new VideoLabLpPlan(page.Title, page.Url.ToString(), presets, preview.Images);
+    }
+
+    /// <summary>LP の文言をそのまま並べたプロンプト（タイトル・説明・本文の冒頭）。</summary>
+    internal static string Literal(WebPage page)
+    {
+        var parts = new[] { page.Title, page.Description, page.Text }
+            .Select(x => (x ?? "").ReplaceLineEndings(" ").Trim())
+            .Where(x => x.Length > 0)
+            .Distinct();
+        return PostText.Truncate(string.Join("。", parts), LiteralMaxLength);
+    }
+
+    private static string SlotName(string slot) => slot switch
+    {
+        "hook" => "冒頭",
+        "solution" => "解決",
+        "backdrop" => "画面を重ねる背景",
+        "image" => "画像から動画",
+        _ => slot,
+    };
+
+    /// <summary>LP の画像を取得する（起点の画像に使う。取得は外部サイトを安全に読む仕組みを通す）。</summary>
+    public async Task<byte[]> FetchImageAsync(string url, CancellationToken ct)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri)) throw new DomainException(ErrorCodes.Validation, "画像の URL が正しくありません。");
+        return (await fetcher.FetchImageAsync(uri, ct)).Bytes;
+    }
 
     /// <summary>動画をつくって保存する。失敗したら、AI サービスが返した理由を添えて知らせる。</summary>
     public async Task<VideoLabResult> RunAsync(VideoLabRequest request, CancellationToken ct)
@@ -134,6 +200,7 @@ public sealed class VideoLabService(
             kind = Kind, label, provider = video.Model.Provider, model = video.Model.ModelId, prompt,
             negativePrompt = request.NegativePrompt?.Trim() ?? "", landscape = request.Landscape, seconds, highQuality = request.HighQuality,
             startImage = start is not null, elapsedMs = sw.ElapsedMilliseconds, costUsd = cost, rating = 0, note = "",
+            sourceText = PostText.Truncate((request.SourceText ?? "").Trim(), LiteralMaxLength),
         });
         db.Record(tenant, "video-lab.run", nameof(MediaAsset), asset.Id, $"{video.Model.Provider} {video.Model.ModelId}");
         await db.SaveChangesAsync(ct);
@@ -176,7 +243,7 @@ public sealed class VideoLabService(
                 j["prompt"]?.GetValue<string>() ?? "", j["negativePrompt"]?.GetValue<string>() ?? "",
                 j["landscape"]?.GetValue<bool>() ?? false, j["seconds"]?.GetValue<int>() ?? 0, j["highQuality"]?.GetValue<bool>() ?? false,
                 j["startImage"]?.GetValue<bool>() ?? false, j["elapsedMs"]?.GetValue<long>() ?? 0, j["costUsd"]?.GetValue<decimal>() ?? 0,
-                j["rating"]?.GetValue<int>() ?? 0, j["note"]?.GetValue<string>() ?? "");
+                j["rating"]?.GetValue<int>() ?? 0, j["note"]?.GetValue<string>() ?? "", j["sourceText"]?.GetValue<string>() ?? "");
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
         {

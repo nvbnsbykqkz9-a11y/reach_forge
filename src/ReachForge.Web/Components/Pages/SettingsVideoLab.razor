@@ -19,7 +19,50 @@
         <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
             <MudText Typo="Typo.h6" Class="mb-2">つくる</MudText>
 
-            <MudText Typo="Typo.subtitle2">ひな形（押すとプロンプトに入ります）</MudText>
+            <MudText Typo="Typo.subtitle2">LP から考える</MudText>
+            <MudText Typo="Typo.caption" Class="d-block mb-1">
+                LP の URL を入れると、AI が LP の文言（困りごと・解決策・機能など）を、動画生成 AI が描ける映像の描写（英語）に書き換えます。
+                文字は映像に描かせず、LP の言葉はアプリがテロップとして重ねます。比べるために「文言そのまま」も付けます。
+            </MudText>
+            <div class="d-flex gap-2 align-start mb-2">
+                <MudTextField T="string" Label="LP の URL" @bind-Value="_lpUrl" Immediate="true" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(_running || _lpLoading)"
+                              Placeholder="https://" InputType="InputType.Url" Class="flex-grow-1" />
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="LoadLpAsync" Disabled="@(_running || _lpLoading || string.IsNullOrWhiteSpace(_lpUrl))"
+                           Style="margin-top:4px">読み込む</MudButton>
+            </div>
+            @if (_lpLoading)
+            {
+                <div class="d-flex align-center gap-2 mb-2" role="status"><span class="rf-spinner" aria-hidden="true"></span><MudText Typo="Typo.body2">LP を読み、プロンプトを考えています…</MudText></div>
+            }
+            @if (_lp is { } lp)
+            {
+                <MudText Typo="Typo.body2" Class="mb-1"><b>@lp.Title</b></MudText>
+                <div class="d-flex flex-wrap gap-1 mb-2" role="group" aria-label="LP からつくったプロンプト" data-testid="lp-presets">
+                    @foreach (var preset in lp.Presets)
+                    {
+                        <MudTooltip Text="@preset.Description">
+                            <MudChip T="string" Variant="@(_label == preset.Name ? Variant.Filled : Variant.Outlined)" Color="Color.Secondary"
+                                     OnClick="() => UsePreset(preset)" Disabled="_running">@preset.Name</MudChip>
+                        </MudTooltip>
+                    }
+                </div>
+                @if (lp.Images.Count > 0)
+                {
+                    <MudText Typo="Typo.caption" Class="d-block mb-1">LP の画像（押すと起点の画像にします）</MudText>
+                    <div class="d-flex flex-wrap gap-2 mb-3" role="group" aria-label="起点にする LP の画像">
+                        @foreach (var img in lp.Images.Take(8))
+                        {
+                            var on = _imageSource == img.Url;
+                            <button type="button" class="rf-media-pick @(on ? "rf-media-pick-on" : "")" style="width:72px" aria-pressed="@(on ? "true" : "false")"
+                                    aria-label="@($"起点の画像：{img.Description ?? img.Alt ?? img.Url}")" disabled="@_running" @onclick="() => UseLpImageAsync(img.Url)">
+                                <img src="@img.Url" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:6px" />
+                            </button>
+                        }
+                    </div>
+                }
+            }
+
+            <MudText Typo="Typo.subtitle2">ひな形（例。押すとプロンプトに入ります）</MudText>
             <div class="d-flex flex-wrap gap-1 mb-3" role="group" aria-label="プロンプトのひな形">
                 @foreach (var preset in VideoLabService.Presets)
                 {
@@ -45,6 +88,10 @@
             <MudTextField T="string" Label="プロンプト" @bind-Value="_prompt" Variant="Variant.Outlined" Lines="6" Class="mb-3" Disabled="_running"
                           MaxLength="VideoLabService.MaxPromptLength" Counter="VideoLabService.MaxPromptLength"
                           HelperText="映像の内容・カメラの動き・光・雰囲気を具体的に（英語・日本語どちらでも試せます）" />
+            @if (_sourceText is { Length: > 0 })
+            {
+                <MudText Typo="Typo.caption" Class="d-block mb-3" data-testid="source-text" Style="margin-top:-8px">元にした LP の文言：「@_sourceText」</MudText>
+            }
             <MudTextField T="string" Label="描かないもの（ネガティブプロンプト）" @bind-Value="_negative" Variant="Variant.Outlined" Lines="2" Class="mb-3"
                           Disabled="_running" HelperText="空ならアプリの既定（文字・ロゴ・人物の顔など）" Placeholder="@VideoGenerationSpec.DefaultNegativePrompt" />
 
@@ -112,6 +159,10 @@
                     <div style="width:@(r.Landscape ? "420px" : "240px");max-width:100%" data-testid="lab-result">
                         <RfMediaImage AssetId="r.AssetId" Controls="true" Alt="@($"動画生成のテスト：{r.Label}")" />
                         <MudText Typo="Typo.subtitle2" Class="mt-1"><b>@r.Label</b></MudText>
+                        @if (r.SourceText.Length > 0)
+                        {
+                            <MudText Typo="Typo.caption" Class="d-block" Style="word-break:break-word">元の文言：「@r.SourceText」</MudText>
+                        }
                         <MudText Typo="Typo.caption" Class="d-block">
                             @r.Provider・@(r.Model.Length > 0 ? r.Model : "既定のモデル")・@(r.Landscape ? "横型" : "縦型")・@(r.Seconds)秒@(r.HighQuality ? "・高画質" : "")@(r.StartImage ? "・画像から" : "")
                         </MudText>
@@ -156,6 +207,11 @@
     private string _prompt = "";
     private string? _negative;
     private string? _label;
+    private string? _sourceText;
+    private string? _lpUrl;
+    private bool _lpLoading;
+    private VideoLabLpPlan? _lp;
+    private string? _imageSource;
     private bool _landscape;
     private int _seconds = 5;
     private bool _highQuality;
@@ -193,9 +249,54 @@
         if (!SecondsOptions.Contains(_seconds)) _seconds = SecondsOptions.First();
     }
 
+    private async Task LoadLpAsync()
+    {
+        _error = null;
+        _lpLoading = true;
+        try
+        {
+            _lp = await Lab.FromLpAsync(_lpUrl!.Trim(), CancellationToken.None);
+            if (_lp.Presets.FirstOrDefault() is { } first) UsePreset(first);
+        }
+        catch (DomainException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _lpLoading = false;
+        }
+    }
+
+    private async Task UseLpImageAsync(string url)
+    {
+        _error = null;
+        try
+        {
+            _image = await Lab.FetchImageAsync(url, CancellationToken.None);
+            // 取得した画像をそのまま表示する（直接の表示を禁止しているサイトでも見えるように。大きい画像は元の URL で）
+            _imageUrl = _image.Length <= 2 * 1024 * 1024 ? $"data:{Mime(_image)};base64,{Convert.ToBase64String(_image)}" : url;
+            _imageSource = url;
+            if (_error?.StartsWith("このひな形は", StringComparison.Ordinal) == true) _error = null;
+        }
+        catch (DomainException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    /// <summary>画像の種類（先頭のバイトで見分ける）。</summary>
+    private static string Mime(byte[] b) =>
+        b.Length > 3 && b[0] == 0x89 && b[1] == 0x50 ? "image/png"
+        : b.Length > 2 && b[0] == 0xFF && b[1] == 0xD8 ? "image/jpeg"
+        : b.Length > 11 && b[8] == (byte)'W' && b[9] == (byte)'E' && b[10] == (byte)'B' && b[11] == (byte)'P' ? "image/webp"
+        : b.Length > 2 && b[0] == (byte)'G' && b[1] == (byte)'I' ? "image/gif"
+        : "image/png";
+
     private void UsePreset(VideoLabPreset preset)
     {
         _label = preset.Name;
+        _sourceText = preset.SourceText;
         _prompt = preset.Prompt;
         if (preset.NeedsStartImage && _image is null) _error = "このひな形は、起点の画像を選んでから試してください。";
         else _error = null;
@@ -203,6 +304,7 @@
 
     private void Reuse(VideoLabResult r)
     {
+        _sourceText = r.SourceText.Length > 0 ? r.SourceText : null;
         _provider = _providers.Any(p => p.Name == r.Provider) ? r.Provider : _provider;
         _model = r.Model;
         _prompt = r.Prompt;
@@ -223,6 +325,7 @@
             await stream.CopyToAsync(ms);
             _image = ms.ToArray();
             _imageUrl = $"data:{e.File.ContentType};base64,{Convert.ToBase64String(_image)}";
+            _imageSource = null;
         }
         catch (IOException)
         {
@@ -232,6 +335,7 @@
 
     private void ClearImage()
     {
+        _imageSource = null;
         _image = null;
         _imageUrl = null;
     }
@@ -249,7 +353,7 @@
             var result = await Lab.RunAsync(new VideoLabRequest
             {
                 Provider = _provider, Model = _model, Prompt = _prompt, NegativePrompt = _negative, Landscape = _landscape,
-                Seconds = _seconds, HighQuality = _highQuality && Selected?.Type == "Kling", Label = _label, StartImage = _image,
+                Seconds = _seconds, HighQuality = _highQuality && Selected?.Type == "Kling", Label = _label, SourceText = _sourceText, StartImage = _image,
             }, _cts.Token);
             _results.Insert(0, result);
         }

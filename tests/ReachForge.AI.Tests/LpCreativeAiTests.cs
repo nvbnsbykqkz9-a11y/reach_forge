@@ -151,4 +151,34 @@ public class LpCreativeAiTests
         Assert.Equal((approved, score), (review.Approved, review.Score));
         if (score == 4) Assert.Equal("Keep the label exactly as in the reference.", review.Feedback);
     }
+
+    [Fact]
+    public async Task Video_prompt_writer_keeps_known_scenes_and_only_quotes_found_in_the_lp()
+    {
+        const string answer = """
+            {"scenes":[
+              {"slot":"solution","title":"解決","sourceText":"AI が検知・分析し、対応が必要なものだけを知らせます。","prompt":"Calm blue light fills the room."},
+              {"slot":"hook","title":"冒頭","sourceText":"「アラートが多すぎる。」","prompt":"Red warning lights flash on blurred monitors."},
+              {"slot":"hook","title":"重複","sourceText":"","prompt":"duplicate"},
+              {"slot":"backdrop","title":"背景","sourceText":"LP にない言葉","prompt":"An empty dark office."},
+              {"slot":"ending","title":"不明","sourceText":"","prompt":"unknown slot"},
+              {"slot":"image","title":"画像","sourceText":"","prompt":"  "}
+            ]}
+            """;
+        var writer = new LpVideoPromptWriter(Router(new FixedClient(answer)), PromptTests.Catalog());
+        var prompts = await writer.WriteAsync(Brand, Page(), CancellationToken.None);
+
+        Assert.Equal(["hook", "solution", "backdrop"], prompts.Select(p => p.Slot)); // 決まった順・重複と不明な場面・空の指示は除く
+        Assert.Equal("アラートが多すぎる。", prompts[0].SourceText);                  // 括弧を外し、LP にある文言だけを残す
+        Assert.Equal("", prompts[2].SourceText);                                      // LP にない言葉は「LP の文言」として見せない
+        Assert.Equal("Red warning lights flash on blurred monitors.", prompts[0].Prompt);
+    }
+
+    [Fact]
+    public async Task Video_prompt_writer_stub_returns_all_scenes()
+    {
+        var writer = new LpVideoPromptWriter(Router(new StubChatClient()), PromptTests.Catalog());
+        var prompts = await writer.WriteAsync(Brand, Page(), CancellationToken.None);
+        Assert.Equal(LpVideoPromptWriter.Slots, prompts.Select(p => p.Slot));
+    }
 }

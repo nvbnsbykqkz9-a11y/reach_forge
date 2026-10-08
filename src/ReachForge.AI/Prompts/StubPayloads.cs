@@ -24,5 +24,8 @@ public sealed record LpImagesStubPayload(IReadOnlyList<LpImageCandidate> Candida
 
 public sealed record LpVisualsStubPayload(WebPage Page, IReadOnlyList<string> Sources, string BrandName);
 
+/// <summary>LP の文言から動画生成 AI への指示を書く。</summary>
+public sealed record LpVideoPromptsStubPayload(WebPage Page);
+
 /// <summary>広告写真の確認（スタブは常に合格）。</summary>
 public sealed record LpReviewStubPayload(string Angle);

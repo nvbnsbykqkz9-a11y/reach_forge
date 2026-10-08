@@ -1,5 +1,8 @@
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
+using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
+using ReachForge.Infrastructure.Media;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Common;
 
@@ -56,5 +59,50 @@ public class VideoLabTests
         var ex = await Assert.ThrowsAnyAsync<DomainException>(() => lab.RunAsync(new VideoLabRequest { Provider = "kling", Prompt = "x" }, CancellationToken.None));
         Assert.Contains("kling", ex.Message);
         await Assert.ThrowsAnyAsync<DomainException>(() => lab.RunAsync(new VideoLabRequest { Provider = "local", Prompt = " " }, CancellationToken.None));
+    }
+
+    private static readonly Uri Lp = new("https://example.com/lp/secureview");
+
+    private sealed class Fetcher : IWebPageFetcher
+    {
+        public Task<WebPage> FetchAsync(string url, CancellationToken ct) => Task.FromResult(new WebPage(Lp, "SecureView | 検知から初動まで1画面で",
+            "アラートが多すぎる。", "AI が検知・分析し、対応が必要なものだけを知らせます。", ["#1F4FD8"],
+            [new WebImage(new Uri("https://example.com/img/dashboard.png"), "ダッシュボードの画面")]));
+
+        public async Task<FetchedImage> FetchImageAsync(Uri url, CancellationToken ct)
+        {
+            var image = await new SkiaImageProcessor().RenderPlaceholderAsync(1600, 1000, 3, ["#F4F7FC", "#1F4FD8"], ct);
+            return new FetchedImage(image.Bytes, image.Mime);
+        }
+    }
+
+    [Fact]
+    public async Task Prompts_are_written_from_the_lp_with_a_literal_version_to_compare()
+    {
+        if (!HasFfmpeg()) Assert.Skip("ffmpeg がない環境では実行しない");
+        await using var f = await AppFixture.CreateAsync(configure: s => s.AddSingleton<IWebPageFetcher>(new Fetcher()));
+        await using var scope = f.Scope();
+        var lab = f.Get<VideoLabService>(scope);
+
+        var plan = await lab.FromLpAsync(Lp.ToString(), CancellationToken.None);
+        Assert.Equal("SecureView | 検知から初動まで1画面で", plan.Title);
+        Assert.Equal(["LP：冒頭", "LP：解決", "LP：画面を重ねる背景", "LP：画像から動画", "LP：文言そのまま（比較用）"], plan.Presets.Select(p => p.Name));
+        Assert.True(plan.Presets.Single(p => p.Name == "LP：画像から動画").NeedsStartImage);
+        var literal = plan.Presets[^1];
+        Assert.StartsWith("SecureView | 検知から初動まで1画面で。アラートが多すぎる。", literal.Prompt);
+        Assert.Equal(literal.Prompt, literal.SourceText);
+        var image = Assert.Single(plan.Images);
+        Assert.NotEmpty(await lab.FetchImageAsync(image.Url, CancellationToken.None));
+
+        // 元にした LP の文言を、結果とともに残す
+        var hook = plan.Presets[0];
+        var result = await lab.RunAsync(new VideoLabRequest
+        {
+            Provider = "local", Prompt = hook.Prompt, Label = hook.Name, SourceText = hook.SourceText, Seconds = 5,
+            StartImage = await lab.FetchImageAsync(image.Url, CancellationToken.None),
+        }, CancellationToken.None);
+        Assert.Equal(hook.SourceText ?? "", result.SourceText);
+        Assert.True(result.StartImage);
+        Assert.Equal(hook.SourceText ?? "", (await lab.ListAsync(CancellationToken.None))[0].SourceText);
     }
 }
