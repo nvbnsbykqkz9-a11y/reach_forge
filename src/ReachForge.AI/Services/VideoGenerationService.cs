@@ -27,11 +27,17 @@ public sealed class VideoGenerationService(
     public async Task<GeneratedVideo> GenerateAsync(VideoGenerationSpec spec, Guid? generationId, CancellationToken ct)
     {
         var o = options.Value;
-        var candidates = o.RouteFor(AiTaskType.VideoGeneration)
+        var route = spec.Provider is { Length: > 0 } forced ? [forced] : o.RouteFor(AiTaskType.VideoGeneration);
+        var candidates = route
             .Where(n => o.Providers.TryGetValue(n, out var p) && p.IsConfigured && p.SupportsVideoGeneration)
             .Select(n => (Name: n, Options: o.Providers[n]))
             .ToList();
-        if (candidates.Count == 0) throw new AiUnavailableException("動画生成のAIが設定されていません。テンプレート合成をお使いください。");
+        if (candidates.Count == 0)
+        {
+            throw new AiUnavailableException(spec.Provider is { Length: > 0 }
+                ? $"「{spec.Provider}」は動画生成に使えません（API キーが未設定か、動画に対応していません）。"
+                : "動画生成のAIが設定されていません。テンプレート合成をお使いください。");
+        }
 
         using var overall = CancellationTokenSource.CreateLinkedTokenSource(ct);
         overall.CancelAfter(Timeout);
@@ -39,9 +45,9 @@ public sealed class VideoGenerationService(
         var attempted = 0;
         foreach (var (name, provider) in candidates)
         {
-            if (breaker.IsOpen(name)) continue;
+            if (breaker.IsOpen(name) && spec.Provider is null) continue;
             var fallback = attempted++ > 0;
-            var modelId = provider.ModelFor(AiTaskType.VideoGeneration) ?? "";
+            var modelId = spec.Model is { Length: > 0 } model ? model.Trim() : DefaultModel(provider);
             var sw = Stopwatch.StartNew();
             try
             {
@@ -65,7 +71,33 @@ public sealed class VideoGenerationService(
                 log.LogWarning(ex, "Video provider {Provider} failed; trying next", name);
             }
         }
-        throw new AiUnavailableException("動画を生成できませんでした。時間をおいて試すか、テンプレート合成をお使いください。", last);
+        throw new AiUnavailableException(spec.Provider is { Length: > 0 } && last is not null
+            ? $"動画を生成できませんでした：{last.Message}"
+            : "動画を生成できませんでした。時間をおいて試すか、テンプレート合成をお使いください。", last);
+    }
+
+    /// <summary>設定のモデル（なければ各社の既定のモデル）。</summary>
+    private static string DefaultModel(AiProviderOptions provider) =>
+        provider.ModelFor(AiTaskType.VideoGeneration) ?? provider.Type switch
+        {
+            AiProviderType.Kling => KlingVideoGenerator.DefaultModel,
+            AiProviderType.Google => VeoVideoGenerator.DefaultModel,
+            AiProviderType.OpenAI => "sora-2",
+            _ => "",
+        };
+
+    public IReadOnlyList<VideoProviderInfo> Providers()
+    {
+        var o = options.Value;
+        var route = o.RouteFor(AiTaskType.VideoGeneration);
+        // ルートの順に、ほかに設定されている動画対応のプロバイダも続ける（ローカル用のスタブはルートにあるときだけ）
+        return [.. route.Concat(o.Providers.Keys.Order(StringComparer.Ordinal)).Distinct()
+            .Where(n => o.Providers.TryGetValue(n, out var p) && p.SupportsVideoGeneration && (p.Type != AiProviderType.Stub || route.Contains(n)))
+            .Select(n =>
+            {
+                var p = o.Providers[n];
+                return new VideoProviderInfo(n, p.Type.ToString(), p.IsConfigured, DefaultModel(p), p.PricePerVideoSecond);
+            })];
     }
 
     private void Record(string name, AiProviderOptions provider, string modelId, int seconds, Stopwatch sw, bool fallback, bool succeeded,

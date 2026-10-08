@@ -100,6 +100,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 
 - 権利：LP の画像を使うときは「広告・動画に使う権利がある」ことの確認を必須にする。取り込んだ画像には取得元の URL を来歴に記録する
 - AI の利用料金：アプリ内のクレジット・回数の上限はなく、料金は API キーを発行した各 AI サービスから直接請求される。AI を呼ぶたびに推定料金（`AI:Providers` の単価 × トークン数・画像の枚数・動画の秒数・ナレーションの分数）を `AiUsageLogs` に記録し、「設定 → AI の利用料金」で今月・先月の目安を機能別・サービス別に表示する（円換算は `AI:UsdJpyRate`、既定 150）
+- 動画生成のテスト（「設定 → 動画生成のテスト」`/settings/video-lab`、運用者のみ）：Kling・Veo などのプロバイダとモデル・プロンプト・描かないもの・比率・長さ・高画質（Kling の pro）・起点の画像を指定して動画をつくり、結果を設定とともに残して見比べる（良い／いまいち・メモ）。広告動画づくりの場面ごとのひな形（冒頭・解決・画面を重ねる背景・画像から動画）付き。プロバイダを指定したときは代替プロバイダへ切り替えず、AI サービスが返したエラーをそのまま表示する
 - 設定：`Video:FfmpegPath`（既定 `ffmpeg`）、`Video:BgmLibraryPath`（ライセンス済みの曲と `tracks.json`）、`Media:FontPath`（テロップのフォント。未設定なら OS の Noto Sans JP / IPA フォント等）
 
 > 画像処理は SkiaSharp（MIT）を使用しています（`IImageProcessor` の実装 `SkiaImageProcessor`）。

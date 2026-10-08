@@ -37,6 +37,22 @@ public sealed record VideoGenerationSpec
     public byte[]? StartImage { get; init; }
     public string? StartImageMime { get; init; }
 
+    /// <summary>使うプロバイダ（動画の品質テスト用。指定すると代替プロバイダへは切り替えず、失敗の理由をそのまま返す）。</summary>
+    public string? Provider { get; init; }
+
+    /// <summary>モデル（品質テスト用。空なら設定のモデル）。</summary>
+    public string? Model { get; init; }
+
+    /// <summary>描かないものの指定（空なら既定：文字・ロゴ・人物の顔など）。</summary>
+    public string? NegativePrompt { get; init; }
+
+    /// <summary>高画質モード（Kling の pro：1080p・時間と料金が多くかかる）。</summary>
+    public bool HighQuality { get; init; }
+
+    /// <summary>動画生成 AI に既定で渡す「描かないもの」（文字・ロゴは崩れやすく、人物の顔は肖像権のため）。</summary>
+    public const string DefaultNegativePrompt =
+        "text, letters, captions, subtitles, logos, watermarks, distorted UI, garbled screens, people's faces, low quality, flicker";
+
     public const int MinSeconds = 4;
     public const int MaxSeconds = 12;
     public const int MaxPromptLength = 1000;
@@ -48,7 +64,13 @@ public sealed record GeneratedVideo(byte[] Mp4, AiModelInfo Model);
 public interface IVideoGenerationService
 {
     Task<GeneratedVideo> GenerateAsync(VideoGenerationSpec spec, Guid? generationId, CancellationToken ct);
+
+    /// <summary>動画生成に使えるプロバイダ（ルートの順）。API キーが設定済みか・既定のモデル・1秒あたりの単価（USD）。</summary>
+    IReadOnlyList<VideoProviderInfo> Providers();
 }
+
+/// <summary>動画生成のプロバイダ（名前・種類・設定済みか・既定のモデル・1秒あたりの単価）。</summary>
+public sealed record VideoProviderInfo(string Name, string Type, bool Configured, string DefaultModel, decimal PricePerSecond);
 
 /// <summary>LP 動画の1シーン。<paramref name="ImageIndex"/> は使う LP の画像の番号（0 始まり、なければ null）。</summary>
 /// <remarks><paramref name="Points"/>：シーンで見せる短い言葉（困りごと・良さ・機能など。動画の図解に使う）。</remarks>

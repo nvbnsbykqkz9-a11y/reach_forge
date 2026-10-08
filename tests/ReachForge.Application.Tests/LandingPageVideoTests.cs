@@ -228,6 +228,8 @@ public class LandingPageVideoTests
 
     private sealed class FailingGenerator : IVideoGenerationService
     {
+        public IReadOnlyList<VideoProviderInfo> Providers() => [];
+
         public Task<GeneratedVideo> GenerateAsync(VideoGenerationSpec spec, Guid? generationId, CancellationToken ct) =>
             throw new AiUnavailableException("動画の生成 AI が利用できません");
     }

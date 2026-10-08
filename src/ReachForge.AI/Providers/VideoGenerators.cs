@@ -116,7 +116,7 @@ public sealed class SoraVideoGenerator(HttpClient http, AiProviderOptions option
 /// <summary>動画生成 AI に共通で渡す「描かないもの」（文字・ロゴは崩れやすく、人物の顔は肖像権のため）。</summary>
 internal static class VideoPrompts
 {
-    public const string Negative = "text, letters, captions, subtitles, logos, watermarks, distorted UI, garbled screens, people's faces, low quality, flicker";
+    public const string Negative = VideoGenerationSpec.DefaultNegativePrompt;
 }
 
 /// <summary>
@@ -149,7 +149,7 @@ public sealed class VeoVideoGenerator(HttpClient http, AiProviderOptions options
                 ["aspectRatio"] = SoraVideoGenerator.Landscape(spec) ? "16:9" : "9:16",
                 ["durationSeconds"] = Seconds(spec.Seconds),
                 ["resolution"] = "720p", // 縦型でも使える大きさ（書き出し時に 1080 に整える）
-                ["negativePrompt"] = VideoPrompts.Negative,
+                ["negativePrompt"] = spec.NegativePrompt is { Length: > 0 } negative ? negative : VideoPrompts.Negative,
             },
         };
         var operation = await SendAsync(HttpMethod.Post, $"{baseUrl}/models/{model}:predictLongRunning", body, ct);
@@ -205,8 +205,8 @@ public sealed class KlingVideoGenerator(HttpClient http, AiProviderOptions optio
         {
             ["model_name"] = string.IsNullOrEmpty(modelId) ? DefaultModel : modelId,
             ["prompt"] = spec.Prompt.Length > 2500 ? spec.Prompt[..2500] : spec.Prompt,
-            ["negative_prompt"] = VideoPrompts.Negative,
-            ["mode"] = "std",
+            ["negative_prompt"] = spec.NegativePrompt is { Length: > 0 } negative ? negative : VideoPrompts.Negative,
+            ["mode"] = spec.HighQuality ? "pro" : "std",
             ["duration"] = Seconds(spec.Seconds).ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
         if (spec.StartImage is { } image)

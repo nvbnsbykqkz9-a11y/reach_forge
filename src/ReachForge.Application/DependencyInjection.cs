@@ -17,6 +17,7 @@ public static class DependencyInjection
         services.AddScoped<LpMediaService>();
         services.AddScoped<BrandDiagnosisService>();
         services.AddScoped<VideoService>();
+        services.AddScoped<VideoLabService>();
         services.AddScoped<AccountNotifications>();
         services.AddScoped<WorkspaceService>();
         services.AddScoped<AiCostService>();

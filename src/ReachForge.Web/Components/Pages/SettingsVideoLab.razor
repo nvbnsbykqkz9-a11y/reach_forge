@@ -1,0 +1,296 @@
+@page "/settings/video-lab"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Policy = OpsAccess.Policy)]
+@* 動画生成 AI（Kling・Veo など）の品質テスト：プロンプト・モデル・設定を変えて生成し、結果を見比べて評価を残す（運用者のみ。利用料がかかる） *@
+@inherits RfComponentBase
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>動画生成のテスト｜ReachForge</PageTitle>
+
+<div class="rf-page-header">
+    <MudText Typo="Typo.h4" tabindex="-1">動画生成のテスト</MudText>
+</div>
+<MudText Typo="Typo.body2" Class="mb-4" Style="color:var(--rf-color-text-secondary)">
+    動画生成 AI（Kling・Google Veo）に、プロンプトや設定を変えて動画をつくらせ、出来を見比べます。良かった書き方は、広告動画づくりのプロンプトに反映します。
+    1本ごとに、各 AI サービスの利用料がかかります（目安を表示します）。生成には 1〜5 分ほどかかります。
+</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="5">
+        <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+            <MudText Typo="Typo.h6" Class="mb-2">つくる</MudText>
+
+            <MudText Typo="Typo.subtitle2">ひな形（押すとプロンプトに入ります）</MudText>
+            <div class="d-flex flex-wrap gap-1 mb-3" role="group" aria-label="プロンプトのひな形">
+                @foreach (var preset in VideoLabService.Presets)
+                {
+                    <MudTooltip Text="@preset.Description">
+                        <MudChip T="string" Variant="@(_label == preset.Name ? Variant.Filled : Variant.Outlined)" Color="Color.Primary"
+                                 OnClick="() => UsePreset(preset)" Disabled="_running">@preset.Name</MudChip>
+                    </MudTooltip>
+                }
+            </div>
+
+            @if (_providers.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3">動画生成に使える AI がありません。「設定 → 生成AIの設定」で Kling または Google の API キーを入れてください。</MudAlert>
+            }
+            <MudSelect T="string" Label="AI サービス" Value="_provider" ValueChanged="ProviderChanged" Variant="Variant.Outlined" Class="mb-3" Disabled="_running">
+                @foreach (var p in _providers)
+                {
+                    <MudSelectItem T="string" Value="@p.Name">@ProviderLabel(p)</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField T="string" Label="モデル（任意）" @bind-Value="_model" Variant="Variant.Outlined" Class="mb-3" Disabled="_running"
+                          Placeholder="@(Selected?.DefaultModel ?? "")" HelperText="@($"空なら{(string.IsNullOrEmpty(Selected?.DefaultModel) ? "既定のモデル" : $" {Selected.DefaultModel}")}（例：Kling は kling-v3、Veo は veo-3.1-generate-preview）")" />
+            <MudTextField T="string" Label="プロンプト" @bind-Value="_prompt" Variant="Variant.Outlined" Lines="6" Class="mb-3" Disabled="_running"
+                          MaxLength="VideoLabService.MaxPromptLength" Counter="VideoLabService.MaxPromptLength"
+                          HelperText="映像の内容・カメラの動き・光・雰囲気を具体的に（英語・日本語どちらでも試せます）" />
+            <MudTextField T="string" Label="描かないもの（ネガティブプロンプト）" @bind-Value="_negative" Variant="Variant.Outlined" Lines="2" Class="mb-3"
+                          Disabled="_running" HelperText="空ならアプリの既定（文字・ロゴ・人物の顔など）" Placeholder="@VideoGenerationSpec.DefaultNegativePrompt" />
+
+            <div class="d-flex flex-wrap gap-4 align-center mb-2">
+                <MudRadioGroup T="bool" @bind-Value="_landscape" Disabled="_running">
+                    <MudRadio T="bool" Value="false" Color="Color.Primary">縦型 9:16</MudRadio>
+                    <MudRadio T="bool" Value="true" Color="Color.Primary">横型 16:9</MudRadio>
+                </MudRadioGroup>
+                <MudSelect T="int" Label="長さ" @bind-Value="_seconds" Variant="Variant.Outlined" Dense="true" Style="max-width:140px" Disabled="_running">
+                    @foreach (var s in SecondsOptions)
+                    {
+                        <MudSelectItem T="int" Value="s">@(s)秒</MudSelectItem>
+                    }
+                </MudSelect>
+            </div>
+            @if (Selected?.Type == "Kling")
+            {
+                <MudSwitch T="bool" @bind-Value="_highQuality" Color="Color.Primary" Disabled="_running"
+                           Label="高画質モード（pro・1080p。時間と料金が多くかかります）" />
+            }
+
+            <MudText Typo="Typo.subtitle2" Class="mt-2">起点の画像（任意：画像から動画）</MudText>
+            <MudText Typo="Typo.caption" Class="d-block mb-1">LP の写真や画面を入れると、その画像を動かします（動画の比率に合わせて切り出します）。</MudText>
+            <div class="d-flex align-center gap-2 mb-3">
+                <InputFile OnChange="LoadImage" accept="image/png,image/jpeg,image/webp" disabled="@_running" aria-label="起点の画像を選ぶ" />
+                @if (_imageUrl is not null)
+                {
+                    <img src="@_imageUrl" alt="起点の画像" style="height:64px;border-radius:6px" />
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="ClearImage" Disabled="_running">外す</MudButton>
+                }
+            </div>
+
+            <MudText Typo="Typo.body2" Class="mb-2">料金の目安：@Cost（@(_seconds)秒 × @Usd(Selected?.PricePerSecond ?? 0)／秒）</MudText>
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-2" data-testid="lab-error">@_error</MudAlert>
+            }
+            <div class="d-flex gap-2 align-center">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RunAsync" Disabled="@(_running || _providers.Count == 0 || string.IsNullOrWhiteSpace(_prompt))"
+                           StartIcon="@Icons.Material.Rounded.Movie">動画をつくる</MudButton>
+                @if (_running)
+                {
+                    <MudButton Variant="Variant.Outlined" OnClick="Cancel">やめる</MudButton>
+                    <span class="rf-spinner" aria-hidden="true"></span>
+                    <MudText Typo="Typo.body2" role="status">つくっています…（@(_elapsed)秒）</MudText>
+                }
+            </div>
+        </MudPaper>
+    </MudItem>
+
+    <MudItem xs="12" md="7">
+        <MudPaper Class="pa-4 rf-card" Elevation="0" Outlined="true">
+            <div class="d-flex align-center mb-2">
+                <MudText Typo="Typo.h6">結果（新しい順）</MudText>
+                <MudSpacer />
+                <MudSwitch T="bool" @bind-Value="_goodOnly" Color="Color.Primary" Label="良いものだけ" />
+            </div>
+            @if (_results.Count == 0)
+            {
+                <MudText Typo="Typo.body2">まだ結果はありません。左でプロンプトを選んで「動画をつくる」を押してください。</MudText>
+            }
+            <div class="d-flex flex-wrap gap-4">
+                @foreach (var r in _results.Where(r => !_goodOnly || r.Rating == 2))
+                {
+                    <div style="width:@(r.Landscape ? "420px" : "240px");max-width:100%" data-testid="lab-result">
+                        <RfMediaImage AssetId="r.AssetId" Controls="true" Alt="@($"動画生成のテスト：{r.Label}")" />
+                        <MudText Typo="Typo.subtitle2" Class="mt-1"><b>@r.Label</b></MudText>
+                        <MudText Typo="Typo.caption" Class="d-block">
+                            @r.Provider・@(r.Model.Length > 0 ? r.Model : "既定のモデル")・@(r.Landscape ? "横型" : "縦型")・@(r.Seconds)秒@(r.HighQuality ? "・高画質" : "")@(r.StartImage ? "・画像から" : "")
+                        </MudText>
+                        <MudText Typo="Typo.caption" Class="d-block">
+                            @r.CreatedAt.ToOffset(TimeSpan.FromHours(9)).ToString("M/d HH:mm")・生成 @((r.ElapsedMs / 1000.0).ToString("0"))秒・@Usd(r.CostUsd)
+                        </MudText>
+                        <details class="mt-1">
+                            <summary><MudText Typo="Typo.caption" Inline="true">プロンプト</MudText></summary>
+                            <MudText Typo="Typo.caption" Style="white-space:pre-wrap;word-break:break-word">@r.Prompt</MudText>
+                            @if (r.NegativePrompt.Length > 0)
+                            {
+                                <MudText Typo="Typo.caption" Style="white-space:pre-wrap;word-break:break-word">描かないもの：@r.NegativePrompt</MudText>
+                            }
+                        </details>
+                        <div class="d-flex align-center gap-1 mt-1">
+                            <MudIconButton Icon="@Icons.Material.Rounded.ThumbUp" Color="@(r.Rating == 2 ? Color.Success : Color.Default)" Size="Size.Small"
+                                           aria-label="良い" aria-pressed="@(r.Rating == 2 ? "true" : "false")" Disabled="_running"
+                                           OnClick="() => RateAsync(r, r.Rating == 2 ? 0 : 2)" />
+                            <MudIconButton Icon="@Icons.Material.Rounded.ThumbDown" Color="@(r.Rating == 1 ? Color.Error : Color.Default)" Size="Size.Small"
+                                           aria-label="いまいち" aria-pressed="@(r.Rating == 1 ? "true" : "false")" Disabled="_running"
+                                           OnClick="() => RateAsync(r, r.Rating == 1 ? 0 : 1)" />
+                            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => Reuse(r)" Disabled="_running">この設定で直す</MudButton>
+                            <MudSpacer />
+                            <MudIconButton Icon="@Icons.Material.Rounded.Delete" Size="Size.Small" aria-label="削除" Disabled="_running" OnClick="() => DeleteAsync(r)" />
+                        </div>
+                        <MudTextField T="string" Value="@r.Note" Placeholder="メモ（文字が出た・ちらつく など）" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Disabled="_running" ValueChanged="v => RateAsync(r, r.Rating, v)" DebounceInterval="800" aria-label="メモ" />
+                    </div>
+                }
+            </div>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private VideoLabService Lab => Scoped<VideoLabService>();
+
+    private IReadOnlyList<VideoProviderInfo> _providers = [];
+    private List<VideoLabResult> _results = [];
+    private string? _provider;
+    private string? _model;
+    private string _prompt = "";
+    private string? _negative;
+    private string? _label;
+    private bool _landscape;
+    private int _seconds = 5;
+    private bool _highQuality;
+    private byte[]? _image;
+    private string? _imageUrl;
+    private bool _running;
+    private bool _goodOnly;
+    private int _elapsed;
+    private string? _error;
+    private CancellationTokenSource? _cts;
+    private System.Threading.Timer? _timer;
+
+    private VideoProviderInfo? Selected => _providers.FirstOrDefault(p => p.Name == _provider);
+
+    private IEnumerable<int> SecondsOptions => Selected?.Type == "Google" ? [4, 6, 8] : [5, 10];
+
+    private string Cost => Usd(_seconds * (Selected?.PricePerSecond ?? 0) * (_highQuality && Selected?.Type == "Kling" ? 2 : 1));
+
+    private static string Usd(decimal usd) => $"${usd:0.###}";
+
+    private static string ProviderLabel(VideoProviderInfo p) =>
+        $"{p.Name}（{p.Type}）{(p.Configured ? "" : "・API キー未設定")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _providers = Lab.Providers().Where(p => p.Type != "Stub" || p.Configured).ToList();
+        _provider = _providers.FirstOrDefault(p => p.Configured)?.Name ?? _providers.FirstOrDefault()?.Name;
+        _results = [.. await Lab.ListAsync(CancellationToken.None)];
+        if (VideoLabService.Presets.FirstOrDefault() is { } first) UsePreset(first);
+    }
+
+    private void ProviderChanged(string provider)
+    {
+        _provider = provider;
+        if (!SecondsOptions.Contains(_seconds)) _seconds = SecondsOptions.First();
+    }
+
+    private void UsePreset(VideoLabPreset preset)
+    {
+        _label = preset.Name;
+        _prompt = preset.Prompt;
+        if (preset.NeedsStartImage && _image is null) _error = "このひな形は、起点の画像を選んでから試してください。";
+        else _error = null;
+    }
+
+    private void Reuse(VideoLabResult r)
+    {
+        _provider = _providers.Any(p => p.Name == r.Provider) ? r.Provider : _provider;
+        _model = r.Model;
+        _prompt = r.Prompt;
+        _negative = r.NegativePrompt;
+        _landscape = r.Landscape;
+        _seconds = r.Seconds;
+        _highQuality = r.HighQuality;
+        _label = $"{r.Label}（直し）";
+    }
+
+    private async Task LoadImage(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(10 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _image = ms.ToArray();
+            _imageUrl = $"data:{e.File.ContentType};base64,{Convert.ToBase64String(_image)}";
+        }
+        catch (IOException)
+        {
+            _error = "画像は 10MB 以下にしてください。";
+        }
+    }
+
+    private void ClearImage()
+    {
+        _image = null;
+        _imageUrl = null;
+    }
+
+    private async Task RunAsync()
+    {
+        if (_provider is null) return;
+        _error = null;
+        _running = true;
+        _elapsed = 0;
+        _cts = new CancellationTokenSource();
+        _timer = new System.Threading.Timer(_ => InvokeAsync(() => { _elapsed++; StateHasChanged(); }), null, 1000, 1000);
+        try
+        {
+            var result = await Lab.RunAsync(new VideoLabRequest
+            {
+                Provider = _provider, Model = _model, Prompt = _prompt, NegativePrompt = _negative, Landscape = _landscape,
+                Seconds = _seconds, HighQuality = _highQuality && Selected?.Type == "Kling", Label = _label, StartImage = _image,
+            }, _cts.Token);
+            _results.Insert(0, result);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "やめました（AI サービス側では生成が続き、料金がかかる場合があります）。";
+        }
+        catch (DomainException ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _timer?.Dispose();
+            _timer = null;
+            _running = false;
+        }
+    }
+
+    private void Cancel() => _cts?.Cancel();
+
+    private async Task RateAsync(VideoLabResult r, int rating, string? note = null)
+    {
+        var updated = await Lab.RateAsync(r.AssetId, rating, note ?? r.Note, CancellationToken.None);
+        var i = _results.FindIndex(x => x.AssetId == r.AssetId);
+        if (i >= 0) _results[i] = updated;
+    }
+
+    private async Task DeleteAsync(VideoLabResult r)
+    {
+        await Lab.DeleteAsync(r.AssetId, CancellationToken.None);
+        _results.RemoveAll(x => x.AssetId == r.AssetId);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _cts?.Cancel();
+            _timer?.Dispose();
+        }
+        base.Dispose(disposing);
+    }
+}
