@@ -2,13 +2,14 @@ name: Windows installer
 
 # Windows 版（PC 単体）の本番用インストーラーをつくる。
 #   - バージョンのタグ（v1.0.0 など）を push：インストーラーをつくり、GitHub の「リリースの下書き」に添付する（公開は手動）
-#   - main への push・手動実行：インストーラーをつくり、成果物（Artifacts）として残す
+#   - main への push・手動実行、またはコミットのメッセージに [build installer] を含めた push（どのブランチでも）：
+#     インストーラーをつくり、成果物（Artifacts）として残す
 # コード署名：リポジトリのシークレット WINDOWS_PFX_BASE64（.pfx を Base64 にしたもの）と WINDOWS_PFX_PASSWORD があれば、
 #   アプリ本体（ReachForge.exe）とインストーラーに署名する（なければ署名なしでつくる。SmartScreen の警告が出る）。
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -17,6 +18,10 @@ permissions:
 
 jobs:
   installer:
+    # 対象外の push では、Windows の実行環境を使わずにすぐ終える
+    if: >-
+      github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' || github.ref == 'refs/heads/main' ||
+      contains(github.event.head_commit.message, '[build installer]')
     runs-on: windows-latest
     env:
       PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
