@@ -37,7 +37,7 @@ public class TextToSpeechTests
     private static readonly byte[] Wav = TextToSpeechService.SilentWav(1.5);
 
     private static (TextToSpeechService Service, Handler Handler, ListSink Usage) Create(Func<HttpRequestMessage, HttpResponseMessage> respond,
-        string model = "", Dictionary<string, string>? taskModels = null)
+        string model = "", Dictionary<string, string>? taskModels = null, ProviderCircuitBreaker? breaker = null)
     {
         var opts = Options.Create(new AiOptions
         {
@@ -54,7 +54,7 @@ public class TextToSpeechTests
         var http = Substitute.For<IHttpClientFactory>();
         http.CreateClient(Arg.Any<string>()).Returns(_ => new HttpClient(handler, disposeHandler: false));
         var usage = new ListSink();
-        return (new TextToSpeechService(opts, new ProviderCircuitBreaker(opts, TimeProvider.System), usage, http,
+        return (new TextToSpeechService(opts, breaker ?? new ProviderCircuitBreaker(opts, TimeProvider.System), usage, http,
             NullLogger<TextToSpeechService>.Instance), handler, usage);
     }
 
@@ -126,5 +126,40 @@ public class TextToSpeechTests
             Substitute.For<IHttpClientFactory>(), NullLogger<TextToSpeechService>.Instance);
         ex = await Assert.ThrowsAsync<AiUnavailableException>(() => noKey.SynthesizeAsync("こんにちは", CancellationToken.None));
         Assert.Contains("API キーが設定されていません", ex.Message);
+    }
+
+    [Fact]
+    public async Task Failures_of_other_features_do_not_stop_narration()
+    {
+        var breaker = new ProviderCircuitBreaker(Options.Create(new AiOptions()), TimeProvider.System);
+        // 同じ OpenAI の画像生成・文章が続けて失敗しても
+        for (var i = 0; i < 10; i++)
+        {
+            breaker.RecordFailure(ProviderCircuitBreaker.Key("openai", ProviderCircuitBreaker.Image));
+            breaker.RecordFailure("openai");
+        }
+        var (service, _, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(Wav) }, breaker: breaker);
+
+        var speech = await service.SynthesizeAsync("こんにちは", CancellationToken.None);
+        Assert.True(speech.Seconds > 1);
+    }
+
+    [Fact]
+    public async Task When_narration_is_paused_the_message_tells_the_cause()
+    {
+        var breaker = new ProviderCircuitBreaker(Options.Create(new AiOptions()), TimeProvider.System);
+        var (service, _, _) = Create(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StringContent("""{"error":{"message":"Incorrect API key provided","type":"invalid_request_error","code":"invalid_api_key"}}""",
+                Encoding.UTF8, "application/json"),
+        }, breaker: breaker);
+        for (var i = 0; i < 5; i++)
+        {
+            await Assert.ThrowsAsync<AiUnavailableException>(() => service.SynthesizeAsync("こんにちは", CancellationToken.None));
+        }
+
+        var ex = await Assert.ThrowsAsync<AiUnavailableException>(() => service.SynthesizeAsync("こんにちは", CancellationToken.None));
+        Assert.Contains("1分ほど止めています", ex.Message);
+        Assert.Contains("API キー", ex.Message); // 止めたきっかけ（キーが正しくない）を添える
     }
 }

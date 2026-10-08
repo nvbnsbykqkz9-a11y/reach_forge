@@ -45,7 +45,8 @@ public sealed class VideoGenerationService(
         var attempted = 0;
         foreach (var (name, provider) in candidates)
         {
-            if (breaker.IsOpen(name) && spec.Provider is null) continue;
+            var key = ProviderCircuitBreaker.Key(name, ProviderCircuitBreaker.Video);
+            if (breaker.IsOpen(key) && spec.Provider is null) continue;
             var fallback = attempted++ > 0;
             var modelId = spec.Model is { Length: > 0 } model ? model.Trim() : DefaultModel(provider);
             var sw = Stopwatch.StartNew();
@@ -53,7 +54,7 @@ public sealed class VideoGenerationService(
             {
                 var mp4 = await factory.Get(name, provider).GenerateAsync(spec, modelId, overall.Token);
                 if (mp4.Length == 0) throw new InvalidOperationException("Empty video");
-                breaker.RecordSuccess(name);
+                breaker.RecordSuccess(key);
                 Record(name, provider, modelId, spec.Seconds, sw, fallback, true, generationId);
                 return new GeneratedVideo(mp4, new AiModelInfo(name, modelId, fallback));
             }
@@ -66,7 +67,7 @@ public sealed class VideoGenerationService(
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 last = ex;
-                breaker.RecordFailure(name);
+                breaker.RecordFailure(key);
                 Record(name, provider, modelId, 0, sw, fallback, false, generationId);
                 log.LogWarning(ex, "Video provider {Provider} failed; trying next", name);
             }

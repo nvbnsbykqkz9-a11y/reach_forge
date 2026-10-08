@@ -59,9 +59,13 @@ public sealed class TextToSpeechService(IOptions<AiOptions> options, ProviderCir
         string? reason = null;
         foreach (var name in candidates)
         {
-            if (breaker.IsOpen(name))
+            var key = ProviderCircuitBreaker.Key(name, ProviderCircuitBreaker.Speech);
+            if (breaker.IsOpen(key))
             {
-                reason ??= "続けて失敗したため、音声合成を1分ほど止めています。少し待ってからお試しください。";
+                // 止めたきっかけ（キー・残高・モデルなど）を添えて知らせる
+                reason ??= breaker.LastFailure(key) is { } cause
+                    ? $"{cause}（続けて失敗したため、音声合成を1分ほど止めています。直してから少し待ってお試しください）"
+                    : "続けて失敗したため、音声合成を1分ほど止めています。少し待ってからお試しください。";
                 continue;
             }
             var provider = o.Providers[name];
@@ -72,7 +76,7 @@ public sealed class TextToSpeechService(IOptions<AiOptions> options, ProviderCir
                 var wav = provider.Type == AiProviderType.Stub
                     ? SilentWav(EstimateSeconds(text))
                     : await OpenAiSpeechAsync(provider, model, text, ct);
-                breaker.RecordSuccess(name);
+                breaker.RecordSuccess(key);
                 var seconds = WavSeconds(wav);
                 usage.Add(new AiUsageLog
                 {
@@ -88,7 +92,7 @@ public sealed class TextToSpeechService(IOptions<AiOptions> options, ProviderCir
                 reason = ex is SpeechFailedException failed ? failed.Reason
                     : ex is HttpRequestException or TaskCanceledException ? "OpenAI に接続できませんでした。インターネットへの接続を確認してください。"
                     : "音声を受け取れませんでした。もう一度お試しください。";
-                breaker.RecordFailure(name);
+                breaker.RecordFailure(key, reason);
                 log.LogWarning(ex, "TTS provider {Provider} ({Model}) failed: {Reason}", name, model, reason);
             }
         }

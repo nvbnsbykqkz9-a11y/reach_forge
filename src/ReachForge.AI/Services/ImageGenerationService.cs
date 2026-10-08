@@ -42,7 +42,8 @@ public sealed class ImageGenerationService(
         var attempted = 0;
         foreach (var (name, provider) in candidates)
         {
-            if (breaker.IsOpen(name)) continue;
+            var key = ProviderCircuitBreaker.Key(name, ProviderCircuitBreaker.Image);
+            if (breaker.IsOpen(key)) continue;
             var fallback = attempted++ > 0;
             var modelId = provider.ModelFor(task) ?? "";
             var sw = Stopwatch.StartNew();
@@ -63,14 +64,14 @@ public sealed class ImageGenerationService(
                     .ToList();
                 if (images.Count == 0) throw new InvalidOperationException("No image content returned.");
 
-                breaker.RecordSuccess(name);
+                breaker.RecordSuccess(key);
                 Record(task, name, provider, modelId, images.Count, sw, fallback, true, generationId);
                 return images;
             }
             catch (Exception ex) when (!ct.IsCancellationRequested)
             {
                 last = ex;
-                breaker.RecordFailure(name);
+                breaker.RecordFailure(key);
                 Record(task, name, provider, modelId, 0, sw, fallback, false, generationId);
                 log.LogWarning(ex, "Image provider {Provider} failed for {Task}; trying next", name, task);
             }
