@@ -75,6 +75,11 @@ public sealed class DesktopHostTests : IDisposable
         Assert.Equal("tok", settings["Desktop:LaunchToken"]);
         Assert.Equal("true", settings["Database:SeedDemo"]);
         Assert.False(settings.ContainsKey("Video:FfmpegPath")); // 同梱していなければ PATH の ffmpeg
+
+        // インストーラーで同梱した ffmpeg（アプリの ffmpeg フォルダー）があれば、それを使う
+        var bundled = Path.Combine(Directory.CreateDirectory(Path.Combine(_root, "app", "ffmpeg")).FullName, "ffmpeg.exe");
+        File.WriteAllText(bundled, "");
+        Assert.Equal(bundled, DesktopServer.Settings(new DesktopServerOptions(paths, 50000, bundled), "tok")["Video:FfmpegPath"]);
     }
 
     [Fact]

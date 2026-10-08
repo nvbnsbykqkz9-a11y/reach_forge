@@ -51,6 +51,12 @@ jobs:
         with:
           name: ReachForge-Windows
           path: artifacts/desktop/ReachForge-Setup-*.exe
+      # 同梱した ffmpeg（GPL v3）のソースコード。求めに応じて提供できるよう、インストーラーと一緒に保管する
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ReachForge-Windows-ffmpeg-source
+          path: artifacts/desktop/ffmpeg-source/
+          if-no-files-found: warn
 
   # AI Evals（RF-DES-001 4.6）：プロンプト・モデル設定を変えたときに実モデルで評価する。API キーがなければ飛ばす
   ai-evals:

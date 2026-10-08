@@ -11,7 +11,8 @@
 AppId={{6C1B7C2E-3B6F-4C34-9E0B-5F2D3E7A9B41}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=ReachForge
+AppPublisher=株式会社TechnologyFrontier
+AppPublisherURL=https://www.technologyfrontier.co.jp
 DefaultDirName={localappdata}\Programs\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
@@ -26,6 +27,7 @@ UninstallDisplayIcon={app}\{#AppExe}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+; ffmpeg（動画の書き出し）は app\ffmpeg に同梱する（publish.ps1 が取得。GPL v3：ライセンスとソースの入手先も同じフォルダー）
 ; 起動中なら終了してもらう（アプリの多重起動防止と同じ名前）
 AppMutex=ReachForge.Desktop
 CloseApplications=yes

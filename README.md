@@ -62,7 +62,8 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 | 常駐 | ウィンドウを閉じてもタスクトレイに残り、動画づくりを続ける。終了はトレイのメニューから |
 | 設定 | 生成AI の API キーは「設定 → 生成AIの設定」で入力する（すぐ反映）。それ以外の細かな設定はトレイの「設定ファイルを開く」で `appsettings.user.json` を編集し、アプリを再起動する。キーは暗号化して保存し、暗号鍵は Windows の DPAPI で利用者ごとに保護する |
 
-- 動画機能には ffmpeg が必要（`-FfmpegDir` で同梱するか、PC に入れて PATH を通す）。WebView2 ランタイムがなければインストーラーが案内する
+- 動画の書き出しに使う ffmpeg を同梱する：`publish.ps1` が決めた版（8.1.2、gyan.dev の essentials ビルド・libx264 入りの GPL v3 版）を取得し、SHA-256 を確かめて `app\ffmpeg` に入れる（`LICENSE.txt`・`README.txt`・`SOURCE.txt` も）。ffmpeg のソースコードは `artifacts/desktop/ffmpeg-source` に保管し、CI の成果物にも残す。手元の ffmpeg を使うときは `-FfmpegDir`、同梱しないときは `-NoFfmpeg`。版を上げるときは `publish.ps1` の版・URL・SHA-256 をそろえて変える
+- WebView2 ランタイムがなければインストーラーが案内する
 - CI（`desktop` ジョブ）で Windows 上で発行・インストーラーの作成まで行い、成果物として残す
 - プロセス内での起動・自動ログイン・画面の静的ファイル・終了・マイグレーションは `tests/ReachForge.Desktop.Tests` で Linux でも確認する
 

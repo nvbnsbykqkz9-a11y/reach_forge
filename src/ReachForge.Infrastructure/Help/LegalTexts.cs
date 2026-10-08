@@ -103,8 +103,8 @@ public static class LegalTexts
         new("StackExchange.Redis", "Stack Exchange, Inc.", "MIT License", "https://github.com/StackExchange/StackExchange.Redis"),
         new("Microsoft Edge WebView2（Windows 版）", "Microsoft Corporation", "Microsoft WebView2 ライセンス", "https://aka.ms/webviewnugetlicense",
             "WebView2 ランタイムは Microsoft のソフトウェアライセンス条項に従います。"),
-        new("FFmpeg（動画の作成に使用）", "FFmpeg developers", "GNU LGPL v2.1 以降（ビルドにより GPL）", "https://ffmpeg.org/legal.html",
-            "別のプログラムとして呼び出して使用しています。同梱する場合は、そのビルドのライセンスとソースコードの入手方法に従います。"),
+        new("FFmpeg 8.1.2（動画の書き出しに使用。gyan.dev の essentials ビルド、x264 などを含む）", "FFmpeg developers / Gyan Doshi", "GNU GPL v3", "https://ffmpeg.org/legal.html",
+            "Windows 版に別のプログラムとして同梱しています。ライセンスの全文・ビルドの構成・ソースコードの入手先は、インストール先の ffmpeg フォルダー（LICENSE.txt・README.txt・SOURCE.txt）にあります。"),
         new("Noto Sans JP（画面のフォント）", "Google LLC", "SIL Open Font License 1.1", "https://fonts.google.com/noto/specimen/Noto+Sans+JP"),
     ];
 }
