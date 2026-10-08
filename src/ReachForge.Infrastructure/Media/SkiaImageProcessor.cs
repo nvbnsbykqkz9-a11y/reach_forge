@@ -86,8 +86,8 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
     /// <summary>帯の上に見出し・補足を描く（幅に収まるよう自動で縮める。日本語は1文字単位で折り返す）。</summary>
     private void DrawOverlay(SKBitmap image, TextOverlay overlay)
     {
-        var typeface = _font.Value ?? throw new InvalidOperationException(
-            "日本語フォントが見つかりません。Media:FontPath に Noto Sans JP などのフォントファイルを設定してください。");
+        var typeface = _font.Value ?? throw new ReachForge.Domain.Common.DomainException(ReachForge.Domain.Common.ErrorCodes.MediaFontMissing,
+            "文字入れに使う日本語フォントが見つかりません。Noto Sans JP などの日本語フォントをインストールするか、設定ファイルの Media:FontPath にフォントファイルの場所を指定してください。");
         var w = image.Width;
         var h = image.Height;
         var band = Hex(overlay.BandColorHex);

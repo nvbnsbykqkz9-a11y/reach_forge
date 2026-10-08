@@ -20,6 +20,10 @@ public static class ErrorCodes
     public const string AprReapprovalRequired = "E-APR-001";
     public const string SysUnexpected = "E-SYS-500";
     public const string BrdUrlUnavailable = "W-BRD-001";
+    /// <summary>動画を書き出せない（ffmpeg がない・H.264 に対応していない・書き出しの失敗）。</summary>
+    public const string VideoUnavailable = "E-VID-001";
+    /// <summary>文字入れに使う日本語フォントがない。</summary>
+    public const string MediaFontMissing = "E-MED-001";
 
     // 本実装で追加したコード（設計書の体系に沿って採番）
     public const string AprInvalidTransition = "E-APR-002";

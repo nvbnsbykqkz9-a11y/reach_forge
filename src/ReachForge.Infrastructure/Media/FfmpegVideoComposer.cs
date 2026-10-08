@@ -3,6 +3,7 @@ using System.Globalization;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ReachForge.Application.Abstractions;
+using ReachForge.Domain.Common;
 
 namespace ReachForge.Infrastructure.Media;
 
@@ -35,6 +36,33 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
     public const int Width = 1080;
     public const int Height = 1920;
     public const int Fps = 30;
+
+    public const string NotFoundMessage =
+        "動画の書き出しに必要な ffmpeg が見つかりません。ffmpeg（H.264／libx264 に対応したもの）をインストールして PATH を通すか、" +
+        "設定ファイル（appsettings.user.json）の Video:FfmpegPath に ffmpeg.exe の場所を指定して、アプリを再起動してください。";
+
+    public const string NoX264Message =
+        "この ffmpeg は H.264（libx264）での書き出しに対応していません。libx264 を含む ffmpeg（「full」や「essentials」などの GPL 版）を使ってください。";
+
+    private (DateTimeOffset At, string? Problem)? _check;
+
+    public async Task<string?> CheckAsync(CancellationToken ct)
+    {
+        // 何度も ffmpeg を起動しないよう、結果を1分おぼえておく（ffmpeg を入れた後はすぐに確かめ直せるよう短め）
+        if (_check is { } c && DateTimeOffset.UtcNow - c.At < TimeSpan.FromMinutes(1)) return c.Problem;
+        string? problem;
+        try
+        {
+            var (_, output) = await StartAsync(["-hide_banner", "-encoders"], TimeSpan.FromSeconds(20), ct);
+            problem = output.Contains("libx264", StringComparison.Ordinal) ? null : NoX264Message;
+        }
+        catch (DomainException ex)
+        {
+            problem = ex.Message;
+        }
+        _check = (DateTimeOffset.UtcNow, problem);
+        return problem;
+    }
 
     public async Task<ComposedVideo> ComposeAsync(IReadOnlyList<VideoSceneInput> scenes, CancellationToken ct, VideoAudioOptions? audio = null)
     {
@@ -143,7 +171,7 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
             var input = Path.Combine(dir.FullName, "clip.mp4");
             await File.WriteAllBytesAsync(input, clip, ct);
             var (duration, hasAudio) = await ProbeAsync(input, ct);
-            if (duration <= 0) throw new InvalidOperationException("動画の長さを読み取れませんでした。");
+            if (duration <= 0) throw new DomainException(ErrorCodes.VideoUnavailable, "AI がつくった動画の長さを読み取れませんでした。もう一度お試しください。");
 
             var args = new List<string> { "-hide_banner", "-loglevel", "error", "-y", "-i", input };
             var filters = new List<string>
@@ -219,11 +247,7 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
     /// <summary>長さ（秒）と音声の有無を調べる（ffmpeg -i の出力を読む）。</summary>
     private async Task<(double Seconds, bool HasAudio)> ProbeAsync(string path, CancellationToken ct)
     {
-        var psi = new ProcessStartInfo(options.Value.FfmpegPath) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
-        foreach (var a in new[] { "-hide_banner", "-i", path }) psi.ArgumentList.Add(a);
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("ffmpeg が見つかりません。");
-        var info = await process.StandardError.ReadToEndAsync(ct);
-        await process.WaitForExitAsync(ct);
+        var (_, info) = await StartAsync(["-hide_banner", "-i", path], TimeSpan.FromSeconds(60), ct);
         var match = System.Text.RegularExpressions.Regex.Match(info, @"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)");
         var seconds = match.Success
             ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) * 3600 + int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) * 60
@@ -246,6 +270,17 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
 
     private async Task RunAsync(IReadOnlyList<string> args, CancellationToken ct)
     {
+        var (exitCode, output) = await StartAsync(args, TimeSpan.FromSeconds(options.Value.TimeoutSeconds), ct);
+        if (exitCode != 0)
+        {
+            log.LogError("ffmpeg failed ({Code}): {Error}", exitCode, output.Length > 2000 ? output[^2000..] : output);
+            throw new DomainException(ErrorCodes.VideoUnavailable, Describe(output));
+        }
+    }
+
+    /// <summary>ffmpeg を実行し、終了コードと出力（標準出力＋標準エラー）を返す。見つからない・時間切れは理由を添えて知らせる。</summary>
+    private async Task<(int ExitCode, string Output)> StartAsync(IReadOnlyList<string> args, TimeSpan limit, CancellationToken ct)
+    {
         var psi = new ProcessStartInfo(options.Value.FfmpegPath) { RedirectStandardError = true, RedirectStandardOutput = true, UseShellExecute = false };
         foreach (var a in args) psi.ArgumentList.Add(a);
         using var process = new Process { StartInfo = psi };
@@ -255,27 +290,39 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
         }
         catch (System.ComponentModel.Win32Exception ex)
         {
-            throw new InvalidOperationException("ffmpeg が見つかりません。Video:FfmpegPath を設定してください。", ex);
+            log.LogError(ex, "ffmpeg was not found at {Path}", options.Value.FfmpegPath);
+            throw new DomainException(ErrorCodes.VideoUnavailable, NotFoundMessage);
         }
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(options.Value.TimeoutSeconds));
+        timeout.CancelAfter(limit);
         var stderr = process.StandardError.ReadToEndAsync(timeout.Token);
-        _ = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        var stdout = process.StandardOutput.ReadToEndAsync(timeout.Token);
         try
         {
             await process.WaitForExitAsync(timeout.Token);
+            return (process.ExitCode, await stdout + await stderr);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
             process.Kill(entireProcessTree: true);
-            throw new TimeoutException("動画の書き出しが時間内に終わりませんでした。");
+            throw new DomainException(ErrorCodes.VideoUnavailable, "動画の書き出しが時間内に終わりませんでした。動画を短くするか、時間をおいてお試しください。");
         }
-        if (process.ExitCode != 0)
+    }
+
+    /// <summary>ffmpeg のエラーを、利用者が対処できる言葉にする。</summary>
+    internal static string Describe(string output)
+    {
+        if (output.Contains("Unknown encoder 'libx264'", StringComparison.Ordinal)
+            || output.Contains("Encoder not found", StringComparison.Ordinal) && output.Contains("libx264", StringComparison.Ordinal))
         {
-            var error = await stderr;
-            log.LogError("ffmpeg failed ({Code}): {Error}", process.ExitCode, error.Length > 2000 ? error[..2000] : error);
-            throw new InvalidOperationException("動画を書き出せませんでした。");
+            return NoX264Message;
         }
+        if (output.Contains("No space left on device", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ディスクの空き容量が足りないため、動画を書き出せませんでした。不要なファイルを削除してからお試しください。";
+        }
+        var last = output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).LastOrDefault() ?? "";
+        return $"動画を書き出せませんでした（ffmpeg：{(last.Length > 160 ? last[..160] : last)}）。もう一度お試しください。";
     }
 
     private static string Sec(double s) => s.ToString("0.###", CultureInfo.InvariantCulture);

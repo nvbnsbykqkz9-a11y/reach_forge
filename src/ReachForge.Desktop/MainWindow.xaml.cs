@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.IO;
 using System.Net.Http;
 using System.Net.Security;
@@ -13,6 +14,7 @@ namespace ReachForge.Desktop;
 /// <summary>
 /// 画面（WebView2）。アプリの自己署名証明書だけを例外として受け入れ、外部サイトへのリンクは既定のブラウザーで、
 /// メールアドレスのリンク（mailto:）は既定のメールアプリで、操作説明書（PDF）は既定の PDF ビューアーで開く。
+/// ダウンロード（画像・動画・まとめての ZIP）は「名前を付けて保存」で保存先を選び、アプリが受け取って保存する。
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -43,6 +45,7 @@ public partial class MainWindow : Window
             core.ServerCertificateErrorDetected += OnCertificateError;
             core.NavigationStarting += OnNavigationStarting;
             core.NewWindowRequested += OnNewWindowRequested;
+            core.DownloadStarting += OnDownloadStarting;
             core.DocumentTitleChanged += (_, _) => Title = string.IsNullOrEmpty(core.DocumentTitle) ? "ReachForge" : core.DocumentTitle;
             _webViewReady = true;
         }
@@ -102,13 +105,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            using var handler = new HttpClientHandler
-            {
-                // このアプリの証明書だけを信頼する
-                ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
-                    errors == SslPolicyErrors.None || (cert is not null && _server?.IsOwnCertificate(cert) == true),
-            };
-            using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(60) };
+            using var http = CreateHttpClient(TimeSpan.FromSeconds(60));
             var bytes = await http.GetByteArrayAsync(url);
             var path = Path.Combine(Path.GetTempPath(), "ReachForge", Path.GetFileName(url.AbsolutePath));
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
@@ -119,6 +116,92 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this, $"操作説明書を開けませんでした（{ex.Message}）。", "ReachForge", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+    }
+
+    /// <summary>このアプリのサーバーにつなぐ HttpClient（このアプリの証明書だけを信頼する）。</summary>
+    private HttpClient CreateHttpClient(TimeSpan timeout, string? cookie = null)
+    {
+        var handler = new HttpClientHandler
+        {
+            UseCookies = false,
+            ServerCertificateCustomValidationCallback = (_, cert, _, errors) =>
+                errors == SslPolicyErrors.None || (cert is not null && _server?.IsOwnCertificate(cert) == true),
+        };
+        var http = new HttpClient(handler, disposeHandler: true) { Timeout = timeout };
+        if (!string.IsNullOrEmpty(cookie)) http.DefaultRequestHeaders.Add("Cookie", cookie);
+        return http;
+    }
+
+    /// <summary>
+    /// ダウンロード：アプリの中のファイルは、WebView2 のダウンロードを止めて「名前を付けて保存」で保存先を選んでもらい、
+    /// ログイン中のクッキーを付けてアプリが受け取って保存する（WebView2 の表示に頼らず、終わったこと・失敗した理由を知らせる）。
+    /// </summary>
+    private void OnDownloadStarting(object? sender, CoreWebView2DownloadStartingEventArgs e)
+    {
+        var url = e.DownloadOperation.Uri;
+        if (!IsOwnOrigin(url)) return; // 外部サイトのダウンロードは WebView2 に任せる
+        e.Cancel = true;
+        e.Handled = true;
+        var suggested = Path.GetFileName(e.ResultFilePath);
+        _ = SaveDownloadAsync(new Uri(url), string.IsNullOrWhiteSpace(suggested) ? "ReachForge" : suggested);
+    }
+
+    private async Task SaveDownloadAsync(Uri url, string suggestedName)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "名前を付けて保存",
+            FileName = suggestedName,
+            InitialDirectory = DownloadsFolder(),
+            Filter = Path.GetExtension(suggestedName) is { Length: > 1 } ext
+                ? $"{ext.TrimStart('.').ToUpperInvariant()} ファイル (*{ext})|*{ext}|すべてのファイル (*.*)|*.*"
+                : "すべてのファイル (*.*)|*.*",
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        var previous = Cursor;
+        Cursor = System.Windows.Input.Cursors.Wait;
+        try
+        {
+            var cookies = await Web.CoreWebView2.CookieManager.GetCookiesAsync(url.ToString());
+            var cookie = string.Join("; ", cookies.Select(c => $"{c.Name}={c.Value}"));
+            using var http = CreateHttpClient(TimeSpan.FromMinutes(10), cookie);
+            using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode)
+            {
+                MessageBox.Show(this, $"ダウンロードできませんでした（{(int)response.StatusCode} {response.ReasonPhrase}）。画面を開き直してから、もう一度お試しください。" +
+                    "続く場合は、トレイの「ログを開く」で記録を確認してください。", "ReachForge", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            var temp = dialog.FileName + ".download";
+            await using (var target = File.Create(temp))
+            {
+                await response.Content.CopyToAsync(target);
+            }
+            File.Move(temp, dialog.FileName, overwrite: true);
+            Cursor = previous;
+            if (MessageBox.Show(this, $"保存しました。\n{dialog.FileName}\n\n保存したフォルダーを開きますか？", "ReachForge",
+                    MessageBoxButton.YesNo, MessageBoxImage.Information) == MessageBoxResult.Yes)
+            {
+                App.ShowInExplorer(dialog.FileName);
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, $"ダウンロードできませんでした（{ex.Message}）。保存先のフォルダーに書き込めるか、空き容量があるかを確認してください。",
+                "ReachForge", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            Cursor = previous;
+        }
+    }
+
+    private static string DownloadsFolder()
+    {
+        var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+        return Directory.Exists(downloads) ? downloads : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     }
 
     private bool IsOwnOrigin(string url) =>

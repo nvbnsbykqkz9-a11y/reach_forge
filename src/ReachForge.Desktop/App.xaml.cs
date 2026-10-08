@@ -142,6 +142,10 @@ public partial class App : System.Windows.Application
     public static void OpenInExplorer(string path) =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{path}\"") { UseShellExecute = true });
 
+    /// <summary>エクスプローラーでファイルを選んだ状態で開く。</summary>
+    public static void ShowInExplorer(string file) =>
+        Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{file}\"") { UseShellExecute = true });
+
     public static void OpenExternal(string url) => Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)

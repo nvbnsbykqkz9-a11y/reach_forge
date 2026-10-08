@@ -71,7 +71,7 @@ public sealed class AiJobProcessor(
         catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             var code = ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected;
-            var message = ex is DomainException ? ex.Message : "画像を作成できませんでした。もう一度お試しください。";
+            var message = ex is DomainException ? ex.Message : $"画像を作成できませんでした（{Reason(ex)}）。もう一度お試しください。";
             if (ex is not DomainException) log.LogError(ex, "AI job {JobId} failed", job.Id);
             DiscardUnsaved();
             job.Fail(code, message, clock.GetUtcNow());
@@ -93,9 +93,16 @@ public sealed class AiJobProcessor(
             if (ex is not DomainException) log.LogError(ex, "Video job {JobId} failed", job.Id);
             DiscardUnsaved();
             job.Fail(ex is DomainException d ? d.ErrorCode : ErrorCodes.SysUnexpected,
-                ex is DomainException ? ex.Message : "動画を作成できませんでした。もう一度お試しください。", clock.GetUtcNow());
+                ex is DomainException ? ex.Message : $"動画を作成できませんでした（{Reason(ex)}）。もう一度お試しください。", clock.GetUtcNow());
             await db.SaveChangesAsync(CancellationToken.None);
         }
+    }
+
+    /// <summary>想定外のエラーの理由（画面に出す。詳しくはログに残す）。</summary>
+    private static string Reason(Exception ex)
+    {
+        var message = ex.GetBaseException().Message.ReplaceLineEndings(" ");
+        return $"{ex.GetBaseException().GetType().Name}：{(message.Length > 160 ? message[..160] + "…" : message)}";
     }
 
     /// <summary>止まったジョブを失敗にする。</summary>

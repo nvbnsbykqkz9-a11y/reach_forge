@@ -10,6 +10,7 @@
 @inject ISnackbar Snackbar
 @inject ILogger<Dashboard> Log
 @inject Microsoft.Extensions.Options.IOptions<ReachForge.AI.AiOptions> Ai
+@inject IVideoComposer VideoComposer
 
 <PageTitle>ホーム｜ReachForge</PageTitle>
 
@@ -118,6 +119,10 @@
                     </MudSelect>
                     <MudSwitch T="bool" @bind-Value="_narration" Color="Color.Primary" Label="ナレーション（AI の声）を入れる" />
                 </div>
+                @if (_videoProblem is { } problem)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mt-2" data-testid="video-problem">いまは動画をつくれません。@problem</MudAlert>
+                }
             }
             <div class="d-flex justify-space-between mt-4">
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Rounded.ArrowBack" OnClick="() => _step = 1">戻る</MudButton>
@@ -227,9 +232,13 @@
         MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration,
     };
 
+    /// <summary>動画を書き出せない理由（ffmpeg がないなど）。書き出せれば null。</summary>
+    private string? _videoProblem;
+
     protected override async Task OnInitializedAsync()
     {
         await Time.ZoneAsync();
+        _videoProblem = await VideoComposer.CheckAsync(CancellationToken.None);
         _recent = await Lp.ListAsync(5, CancellationToken.None);
     }
 

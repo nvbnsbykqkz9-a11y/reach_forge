@@ -86,6 +86,24 @@ public class DownloadTests
 
         // 存在しないものは 404
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/api/v1/lp/{Guid.NewGuid()}/download")).StatusCode);
+
+        // 画像のファイルが消えていても、ほかのファイルはまとめてダウンロードでき、入れられなかったものを知らせる
+        using (var scope = app.Services.CreateScope())
+        {
+            scope.ServiceProvider.GetRequiredService<TenantContextOverride>().Current = new MutableTenantContext
+            {
+                TenantId = DemoSeeder.TenantId, WorkspaceId = DemoSeeder.WorkspaceId, UserName = "田中", Role = Role.Owner,
+            };
+            var asset = await scope.ServiceProvider.GetRequiredService<MediaService>().GetAsync(imageId, CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IMediaStorage>().DeleteAsync(asset.BlobPath, CancellationToken.None);
+        }
+        var partial = await client.GetAsync($"/api/v1/lp/{projectId}/download");
+        Assert.Equal(HttpStatusCode.OK, partial.StatusCode);
+        using var partialZip = new ZipArchive(await partial.Content.ReadAsStreamAsync());
+        Assert.Contains(partialZip.Entries, e => e.FullName == "Instagram/文章.txt");
+        Assert.DoesNotContain(partialZip.Entries, e => e.FullName == "Instagram/画像1.jpg");
+        using var note = new StreamReader(partialZip.Entries.Single(e => e.FullName == "入れられなかったファイル.txt").Open());
+        Assert.Contains("Instagram/画像1.jpg", await note.ReadToEndAsync());
     }
 
     [Fact]

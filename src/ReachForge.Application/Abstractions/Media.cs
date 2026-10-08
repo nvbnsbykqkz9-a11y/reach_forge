@@ -113,6 +113,9 @@ public interface IVideoComposer
 
     /// <summary>動画の1コマを JPEG で取り出す（サムネイル用）。</summary>
     Task<byte[]> ExtractFrameAsync(byte[] mp4, double seconds, CancellationToken ct);
+
+    /// <summary>動画を書き出せるかを確かめる。書き出せない場合は、理由と対処を利用者向けの言葉で返す（書き出せれば null）。</summary>
+    Task<string?> CheckAsync(CancellationToken ct);
 }
 
 /// <summary>BGM（F-05 処理 4：ライセンス済み素材をナレーションの間だけ下げて（ダッキング）合成）。</summary>

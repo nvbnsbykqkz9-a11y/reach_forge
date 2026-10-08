@@ -29,19 +29,31 @@ public static class LpEndpoints
             return Results.Stream(await storage.OpenReadAsync(asset.BlobPath, ct), asset.Mime, FileName(asset), enableRangeProcessing: true);
         });
 
-        api.MapGet("/lp/{id:guid}/download", async (Guid id, LpStudioService lp, MediaService media, IMediaStorage storage, CancellationToken ct) =>
+        api.MapGet("/lp/{id:guid}/download", async (Guid id, LpStudioService lp, MediaService media, IMediaStorage storage,
+            ILoggerFactory logs, CancellationToken ct) =>
         {
             var project = await lp.GetAsync(id, ct);
+            var log = logs.CreateLogger("ReachForge.Web.Api.LpDownload");
+            var missing = new List<string>();
             var buffer = new MemoryStream();
             using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
             {
+                // 読めないファイル（削除済みなど）があっても、ほかのファイルはまとめて渡す（入れられなかったものは一覧にして同梱）
                 async Task AddFileAsync(string path, Guid assetId)
                 {
-                    var asset = await media.GetAsync(assetId, ct);
-                    var entry = zip.CreateEntry(path, asset.Kind == MediaKind.Video ? CompressionLevel.NoCompression : CompressionLevel.Fastest);
-                    await using var target = await entry.OpenAsync(ct);
-                    await using var source = await storage.OpenReadAsync(asset.BlobPath, ct);
-                    await source.CopyToAsync(target, ct);
+                    try
+                    {
+                        var asset = await media.GetAsync(assetId, ct);
+                        await using var source = await storage.OpenReadAsync(asset.BlobPath, ct);
+                        var entry = zip.CreateEntry(path, asset.Kind == MediaKind.Video ? CompressionLevel.NoCompression : CompressionLevel.Fastest);
+                        await using var target = await entry.OpenAsync(ct);
+                        await source.CopyToAsync(target, ct);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ReachForge.Domain.Common.DomainException)
+                    {
+                        log.LogWarning(ex, "LP {ProjectId}: {Path} could not be added to the ZIP", id, path);
+                        missing.Add(path);
+                    }
                 }
 
                 if (await lp.VideoJobAsync(project, ct) is { Status: AiJobStatus.Succeeded, ResultAssetIds: [var video, ..] })
@@ -60,6 +72,12 @@ public static class LpEndpoints
                     {
                         await AddFileAsync($"{folder}/画像{i}.jpg", assetId);
                     }
+                }
+                if (missing.Count > 0)
+                {
+                    var note = zip.CreateEntry("入れられなかったファイル.txt", CompressionLevel.Fastest);
+                    await using var writer = new StreamWriter(await note.OpenAsync(ct), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+                    await writer.WriteAsync("次のファイルは見つからなかったため、入っていません。\r\n" + string.Join("\r\n", missing) + "\r\n");
                 }
             }
             buffer.Position = 0;

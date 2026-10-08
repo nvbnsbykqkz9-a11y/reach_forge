@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
@@ -182,4 +183,46 @@ public class VideoTests
         await Assert.ThrowsAsync<DomainException>(() => videos.EnqueueAsync(
             new VideoJobRequest("ラテ", [], Mode: VideoMode.TextToVideo, BgmTrackId: "unknown"), CancellationToken.None));
     }
+}
+
+/// <summary>ffmpeg がない・使えないときは、理由と対処を画面に出す（「もう一度お試しください」だけにしない）。</summary>
+public class VideoComposerProblemTests
+{
+    [Fact]
+    public async Task Missing_ffmpeg_is_explained_in_the_check_and_in_the_failed_job()
+    {
+        await using var f = await AppFixture.CreateAsync(configure: s => s.Configure<ReachForge.Infrastructure.Media.VideoOptions>(o =>
+            o.FfmpegPath = Path.Combine(Path.GetTempPath(), "no-such-dir", "ffmpeg")));
+        Guid jobId;
+        await using (var scope = f.Scope())
+        {
+            var composer = f.Get<IVideoComposer>(scope);
+            Assert.Equal(ReachForge.Infrastructure.Media.FfmpegVideoComposer.NotFoundMessage, await composer.CheckAsync(CancellationToken.None));
+
+            var media = f.Get<MediaService>(scope);
+            var bytes = (await new SkiaImageProcessor().RenderPlaceholderAsync(1200, 900, 1, [], CancellationToken.None)).Bytes;
+            var image = await media.UploadAsync("a.png", "image/png", new MemoryStream(bytes), bytes.Length, CancellationToken.None);
+            jobId = (await f.Get<VideoService>(scope).EnqueueAsync(new VideoJobRequest("秋のラテ", [image.Id], Narration: false, TargetSeconds: 10),
+                CancellationToken.None)).Id;
+        }
+        await using (var scope = f.Scope())
+        {
+            await f.Get<AiJobProcessor>(scope).ProcessAsync(jobId, CancellationToken.None);
+        }
+        await using (var scope = f.Scope())
+        {
+            var job = await f.Get<IAppDbContext>(scope).AiJobs.SingleAsync(j => j.Id == jobId);
+            Assert.Equal(AiJobStatus.Failed, job.Status);
+            Assert.Equal(ErrorCodes.VideoUnavailable, job.ErrorCode);
+            Assert.Contains("ffmpeg が見つかりません", job.Error);
+            Assert.Contains("Video:FfmpegPath", job.Error);
+        }
+    }
+
+    [Theory]
+    [InlineData("[vost#0:0 @ 0x1] Unknown encoder 'libx264'\nError opening output files: Encoder not found", "libx264")]
+    [InlineData("av_interleaved_write_frame(): No space left on device", "空き容量")]
+    [InlineData("frame=1\n[image2 @ 0x2] Could not open file : scene0.jpg", "Could not open file")]
+    public void Ffmpeg_errors_are_described(string output, string expected) =>
+        Assert.Contains(expected, ReachForge.Infrastructure.Media.FfmpegVideoComposer.Describe(output));
 }
