@@ -4,8 +4,10 @@ name: Windows installer
 #   - バージョンのタグ（v1.0.0 など）を push：インストーラーをつくり、GitHub の「リリースの下書き」に添付する（公開は手動）
 #   - main への push・手動実行、またはコミットのメッセージに [build installer] を含めた push（どのブランチでも）：
 #     インストーラーをつくり、成果物（Artifacts）として残す
-# コード署名：リポジトリのシークレット WINDOWS_PFX_BASE64（.pfx を Base64 にしたもの）と WINDOWS_PFX_PASSWORD があれば、
-#   アプリ本体（ReachForge.exe）とインストーラーに署名する（なければ署名なしでつくる。SmartScreen の警告が出る）。
+# コード署名（Azure Artifact Signing。秘密鍵は Microsoft の HSM の中にあり、ファイルとしては扱わない）：
+#   リポジトリの変数 ARTIFACT_SIGNING_ENDPOINT・ARTIFACT_SIGNING_ACCOUNT・ARTIFACT_SIGNING_PROFILE と、
+#   シークレット AZURE_CLIENT_ID・AZURE_TENANT_ID・AZURE_SUBSCRIPTION_ID（OIDC のフェデレーション資格情報を設定したアプリ）があれば、
+#   アプリ本体（ReachForge.exe）とインストーラーに署名する（タイムスタンプ付き）。なければ署名なしでつくる（SmartScreen の警告が出る）。
 
 on:
   push:
@@ -15,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write # Azure へ OIDC でサインインする（コード署名）
 
 jobs:
   installer:
@@ -23,9 +26,12 @@ jobs:
       github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' || github.ref == 'refs/heads/main' ||
       contains(github.event.head_commit.message, '[build installer]')
     runs-on: windows-latest
+    # Azure の OIDC の信頼（フェデレーション資格情報）は、この環境名に対して1つ設定すればよい（ブランチ・タグによらない）
+    environment: release
     env:
-      PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
-      PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+      SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+      SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+      SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -48,24 +54,25 @@ jobs:
         shell: pwsh
         run: ./deploy/desktop/publish.ps1
 
-      - name: Prepare code signing
-        if: env.PFX_BASE64 != ''
-        shell: pwsh
-        run: |
-          $pfx = Join-Path $env:RUNNER_TEMP "signing.pfx"
-          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
-          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
-            Where-Object { $_.FullName -match "x64" } | Sort-Object FullName -Descending | Select-Object -First 1
-          "SIGNTOOL=$($signtool.FullName)" >> $env:GITHUB_ENV
-          "PFX_PATH=$pfx" >> $env:GITHUB_ENV
+      - name: Azure login (code signing)
+        if: env.SIGNING_ACCOUNT != ''
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign the app
-        if: env.PFX_BASE64 != ''
-        shell: pwsh
-        run: |
-          & $env:SIGNTOOL sign /f $env:PFX_PATH /p $env:PFX_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-            artifacts/desktop/app/ReachForge.exe
-          if ($LASTEXITCODE -ne 0) { throw "アプリ本体の署名に失敗しました" }
+        if: env.SIGNING_ACCOUNT != ''
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ env.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\artifacts\desktop\app\ReachForge.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - name: Build installer (Inno Setup)
         shell: pwsh
@@ -75,12 +82,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "インストーラーの作成に失敗しました" }
 
       - name: Sign the installer
-        if: env.PFX_BASE64 != ''
+        if: env.SIGNING_ACCOUNT != ''
+        uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ env.SIGNING_ENDPOINT }}
+          signing-account-name: ${{ env.SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ env.SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\artifacts\desktop\ReachForge-Setup-${{ steps.version.outputs.version }}.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signatures
+        if: env.SIGNING_ACCOUNT != ''
         shell: pwsh
         run: |
-          & $env:SIGNTOOL sign /f $env:PFX_PATH /p $env:PFX_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-            (Get-ChildItem artifacts/desktop/ReachForge-Setup-*.exe).FullName
-          if ($LASTEXITCODE -ne 0) { throw "インストーラーの署名に失敗しました" }
+          foreach ($file in @("artifacts/desktop/app/ReachForge.exe", "artifacts/desktop/ReachForge-Setup-${{ steps.version.outputs.version }}.exe")) {
+            $sig = Get-AuthenticodeSignature $file
+            if ($sig.Status -ne "Valid") { throw "$file の署名が有効ではありません（$($sig.Status)：$($sig.StatusMessage)）" }
+            Write-Host "$file：$($sig.SignerCertificate.Subject)"
+          }
 
       - name: Checksum
         shell: pwsh
@@ -112,8 +133,3 @@ jobs:
           files: |
             artifacts/desktop/ReachForge-Setup-*.exe
             artifacts/desktop/ReachForge-Setup-*.exe.sha256
-
-      - name: Clean up
-        if: always() && env.PFX_BASE64 != ''
-        shell: pwsh
-        run: Remove-Item -Force -ErrorAction SilentlyContinue $env:PFX_PATH
