@@ -39,7 +39,8 @@ public class HelpMenuTests(E2EFixture app)
         {
             await page.ScreenshotAsync(new() { Path = Path.Combine(dir2, "eula.png") });
         }
-        await page.Keyboard.PressAsync("Escape");
+        // 契約のダイアログを閉じると About に戻る（Esc はフォーカスの位置で効かないことがあるため「閉じる」を押す）
+        await page.GetByRole(AriaRole.Dialog, new() { Name = "使用許諾契約" }).GetByRole(AriaRole.Button, new() { Name = "閉じる" }).ClickAsync();
         await page.GetByRole(AriaRole.Button, new() { Name = "第三者ソフトウェアのライセンス" }).ClickAsync();
         await Assertions.Expect(page.GetByText("MudBlazor", new() { Exact = true })).ToBeVisibleAsync();
         if (Environment.GetEnvironmentVariable("RF_E2E_SCREENSHOTS") is { Length: > 0 } dir3)

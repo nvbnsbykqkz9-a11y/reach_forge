@@ -51,7 +51,7 @@ public sealed record VideoJobRequest(string Theme, IReadOnlyList<Guid> ImageAsse
 
 /// <summary>LP から作った動画の企画（動画の来歴に残し、投稿文の案として画面に出す）。</summary>
 public sealed record LandingPageVideoSummary(string Url, string Product, string Target, IReadOnlyList<string> Benefits, string Offer,
-    string CallToAction, string PostText, IReadOnlyList<string> Hashtags, bool HookAnimated);
+    string CallToAction, string PostText, IReadOnlyList<string> Hashtags, bool HookAnimated, string? NarrationError = null);
 
 /// <summary>
 /// ショート動画（F-05）：③ テンプレート合成（複数画像＋テロップ＋ナレーション）。
@@ -209,6 +209,7 @@ public sealed class VideoService(
 
         // ② シーン画像（9:16・テロップ焼き込み）と ③ ナレーション
         var band = ctx.Profile.BrandColors.FirstOrDefault() ?? "#1B2333";
+        var narrator = new Narrator(tts, log, job.Id);
         var scenes = new List<VideoSceneInput>();
         var timeline = new List<(VideoScene Scene, double Seconds)>();
         byte[]? firstFrame = null;
@@ -224,9 +225,8 @@ public sealed class VideoService(
             firstFrame ??= frame.Bytes;
             var seconds = Math.Clamp(scene.Seconds, 2, 10);
             byte[]? narration = null;
-            if (request.Narration && !string.IsNullOrWhiteSpace(scene.Narration))
+            if (request.Narration && await narrator.SpeakAsync(scene.Narration, ct) is { } speech)
             {
-                var speech = await tts.SynthesizeAsync(scene.Narration, ct);
                 narration = speech.Wav;
                 seconds = Math.Max(seconds, speech.Seconds + 0.4); // 音声の長さに合わせてシーンを延ばす
             }
@@ -234,6 +234,7 @@ public sealed class VideoService(
             timeline.Add((scene, Math.Round(seconds, 2)));
         }
 
+        if (narrator.Failure is not null) scenes = [.. scenes.Select(x => x with { NarrationWav = null })]; // 途中まで付いた分も外す
         // ④⑤ 合成・書き出し
         job.MoveTo(AiJobStage.Checking);
         await db.SaveChangesAsync(ct);
@@ -247,7 +248,8 @@ public sealed class VideoService(
         asset.AltTextIsAi = true;
         asset.Provenance = JsonSerializer.Serialize(new
         {
-            kind = "template-video", theme = request.Theme, scenes = timeline.Count, narration = request.Narration,
+            kind = "template-video", theme = request.Theme, scenes = timeline.Count, narration = request.Narration && narrator.Failure is null,
+            narrationError = narrator.Failure,
             sources = request.ImageAssetIds, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
         return asset;
@@ -338,6 +340,7 @@ public sealed class VideoService(
         var plan = await planner.PlanAsync(ctx, planPage, sceneCount, request.TargetSeconds, ct);
 
         var band = ctx.Profile.BrandColors.FirstOrDefault() ?? page.Colors.FirstOrDefault() ?? "#1B2333";
+        var narrator = new Narrator(tts, log, job.Id);
         var scenes = new List<VideoSceneInput>();
         var timeline = new List<(VideoScene Scene, double Seconds)>();
         byte[]? firstFrame = null;
@@ -345,7 +348,7 @@ public sealed class VideoService(
         foreach (var (scene, i) in plan.Scenes.Select((s, i) => (s, i)))
         {
             await ReportAsync(job, AiJobStage.Generating, 20 + 60 * i / plan.Scenes.Count,
-                $"シーン {i + 1}/{plan.Scenes.Count} をつくっています（画像・テロップ{(request.Narration ? "・ナレーション" : "")}）", ct);
+                $"シーン {i + 1}/{plan.Scenes.Count} をつくっています（画像・テロップ{(request.Narration && narrator.Failure is null ? "・ナレーション" : "")}）", ct);
             MediaAsset? source = scene.ImageIndex is { } k ? imported[k].Asset : imported.Count > 0 ? imported[i % imported.Count].Asset : null;
             var background = source is null
                 ? await images.CreateBackgroundAsync(band, Size, ct)
@@ -359,9 +362,8 @@ public sealed class VideoService(
 
             var seconds = scene.Seconds;
             byte[]? narration = null;
-            if (request.Narration && !string.IsNullOrWhiteSpace(scene.Narration))
+            if (request.Narration && await narrator.SpeakAsync(scene.Narration, ct) is { } speech)
             {
-                var speech = await tts.SynthesizeAsync(scene.Narration, ct);
                 narration = speech.Wav;
                 seconds = Math.Max(seconds, speech.Seconds + 0.4);
             }
@@ -398,6 +400,7 @@ public sealed class VideoService(
             timeline.Add((new VideoScene(scene.Caption, scene.Narration, seconds), seconds));
         }
 
+        if (narrator.Failure is not null) scenes = [.. scenes.Select(x => x with { NarrationWav = null })]; // 途中まで付いた分も外す
         await ReportAsync(job, AiJobStage.Checking, 85, "BGM を重ねて、動画を書き出しています", ct);
         var video = await composer.ComposeAsync(scenes, ct, new VideoAudioOptions(request.BgmTrackId));
         var max = PlatformCatalog.All.Where(c => c.MaxVideoSeconds is not null).Min(c => c.MaxVideoSeconds!.Value);
@@ -409,15 +412,38 @@ public sealed class VideoService(
         asset.AltText = $"{plan.Title}（{page.Url.Host} の LP から作った{video.DurationMs / 1000}秒の動画）";
         asset.AltTextIsAi = true;
         var summary = new LandingPageVideoSummary(page.Url.ToString(), plan.Product, plan.Target, plan.Benefits, plan.Offer, plan.CallToAction,
-            plan.PostText, plan.Hashtags, hookAnimated);
+            plan.PostText, plan.Hashtags, hookAnimated, narrator.Failure);
         asset.Provenance = JsonSerializer.Serialize(new
         {
             kind = "landing-page-video", summary, title = plan.Title,
             scenes = plan.Scenes.Select(s => new { s.Role, s.Caption, s.Narration, s.ImageIndex }),
             sources = imported.Select(i => new { url = i.Web.Url.ToString(), assetId = i.Asset.Id }),
-            narration = request.Narration, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
+            narration = request.Narration && narrator.Failure is null, bgm = request.BgmTrackId, createdAt = DateTimeOffset.UtcNow,
         });
         return asset;
+    }
+
+    /// <summary>
+    /// ナレーション。音声合成に失敗したら、そのあとは作らずに理由を残す（動画はナレーションなしで仕上げる）。
+    /// </summary>
+    private sealed class Narrator(ITextToSpeech tts, ILogger log, Guid jobId)
+    {
+        public string? Failure { get; private set; }
+
+        public async Task<SpeechAudio?> SpeakAsync(string? text, CancellationToken ct)
+        {
+            if (Failure is not null || string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                return await tts.SynthesizeAsync(text, ct);
+            }
+            catch (AiUnavailableException ex)
+            {
+                Failure = ex.Message;
+                log.LogWarning(ex, "Narration failed for job {JobId}; finishing without narration", jobId);
+                return null;
+            }
+        }
     }
 
     private async Task ReportAsync(AiJob job, AiJobStage stage, int percent, string text, CancellationToken ct)

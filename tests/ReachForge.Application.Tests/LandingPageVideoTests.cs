@@ -71,6 +71,48 @@ public class LandingPageVideoTests
         Assert.Equal(steps.Count, reports[^1].StepIndex); // 最後は「すべて終わった」
     }
 
+    private sealed class FailingTts : ITextToSpeech
+    {
+        public int Calls;
+
+        public Task<SpeechAudio> SynthesizeAsync(string text, CancellationToken ct)
+        {
+            Calls++;
+            throw new AiUnavailableException("ナレーションを作れませんでした：OpenAI の API キーが正しくないか、権限がありません。");
+        }
+    }
+
+    [Fact]
+    public async Task Video_is_finished_without_narration_when_speech_fails()
+    {
+        if (!HasFfmpeg()) Assert.Skip("ffmpeg がない環境では実行しない");
+        var tts = new FailingTts();
+        await using var f = await AppFixture.CreateAsync(configure: s => s
+            .AddSingleton<IWebPageFetcher>(new FakeLpFetcher())
+            .AddSingleton<ITextToSpeech>(tts));
+        Guid jobId;
+        await using (var scope = f.Scope())
+        {
+            jobId = (await f.Get<VideoService>(scope).EnqueueAsync(new VideoJobRequest("", [], Narration: true, TargetSeconds: 15,
+                Mode: VideoMode.LandingPage, SourceUrl: Lp.ToString()), CancellationToken.None)).Id;
+        }
+        await using (var scope = f.Scope())
+        {
+            await f.Get<AiJobProcessor>(scope).ProcessAsync(jobId, CancellationToken.None);
+        }
+        await using (var scope = f.Scope())
+        {
+            var db = f.Get<IAppDbContext>(scope);
+            var job = await db.AiJobs.SingleAsync(j => j.Id == jobId);
+            Assert.True(job.Status == AiJobStatus.Succeeded, job.Error);
+            Assert.Equal(1, tts.Calls); // 1回失敗したら、ほかのシーンでは呼ばない
+            var video = await db.MediaAssets.SingleAsync(m => m.Id == job.ResultAssetIds[0]);
+            var summary = VideoService.LandingPageSummaryOf(video)!;
+            Assert.Contains("API キーが正しくない", summary.NarrationError);
+            Assert.Contains("\"narration\":false", video.Provenance);
+        }
+    }
+
     private sealed class SyncProgress(Action<LpCreateProgress> report) : IProgress<LpCreateProgress>
     {
         public void Report(LpCreateProgress value) => report(value);

@@ -62,6 +62,12 @@ else
             }
             else if (_job is { Status: AiJobStatus.Succeeded, ResultAssetIds: [var video, ..] })
             {
+                @if (_summary?.NarrationError is { } narrationError)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="narration-warning">
+                        ナレーションなしで仕上げました。@narrationError
+                    </MudAlert>
+                }
                 <div class="d-flex flex-wrap gap-4 align-start">
                     <div style="width:240px;max-width:100%">
                         <RfMediaImage AssetId="video" Controls="true" Alt="LP からつくった縦型の動画" />

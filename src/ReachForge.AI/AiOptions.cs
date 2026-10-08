@@ -71,7 +71,20 @@ public sealed class AiProviderOptions
 
     public bool IsConfigured => Type == AiProviderType.Stub || !string.IsNullOrWhiteSpace(ApiKey);
 
-    public string? ModelFor(AiTaskType task) => TaskModels.GetValueOrDefault(task.ToString(), Model ?? "");
+    /// <summary>タスクのモデル（タスク別の指定 → 既定のモデルの順。空欄は「指定なし」として扱い、どちらもなければ null）。</summary>
+    public string? ModelFor(AiTaskType task) =>
+        TaskModels.TryGetValue(task.ToString(), out var m) && !string.IsNullOrWhiteSpace(m) ? m.Trim()
+        : string.IsNullOrWhiteSpace(Model) ? null : Model.Trim();
+
+    /// <summary>音声合成（OpenAI）の既定のモデル。</summary>
+    public const string DefaultSpeechModel = "gpt-4o-mini-tts";
+
+    /// <summary>
+    /// 音声合成のモデル。タスク別の指定（TaskModels の Tts）だけを見て、なければ <see cref="DefaultSpeechModel"/>。
+    /// 「既定のモデル」は文章用（Claude が使えないときの代わり）なので、音声合成には使わない。
+    /// </summary>
+    public string SpeechModel =>
+        TaskModels.TryGetValue(nameof(AiTaskType.Tts), out var m) && !string.IsNullOrWhiteSpace(m) ? m.Trim() : DefaultSpeechModel;
 }
 
 /// <summary>サーキットブレーカー：5回連続失敗で60秒遮断（RF-DES-001 8.2）。</summary>
