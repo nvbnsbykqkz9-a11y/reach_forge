@@ -127,7 +127,7 @@ public sealed class FakeLandingPageFetcher : IWebPageFetcher
 
     public async Task<FetchedImage> FetchImageAsync(Uri url, CancellationToken ct)
     {
-        var image = await new ReachForge.Infrastructure.Media.ImageSharpProcessor()
+        var image = await new ReachForge.Infrastructure.Media.SkiaImageProcessor()
             .RenderPlaceholderAsync(1200, 900, url.AbsolutePath.Length, ["#B45309", "#FDE68A"], ct);
         return new FetchedImage(image.Bytes, image.Mime);
     }

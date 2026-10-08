@@ -37,7 +37,7 @@ public class LandingPageVideoTests
             {
                 throw new DomainException(ErrorCodes.BrdUrlUnavailable, "取得できません");
             }
-            var image = await new ImageSharpProcessor().RenderPlaceholderAsync(1200, 900, url.AbsolutePath.Length, ["#B45309", "#FDE68A"], ct);
+            var image = await new SkiaImageProcessor().RenderPlaceholderAsync(1200, 900, url.AbsolutePath.Length, ["#B45309", "#FDE68A"], ct);
             return new FetchedImage(image.Bytes, image.Mime);
         }
     }

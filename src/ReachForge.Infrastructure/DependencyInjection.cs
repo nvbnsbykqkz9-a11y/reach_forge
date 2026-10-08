@@ -82,7 +82,7 @@ public static class DependencyInjection
         // ---- メディア（F-04 / SCR-13） ----
         services.Configure<MediaOptions>(configuration.GetSection(MediaOptions.SectionName));
         services.Configure<ContentSafetyOptions>(configuration.GetSection(ContentSafetyOptions.SectionName));
-        services.AddSingleton<IImageProcessor, ImageSharpProcessor>();
+        services.AddSingleton<IImageProcessor, SkiaImageProcessor>();
         services.AddSingleton<IProvenanceStamper, C2paProvenanceStamper>();
         var media = configuration.GetSection(MediaOptions.SectionName).Get<MediaOptions>() ?? new MediaOptions();
         if (!string.IsNullOrWhiteSpace(media.BlobServiceUri))

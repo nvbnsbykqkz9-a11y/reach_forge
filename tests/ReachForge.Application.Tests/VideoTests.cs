@@ -41,7 +41,7 @@ public class VideoTests
         Guid jobId;
         await using (var scope = f.Scope())
         {
-            var p = new ImageSharpProcessor();
+            var p = new SkiaImageProcessor();
             var media = f.Get<MediaService>(scope);
             var ids = new List<Guid>();
             foreach (var seed in new[] { 1, 2 })
@@ -111,8 +111,8 @@ public class VideoTests
         await using var f = await AppFixture.CreateAsync();
         await using var scope = f.Scope();
         var composer = f.Get<IVideoComposer>(scope);
-        var frame = (await new ImageSharpProcessor().EncodeJpegAsync(
-            (await new ImageSharpProcessor().RenderPlaceholderAsync(1080, 1920, 3, [], CancellationToken.None)).Bytes, 2_000_000, CancellationToken.None)).Bytes;
+        var frame = (await new SkiaImageProcessor().EncodeJpegAsync(
+            (await new SkiaImageProcessor().RenderPlaceholderAsync(1080, 1920, 3, [], CancellationToken.None)).Bytes, 2_000_000, CancellationToken.None)).Bytes;
 
         var silent = await composer.ComposeAsync([new VideoSceneInput(frame, 3, null)], CancellationToken.None);
         var withBgm = await composer.ComposeAsync([new VideoSceneInput(frame, 3, null)], CancellationToken.None, new VideoAudioOptions("calm"));
@@ -141,7 +141,7 @@ public class VideoTests
             var ids = new List<Guid>();
             if (mode == VideoMode.ImageToVideo)
             {
-                var bytes = (await new ImageSharpProcessor().RenderPlaceholderAsync(1200, 900, 5, [], CancellationToken.None)).Bytes;
+                var bytes = (await new SkiaImageProcessor().RenderPlaceholderAsync(1200, 900, 5, [], CancellationToken.None)).Bytes;
                 ids.Add((await f.Get<MediaService>(scope).UploadAsync("s.png", "image/png", new MemoryStream(bytes), bytes.Length, CancellationToken.None)).Id);
             }
             var videos = f.Get<VideoService>(scope);

@@ -18,9 +18,9 @@
     <PackageReference Include="Cronos" />
     <PackageReference Include="Newtonsoft.Json" />
     <PackageReference Include="Azure.Messaging.ServiceBus" />
-    <!-- ImageSharp は Six Labors Split License（年商100万USD以上の営利企業は商用ライセンスが必要）。IImageProcessor 越しに使い差し替え可能にする -->
-    <PackageReference Include="SixLabors.ImageSharp" />
-    <PackageReference Include="SixLabors.ImageSharp.Drawing" />
+    <!-- 画像処理は SkiaSharp（MIT）。IImageProcessor 越しに使う。Linux の native は開発・テスト用（Windows 版は SkiaSharp に同梱） -->
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="ReachForge.Application.Tests" />

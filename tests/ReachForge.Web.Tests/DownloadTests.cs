@@ -7,8 +7,7 @@ using ReachForge.Application.Social;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Persistence;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace ReachForge.Web.Tests;
 
@@ -17,10 +16,10 @@ public class DownloadTests
 {
     private static byte[] Png()
     {
-        using var image = new Image<Rgba32>(640, 640, new Rgba32(30, 140, 200));
-        using var ms = new MemoryStream();
-        image.SaveAsPng(ms);
-        return ms.ToArray();
+        using var image = new SKBitmap(640, 640);
+        image.Erase(new SKColor(30, 140, 200));
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
     }
 
     /// <summary>オーナーとして、画像1枚と Instagram 用の文章を持つ「つくったもの」を用意する。</summary>

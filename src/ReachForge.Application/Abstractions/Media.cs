@@ -30,8 +30,8 @@ public sealed record Cutout(ProcessedImage Image, NormalizedRect SubjectBounds, 
 public enum ProductPlacement { Center = 1, Bottom = 2, Left = 3, Right = 4 }
 
 /// <summary>
-/// 画像処理（RF-DES-001 3.3 メディア処理）。実装は Infrastructure（ImageSharp）。
-/// ライセンスの都合で他ライブラリ（SkiaSharp など）へ差し替えられるよう、この抽象越しにのみ使う。
+/// 画像処理（RF-DES-001 3.3 メディア処理）。実装は Infrastructure（SkiaSharp）。
+/// 画像処理ライブラリを差し替えられるよう、この抽象越しにのみ使う。
 /// </summary>
 public interface IImageProcessor
 {

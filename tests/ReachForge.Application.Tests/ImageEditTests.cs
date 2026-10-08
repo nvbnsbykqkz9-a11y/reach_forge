@@ -6,40 +6,25 @@ using ReachForge.Domain.Common;
 using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Media;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Drawing.Processing;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace ReachForge.Application.Tests;
 
 /// <summary>参照画像の編集（F-04：背景差替・不要物除去・商品の配置）。</summary>
 public class ImageEditTests
 {
-    private static readonly ImageSharpProcessor Processor = new();
+    private static readonly SkiaImageProcessor Processor = new();
 
     /// <summary>白い背景に赤い商品（中央）と、右上に青い「不要物」。</summary>
     private static byte[] ProductPhoto(int w = 800, int h = 800, bool busyBackground = false)
     {
-        using var image = new Image<Rgba32>(w, h, new Rgba32(250, 250, 250));
-        if (busyBackground)
-        {
-            var random = new Random(1);
-            image.ProcessPixelRows(rows =>
-            {
-                for (var y = 0; y < rows.Height; y++)
-                {
-                    var row = rows.GetRowSpan(y);
-                    for (var x = 0; x < row.Length; x++) row[x] = new Rgba32((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256));
-                }
-            });
-        }
-        image.Mutate(x => x
-            .Fill(Color.FromRgb(200, 30, 30), new RectangleF(w * 0.35f, w * 0.3f, w * 0.3f, h * 0.45f))
-            .Fill(Color.FromRgb(30, 60, 200), new RectangleF(w * 0.8f, h * 0.05f, w * 0.12f, h * 0.12f)));
-        using var ms = new MemoryStream();
-        image.SaveAsPng(ms);
-        return ms.ToArray();
+        var random = new Random(1);
+        static bool In(int x, int y, float left, float top, float width, float height) => x >= left && x < left + width && y >= top && y < top + height;
+        return TestImages.Create(w, h, new SKColor(250, 250, 250), (x, y) =>
+            In(x, y, w * 0.35f, w * 0.3f, w * 0.3f, h * 0.45f) ? new SKColor(200, 30, 30)
+            : In(x, y, w * 0.8f, h * 0.05f, w * 0.12f, h * 0.12f) ? new SKColor(30, 60, 200)
+            : busyBackground ? new SKColor((byte)random.Next(256), (byte)random.Next(256), (byte)random.Next(256))
+            : null);
     }
 
     [Fact]
@@ -47,10 +32,10 @@ public class ImageEditTests
     {
         var cutout = await Processor.CutoutAsync(ProductPhoto(), CancellationToken.None);
         Assert.True(cutout.Confidence >= Cutout.MinConfidence, $"{cutout.Confidence}");
-        using var image = Image.Load<Rgba32>(cutout.Image.Bytes);
-        Assert.Equal(0, image[10, 10].A);                 // 背景は透明
-        Assert.Equal(255, image[400, 450].A);             // 商品は不透明
-        Assert.Equal(new Rgba32(200, 30, 30, 255), image[400, 450]);
+        var image = TestImages.Read(cutout.Image.Bytes);
+        Assert.Equal(0, image[10, 10].Alpha);             // 背景は透明
+        Assert.Equal(255, image[400, 450].Alpha);         // 商品は不透明
+        Assert.Equal(new SKColor(200, 30, 30, 255), image[400, 450]);
 
         var busy = await Processor.CutoutAsync(ProductPhoto(busyBackground: true), CancellationToken.None);
         Assert.True(busy.Confidence < Cutout.MinConfidence); // 背景が複雑な写真には使わない
@@ -60,31 +45,26 @@ public class ImageEditTests
     public async Task Restore_keeps_pixels_outside_the_edited_regions()
     {
         var original = ProductPhoto();
-        using var edited = Image.Load<Rgba32>(original);
-        edited.Mutate(x => x.Fill(Color.Green)); // AI が全体を変えてしまった場合
-        using var ms = new MemoryStream();
-        edited.SaveAsPng(ms);
+        var edited = TestImages.Create(800, 800, new SKColor(0, 128, 0)); // AI が全体を変えてしまった場合
 
         var region = new NormalizedRect(0.78, 0.03, 0.16, 0.16);
-        var restored = await Processor.RestoreAsync(original, ms.ToArray(), [region], null, CancellationToken.None);
-        using var result = Image.Load<Rgba32>(restored.Bytes);
-        Assert.Equal(new Rgba32(200, 30, 30, 255), result[400, 450]);  // 範囲外（商品）は元のまま
-        Assert.Equal(new Rgba32(250, 250, 250, 255), result[50, 700]);  // 範囲外（背景）も元のまま
-        Assert.Equal(Color.Green.ToPixel<Rgba32>(), result[690, 90]);    // 範囲の中は AI の結果
+        var restored = await Processor.RestoreAsync(original, edited, [region], null, CancellationToken.None);
+        var result = TestImages.Read(restored.Bytes);
+        Assert.Equal(new SKColor(200, 30, 30, 255), result[400, 450]);  // 範囲外（商品）は元のまま
+        Assert.Equal(new SKColor(250, 250, 250, 255), result[50, 700]);  // 範囲外（背景）も元のまま
+        Assert.Equal(new SKColor(0, 128, 0, 255), result[690, 90]);      // 範囲の中は AI の結果
     }
 
     [Fact]
     public async Task Composite_places_the_unmodified_product_on_a_new_background()
     {
         var cutout = await Processor.CutoutAsync(ProductPhoto(), CancellationToken.None);
-        using var background = new Image<Rgba32>(1080, 1350, new Rgba32(20, 120, 60));
-        using var ms = new MemoryStream();
-        background.SaveAsPng(ms);
-        var composite = await Processor.CompositeAsync(ms.ToArray(), cutout.Image.Bytes, ProductPlacement.Bottom, 0.5, CancellationToken.None);
-        using var result = Image.Load<Rgba32>(composite.Bytes);
+        var background = TestImages.Create(1080, 1350, new SKColor(20, 120, 60));
+        var composite = await Processor.CompositeAsync(background, cutout.Image.Bytes, ProductPlacement.Bottom, 0.5, CancellationToken.None);
+        var result = TestImages.Read(composite.Bytes);
         Assert.Equal((1080, 1350), (result.Width, result.Height));
-        Assert.Equal(new Rgba32(200, 30, 30, 255), result[540, 1350 - 81 - 150]); // 商品（下寄せ・中央）
-        Assert.Equal(new Rgba32(20, 120, 60, 255), result[30, 30]);               // 背景
+        Assert.Equal(new SKColor(200, 30, 30, 255), result[540, 1350 - 81 - 150]); // 商品（下寄せ・中央）
+        Assert.Equal(new SKColor(20, 120, 60, 255), result[30, 30]);               // 背景
     }
 
     private static async Task<(AppFixture F, Guid AssetId)> UploadAsync(byte[]? bytes = null)

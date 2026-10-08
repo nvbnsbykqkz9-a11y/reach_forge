@@ -7,8 +7,7 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Enums;
 using ReachForge.Infrastructure.Media;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using SkiaSharp;
 
 namespace ReachForge.Application.Tests;
 
@@ -20,10 +19,7 @@ public class ProvenanceTests
 
     private static byte[] Encode(bool png)
     {
-        using var image = new Image<Rgba32>(64, 48, new Rgba32(10, 120, 200));
-        using var ms = new MemoryStream();
-        if (png) image.SaveAsPng(ms); else image.SaveAsJpeg(ms);
-        return ms.ToArray();
+        return TestImages.Create(64, 48, new SKColor(10, 120, 200), format: png ? SKEncodedImageFormat.Png : SKEncodedImageFormat.Jpeg);
     }
 
     private static C2paProvenanceStamper Stamper(C2paOptions? c2pa = null) =>
@@ -39,10 +35,8 @@ public class ProvenanceTests
 
         Assert.False(stamped.Signed);
         Assert.True(stamped.Bytes.Length > original.Length);
-        using var image = Image.Load<Rgba32>(stamped.Bytes);
-        using var before = Image.Load<Rgba32>(original);
-        Assert.Equal(before[5, 5], image[5, 5]); // 画素は再エンコードしない
-        var xmp = Encoding.UTF8.GetString(image.Metadata.XmpProfile!.ToByteArray());
+        Assert.Equal(TestImages.Read(original)[5, 5], TestImages.Read(stamped.Bytes)[5, 5]); // 画素は再エンコードしない
+        var xmp = TestImages.Xmp(stamped.Bytes)!;
         Assert.Contains("Iptc4xmpExt:DigitalSourceType=\"http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia\"", xmp);
 
         var manifest = JsonNode.Parse(stamped.Manifest)!;
@@ -83,7 +77,7 @@ public class ProvenanceTests
             var failed = await Stamper(new C2paOptions { ToolPath = "/nonexistent/c2patool", SignCertPath = cert, PrivateKeyPath = key })
                 .StampAsync(Encode(false), "image/jpeg", Info, CancellationToken.None);
             Assert.False(failed.Signed);
-            Assert.NotNull(Image.Load<Rgba32>(failed.Bytes).Metadata.XmpProfile);
+            Assert.NotNull(TestImages.Xmp(failed.Bytes));
         }
         finally
         {
@@ -110,13 +104,13 @@ public class ProvenanceTests
             var job = await media.GetJobAsync(jobId, CancellationToken.None);
             var asset = await f.Get<IAppDbContext>(scope).MediaAssets.AsNoTracking().SingleAsync(a => a.Id == job.ResultAssetIds[0]);
             Assert.Contains("trainedAlgorithmicMedia", asset.C2paManifest);
-            Assert.NotNull(Image.Load<Rgba32>(await media.ReadAsync(asset, CancellationToken.None)).Metadata.XmpProfile);
+            Assert.NotNull(TestImages.Xmp(await media.ReadAsync(asset, CancellationToken.None)));
 
-            // SNS 用に比率を変えた画像（ImageSharp で作り直す）にも付け直す
+            // SNS 用に比率を変えた画像（作り直すため来歴は消える）にも付け直す
             var derived = await media.DeriveForPlatformAsync(asset, SocialPlatform.X, AspectMethod.Pad, CancellationToken.None);
             await f.Get<IAppDbContext>(scope).SaveChangesAsync();
             Assert.Contains("c2pa.resized", derived.C2paManifest);
-            var xmp = Encoding.UTF8.GetString(Image.Load<Rgba32>(await media.ReadAsync(derived, CancellationToken.None)).Metadata.XmpProfile!.ToByteArray());
+            var xmp = TestImages.Xmp(await media.ReadAsync(derived, CancellationToken.None))!;
             Assert.Contains("trainedAlgorithmicMedia", xmp);
         }
     }

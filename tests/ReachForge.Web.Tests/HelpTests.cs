@@ -32,7 +32,8 @@ public class HelpTests
         Assert.True(AppInfo.Icon().Length > 1000);
         Assert.True(LegalTexts.Eula.Count >= 10);
         Assert.All(LegalTexts.ThirdParty, c => Assert.StartsWith("https://", c.Url));
-        Assert.Contains(LegalTexts.ThirdParty, c => c.Name.StartsWith("SixLabors.ImageSharp", StringComparison.Ordinal));
+        Assert.Contains(LegalTexts.ThirdParty, c => c.Name.StartsWith("SkiaSharp", StringComparison.Ordinal));
         Assert.Contains(LegalTexts.ThirdParty, c => c.Name.StartsWith("QuestPDF", StringComparison.Ordinal));
+        Assert.DoesNotContain(LegalTexts.ThirdParty, c => c.Name.Contains("ImageSharp", StringComparison.Ordinal));
     }
 }

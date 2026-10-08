@@ -10,44 +10,30 @@ using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
 using ReachForge.Infrastructure.Media;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
+using SkiaSharp;
 
 namespace ReachForge.Application.Tests;
 
 public class ImageProcessorTests
 {
-    private readonly ImageSharpProcessor _p = new();
+    private readonly SkiaImageProcessor _p = new();
 
     /// <summary>右側だけに細かい模様（被写体）がある横長画像。</summary>
     private static byte[] WideImageWithSubjectOnRight(int width = 1600, int height = 900)
     {
-        using var image = new Image<Rgba32>(width, height, new Rgba32(240, 240, 240));
-        image.ProcessPixelRows(rows =>
-        {
-            for (var y = 0; y < rows.Height; y++)
-            {
-                var row = rows.GetRowSpan(y);
-                for (var x = width * 3 / 4 - 100; x < width - 20; x++)
-                {
-                    row[x] = ((x / 8 + y / 8) % 2 == 0) ? new Rgba32(200, 30, 30) : new Rgba32(20, 20, 160);
-                }
-            }
-        });
-        using var ms = new MemoryStream();
-        image.SaveAsPng(ms);
-        return ms.ToArray();
+        return TestImages.Create(width, height, new SKColor(240, 240, 240), (x, y) => x >= width * 3 / 4 - 100 && x < width - 20
+            ? ((x / 8 + y / 8) % 2 == 0 ? new SKColor(200, 30, 30) : new SKColor(20, 20, 160))
+            : null);
     }
 
     [Fact]
     public void Smart_crop_moves_toward_the_detailed_subject()
     {
-        using var image = Image.Load<Rgba32>(WideImageWithSubjectOnRight());
-        var rect = ImageSharpProcessor.SmartCropRectangle(image, 4.0 / 5);
+        using var image = SkiaImageProcessor.Decode(WideImageWithSubjectOnRight());
+        var rect = SkiaImageProcessor.SmartCropRectangle(image, 4.0 / 5);
         Assert.Equal(720, rect.Width);
         Assert.Equal(900, rect.Height);
-        Assert.True(rect.X > 1600 / 2, $"crop x={rect.X} should be on the right half");
+        Assert.True(rect.Left > 1600 / 2, $"crop x={rect.Left} should be on the right half");
     }
 
     [Theory]
@@ -85,21 +71,34 @@ public class ImageProcessorTests
     }
 
     [Fact]
+    public void Text_wraps_by_character_without_breaking_words_or_starting_lines_with_punctuation()
+    {
+        var typeface = SKFontManager.Default.MatchFamily("IPAGothic") ?? SKFontManager.Default.MatchFamily("Noto Sans CJK JP");
+        if (typeface is null) Assert.Skip("この環境には日本語フォントがありません");
+        using var font = new SKFont(typeface, 40);
+        var width = font.MeasureText("あいうえおかきく");
+        var lines = SkiaImageProcessor.Wrap("あいうえおかきく、けこ ReachForge さしすせそ", font, width);
+        Assert.All(lines, l => Assert.True(font.MeasureText(l) <= width + 1, l));
+        Assert.DoesNotContain(lines, l => l.StartsWith('、'));      // 行頭に句読点を置かない
+        Assert.Contains(lines, l => l.Contains("ReachForge"));        // 英語の語は途中で切らない
+        Assert.Equal("あいうえおかきく、けこ ReachForge さしすせそ".Replace(" ", ""), string.Concat(lines).Replace(" ", ""));
+    }
+
+    [Fact]
     public async Task Normalize_strips_metadata_and_auto_orients()
     {
-        using var image = new Image<Rgba32>(400, 200, new Rgba32(10, 120, 200));
-        image.Metadata.ExifProfile = new SixLabors.ImageSharp.Metadata.Profiles.Exif.ExifProfile();
-        image.Metadata.ExifProfile.SetValue(SixLabors.ImageSharp.Metadata.Profiles.Exif.ExifTag.Orientation, (ushort)6); // 90°回転
-        image.Metadata.ExifProfile.SetValue(SixLabors.ImageSharp.Metadata.Profiles.Exif.ExifTag.Software, "camera");
-        using var ms = new MemoryStream();
-        image.SaveAsJpeg(ms);
-        ms.Position = 0;
+        // 左半分が赤・右半分が青の横長の写真に、「90°回転して表示する」という EXIF を付ける
+        var jpeg = TestImages.WithExifOrientation(TestImages.Create(400, 200, new SKColor(20, 20, 200),
+            (x, _) => x < 200 ? new SKColor(200, 20, 20) : null, SKEncodedImageFormat.Jpeg), 6);
+        using var ms = new MemoryStream(jpeg);
 
         var result = await _p.NormalizeAsync(ms, 4096, CancellationToken.None);
 
         Assert.Equal((200, 400), (result.Width, result.Height));
-        using var reloaded = Image.Load(result.Bytes);
-        Assert.Null(reloaded.Metadata.ExifProfile);
+        Assert.DoesNotContain("Exif", System.Text.Encoding.ASCII.GetString(result.Bytes)); // 位置情報などのメタデータは残さない
+        var pixels = TestImages.Read(result.Bytes);
+        Assert.True(pixels[100, 50].Red > 150, "上側に赤（左側だった部分）が来る");
+        Assert.True(pixels[100, 350].Blue > 150, "下側に青");
     }
 }
 
@@ -107,7 +106,7 @@ public class MediaServiceTests
 {
     private static async Task<byte[]> PngAsync(int w, int h)
     {
-        var p = new ImageSharpProcessor();
+        var p = new SkiaImageProcessor();
         return (await p.RenderPlaceholderAsync(w, h, 42, ["#B45309", "#FDE68A"], CancellationToken.None)).Bytes;
     }
 
@@ -144,14 +143,14 @@ public class MediaServiceTests
         Assert.Contains(await media.ListAsync(MediaFilter.All, CancellationToken.None), m => m.Id == banner.Id); // ライブラリに出る
 
         // 下部の帯に白い文字が描かれている（帯は暗い色）
-        using var image = Image.Load<Rgba32>(await media.ReadAsync(banner, CancellationToken.None));
+        var image = TestImages.Read(await media.ReadAsync(banner, CancellationToken.None));
         var bright = 0;
         for (var x = 0; x < image.Width; x += 2)
         {
             for (var y = image.Height * 85 / 100; y < image.Height; y += 2)
             {
                 var p = image[x, y];
-                if (p.R > 220 && p.G > 220 && p.B > 220) bright++;
+                if (p.Red > 220 && p.Green > 220 && p.Blue > 220) bright++;
             }
         }
         Assert.True(bright > 100, $"text pixels: {bright}");

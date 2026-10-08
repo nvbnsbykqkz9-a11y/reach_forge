@@ -80,8 +80,8 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 - AI の利用料金：アプリ内のクレジット・回数の上限はなく、料金は API キーを発行した各 AI サービスから直接請求される。AI を呼ぶたびに推定料金（`AI:Providers` の単価 × トークン数・画像の枚数・動画の秒数・ナレーションの分数）を `AiUsageLogs` に記録し、「設定 → AI の利用料金」で今月・先月の目安を機能別・サービス別に表示する（円換算は `AI:UsdJpyRate`、既定 150）
 - 設定：`Video:FfmpegPath`（既定 `ffmpeg`）、`Video:BgmLibraryPath`（ライセンス済みの曲と `tracks.json`）、`Media:FontPath`（テロップのフォント。未設定なら OS の Noto Sans JP / IPA フォント等）
 
-> **ライセンス注意**：画像処理は SixLabors.ImageSharp 3.1 を使用しています（`IImageProcessor` の実装を差し替え可能）。
-> Six Labors Split License では、年間売上 100万米ドル以上の営利企業による利用は商用ライセンスが必要です。本番利用前に確認してください。
+> 画像処理は SkiaSharp（MIT）を使用しています（`IImageProcessor` の実装 `SkiaImageProcessor`）。
+> 以前の ImageSharp は脆弱性の修正版（4.x）がライセンスキー必須になったため置き換えました。
 
 ## 操作説明書・About
 
