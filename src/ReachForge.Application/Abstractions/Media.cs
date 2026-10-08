@@ -97,9 +97,26 @@ public interface IImageProcessor
     /// </summary>
     Task<ProcessedImage> FitWithBackdropAsync(byte[] source, (int Width, int Height) size, CancellationToken ct);
 
+    /// <summary>
+    /// 広告の背景を描く（LP の色と雰囲気に合わせた、煙・光・オーロラ・光の粒などの模様）。生成 AI が使えないときの背景や、
+    /// 画面（スクリーンショット）の後ろの背景に使う。<see cref="BackdropStyle.Time"/> を変えると模様が少しずつ動く。
+    /// </summary>
+    Task<ProcessedImage> RenderBackdropAsync((int Width, int Height) size, BackdropStyle style, CancellationToken ct);
+
+    /// <summary>
+    /// サービスの画面（スクリーンショット）を端末の枠（横長の画面はノートパソコン、縦長はスマートフォン）に入れて、背景の上に置く。
+    /// 画面の画素は描き直さない（文字がつぶれない）。下には見出し・テロップの場所をあける。
+    /// <paramref name="background"/> が null なら透明な画像（PNG）にする（動画の映像の上に重ねる）。<paramref name="caption"/> があれば文字の帯も描く。
+    /// </summary>
+    Task<ProcessedImage> ComposeDeviceAsync(byte[]? background, byte[] screen, (int Width, int Height) size, TextOverlay? caption,
+        CancellationToken ct);
+
     /// <summary>ローカル用スタブの画像（ブランド色のグラデーションと図形）。</summary>
     Task<ProcessedImage> RenderPlaceholderAsync(int width, int height, int seed, IReadOnlyList<string> colorsHex, CancellationToken ct);
 }
+
+/// <summary>広告の背景の描き方（色は濃い色から順に。足りない色は補う）。</summary>
+public sealed record BackdropStyle(IReadOnlyList<string> Colors, ReachForge.Domain.Entities.BackdropMotif Motif, int Seed, float Time = 0);
 
 /// <summary>メディアの保存先（Local：ディスク、本番：Azure Blob Storage）。</summary>
 public interface IMediaStorage

@@ -5,6 +5,7 @@ using ReachForge.Application.Abstractions;
 using ReachForge.Application.Ai;
 using ReachForge.Application.Services;
 using ReachForge.Domain.Common;
+using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Platforms;
 using ReachForge.Infrastructure.Media;
@@ -166,6 +167,144 @@ public class LpMediaTests
                     await File.WriteAllBytesAsync(Path.Combine(dump, name), await media.ReadAsync(await media.GetAsync(id, CancellationToken.None), CancellationToken.None));
                 }
             }
+        }
+    }
+
+    /// <summary>SaaS の LP：画面（ダッシュボード・スマホアプリ）の画像だけがある。</summary>
+    private static WebPage SaasPage => new(new Uri("https://example.com/lp/secureview"), "SecureView | 検知から初動まで1画面で", "",
+        "アラートが多すぎる。AI が検知・分析し、対応が必要なものだけを知らせます。", ["#1F4FD8", "#0B1B3A"],
+        [
+            new WebImage(new Uri("https://example.com/img/dashboard.png"), "ダッシュボードの画面"),
+            new WebImage(new Uri("https://example.com/img/app.png"), "スマホアプリの画面"),
+        ]);
+
+    private sealed class SaasFetcher : IWebPageFetcher
+    {
+        public Task<WebPage> FetchAsync(string url, CancellationToken ct) => Task.FromResult(SaasPage);
+
+        public async Task<FetchedImage> FetchImageAsync(Uri url, CancellationToken ct)
+        {
+            var (w, h) = url.AbsolutePath.Contains("app") ? (750, 1500) : (1600, 1000);
+            var image = await new SkiaImageProcessor().RenderPlaceholderAsync(w, h, url.AbsolutePath.Length, ["#F4F7FC", "#1F4FD8"], ct);
+            return new FetchedImage(image.Bytes, image.Mime);
+        }
+    }
+
+    /// <summary>明るさのばらつき（標準偏差）。無地の画像は 0 に近い。</summary>
+    private static double Contrast(byte[] jpeg)
+    {
+        using var bitmap = SKBitmap.Decode(jpeg);
+        var values = new List<double>();
+        for (var y = 0; y < bitmap.Height; y += 8)
+        {
+            for (var x = 0; x < bitmap.Width; x += 8)
+            {
+                var c = bitmap.GetPixel(x, y);
+                values.Add(0.2126 * c.Red + 0.7152 * c.Green + 0.0722 * c.Blue);
+            }
+        }
+        var mean = values.Average();
+        return Math.Sqrt(values.Average(v => (v - mean) * (v - mean)));
+    }
+
+    [Fact]
+    public async Task Saas_screens_are_placed_in_devices_on_a_backdrop_from_the_lp()
+    {
+        if (!HasFfmpeg()) Assert.Skip("ffmpeg がない環境では実行しない");
+        await using var f = await AppFixture.CreateAsync(configure: s => s.AddSingleton<IWebPageFetcher>(new SaasFetcher()));
+        Guid projectId, jobId;
+        await using (var scope = f.Scope())
+        {
+            var studio = f.Get<LpStudioService>(scope);
+            var preview = await studio.PreviewAsync(SaasPage.Url.ToString(), CancellationToken.None);
+            Assert.All(preview.Images, i => Assert.Equal(LpSourceKind.Screen, i.Kind)); // 画面も素材として選ぶ
+            var project = await studio.CreateAsync(new LpProjectRequest
+            {
+                Url = SaasPage.Url.ToString(), Platforms = [SocialPlatform.Instagram],
+                ImageUrls = [.. preview.Images.Select(i => i.Url)],
+                ImageKinds = preview.Images.ToDictionary(i => i.Url, i => i.Kind),
+                RightsConfirmed = true, MakeVideo = true, VideoSeconds = 15, Narration = false,
+            }, CancellationToken.None);
+            projectId = project.Id;
+            jobId = project.MediaJobId!.Value;
+            Assert.All(project.Sources, x => Assert.Equal(LpSourceKind.Screen, x.Kind));
+        }
+        await using (var scope = f.Scope())
+        {
+            await f.Get<AiJobProcessor>(scope).ProcessAsync(jobId, CancellationToken.None);
+        }
+        Assert.True(f.Logs.Errors.IsEmpty, string.Join("\n", f.Logs.Errors));
+
+        await using (var scope = f.Scope())
+        {
+            var db = f.Get<IAppDbContext>(scope);
+            var job = await db.AiJobs.SingleAsync(j => j.Id == jobId);
+            Assert.True(job.Status == AiJobStatus.Succeeded, job.Error);
+            var project = await db.LpProjects.AsNoTracking().SingleAsync(p => p.Id == projectId);
+            var media = f.Get<MediaService>(scope);
+
+            // 世界観は LP の色から
+            Assert.Contains("#1F4FD8", project.Direction.Palette);
+            Assert.False(string.IsNullOrWhiteSpace(project.Direction.Setting));
+            Assert.All(project.Visuals, v => Assert.Equal(LpSourceKind.Screen, v.Kind));
+            var keyVisual = await media.GetAsync(project.Visuals[0].KeyVisuals[MediaOrientation.Portrait], CancellationToken.None);
+            Assert.Contains("lp-key-visual-screen", keyVisual.Provenance);
+
+            var instagram = project.Outputs[SocialPlatform.Instagram];
+            foreach (var image in instagram.Images)
+            {
+                var asset = await media.GetAsync(image.AssetId, CancellationToken.None);
+                Assert.Equal((image.Width, image.Height), (asset.Width, asset.Height));
+                Assert.True(Contrast(await media.ReadAsync(asset, CancellationToken.None)) > 12, image.Description);
+            }
+            var video = await media.GetAsync(project.Videos[MediaOrientation.Portrait], CancellationToken.None);
+            Assert.Equal((1080, 1920), (video.Width, video.Height));
+            Assert.Contains("\"generated\":true", video.Provenance); // 背景の映像を動画生成 AI でつくり、画面を重ねた
+
+            if (Environment.GetEnvironmentVariable("RF_TEST_DUMP") is { Length: > 0 } dump)
+            {
+                Directory.CreateDirectory(dump);
+                await File.WriteAllBytesAsync(Path.Combine(dump, "saas-portrait.mp4"), await media.ReadAsync(video, CancellationToken.None));
+                foreach (var (x, i) in instagram.Images.Select((x, i) => (x, i)))
+                {
+                    await File.WriteAllBytesAsync(Path.Combine(dump, $"saas-ig-{x.Key}-{i}.jpg"),
+                        await media.ReadAsync(await media.GetAsync(x.AssetId, CancellationToken.None), CancellationToken.None));
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Without_image_ai_or_lp_images_the_ad_is_never_a_flat_color()
+    {
+        await using var f = await AppFixture.CreateAsync(new Dictionary<string, string?>
+        {
+            ["AI:Routes:Image:0"] = "none",
+            ["AI:Routes:ImageEdit:0"] = "none",
+        }, configure: s => s.AddSingleton<IWebPageFetcher>(new SaasFetcher()));
+        Guid projectId, jobId;
+        await using (var scope = f.Scope())
+        {
+            var project = await f.Get<LpStudioService>(scope).CreateAsync(new LpProjectRequest
+            {
+                Url = SaasPage.Url.ToString(), Platforms = [SocialPlatform.X], ImageUrls = [], MakeVideo = false,
+            }, CancellationToken.None);
+            projectId = project.Id;
+            jobId = project.MediaJobId!.Value;
+        }
+        await using (var scope = f.Scope())
+        {
+            await f.Get<AiJobProcessor>(scope).ProcessAsync(jobId, CancellationToken.None);
+        }
+        await using (var scope = f.Scope())
+        {
+            var db = f.Get<IAppDbContext>(scope);
+            var project = await db.LpProjects.AsNoTracking().SingleAsync(p => p.Id == projectId);
+            var media = f.Get<MediaService>(scope);
+            Assert.True(project.Visuals.Single().Fallback);
+            var image = project.Outputs[SocialPlatform.X].Images.First();
+            var bytes = await media.ReadAsync(await media.GetAsync(image.AssetId, CancellationToken.None), CancellationToken.None);
+            Assert.True(Contrast(bytes) > 8); // LP の色で模様を描いた背景（無地ではない）
         }
     }
 }

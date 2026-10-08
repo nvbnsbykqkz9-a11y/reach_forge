@@ -49,11 +49,19 @@ public sealed class AppSettingsService(DbContextOptions<ReachForgeDbContext> dbO
         new("openai", "OpenAI", "https://platform.openai.com/api-keys",
             [new("AI:Providers:openai:ApiKey", "API キー", Secret: true),
              new("AI:Providers:openai:Model", "文章のモデル（任意）", Help: "Claude が使えないときの代わりに使う", Optional: true)],
-            "ナレーションの音声合成、動画生成（Sora）に使います。文章は Claude の代わりとしても使います。"),
+            "ナレーションの音声合成に使います。画像生成（Google が使えないときの代わり）、文章（Claude の代わり）にも使います。"),
         new("google", "Google（Gemini API）", "https://aistudio.google.com/apikey",
             [new("AI:Providers:google:ApiKey", "API キー", Secret: true),
-             new("AI:Providers:google:Model", "動画のモデル（任意）", Help: "空なら既定のモデル（Veo）", Optional: true)],
-            "動画生成（Veo）に使います（画像に動きをつける・文章から動画・LP 動画の冒頭）。"),
+             new("AI:Providers:google:TaskModels:Image", "画像のモデル（任意）", Help: "空なら Nano Banana Pro（gemini-3-pro-image）", Optional: true),
+             new("AI:Providers:google:TaskModels:VideoGeneration", "動画のモデル（任意）",
+                 Help: "空なら Veo 3.1 Fast。より高画質にするなら veo-3.1-generate-preview", Optional: true)],
+            "広告の画像生成（Nano Banana Pro）に使います（主に使う画像 AI）。動画生成（Veo）は Kling が使えないときの代わりに使います。"),
+        new("kling", "Kling AI", "https://app.klingai.com/global/dev",
+            [new("AI:Providers:kling:ApiKey", "API キー（またはアクセスキー）", Secret: true),
+             new("AI:Providers:kling:SecretKey", "シークレットキー（任意）", Secret: true,
+                 Help: "アクセスキーとシークレットキーの組で発行された場合だけ入れる", Optional: true),
+             new("AI:Providers:kling:Model", "動画のモデル（任意）", Help: "空なら kling-v3", Optional: true)],
+            "広告の動画生成に使います（主に使う動画 AI）。利用には Kling の API の利用枠（前払い）の購入が必要です。"),
     ];
 
     private static readonly HashSet<string> s_keys =

@@ -9,7 +9,7 @@
     <MudText Typo="Typo.h4" tabindex="-1">AI の利用料金（目安）</MudText>
 </div>
 <MudText Typo="Typo.body2" Class="mb-4" Style="color:var(--rf-color-text-secondary)">
-    AI の利用料金は、設定した AI サービス（Anthropic・OpenAI・Google）から直接請求されます。ここでは、AI を使うたびに記録した料金の目安を表示します。
+    AI の利用料金は、設定した AI サービス（Anthropic・OpenAI・Google・Kling）から直接請求されます。ここでは、AI を使うたびに記録した料金の目安を表示します。
     円は 1ドル＝@(Rate.ToString("N0"))円で換算しています。正確な金額は、各サービスの管理画面で確認してください。
 </MudText>
 
@@ -63,6 +63,7 @@
         ("Anthropic Console", "https://console.anthropic.com/"),
         ("OpenAI Platform", "https://platform.openai.com/usage"),
         ("Google AI Studio", "https://aistudio.google.com/"),
+        ("Kling AI（開発者）", "https://app.klingai.com/global/dev"),
     ];
 
     private AiCostService Costs => Scoped<AiCostService>();

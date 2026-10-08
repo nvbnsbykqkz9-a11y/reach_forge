@@ -22,6 +22,9 @@ public sealed record LpProjectRequest
     /// <summary>画像に何が写っているか（URL ごと。読み込み時に AI が選んだときの説明）。</summary>
     public IReadOnlyDictionary<string, string> ImageDescriptions { get; init; } = new Dictionary<string, string>();
 
+    /// <summary>画像の種類（URL ごと。読み込み時に AI が見分けた写真・画面。ないものは写真として扱う）。</summary>
+    public IReadOnlyDictionary<string, LpSourceKind> ImageKinds { get; init; } = new Dictionary<string, LpSourceKind>();
+
     /// <summary>LP の画像を広告・動画に使う権利があることを利用者が確認した。</summary>
     public bool RightsConfirmed { get; init; }
 
@@ -30,8 +33,11 @@ public sealed record LpProjectRequest
     public bool Narration { get; init; } = true;
 }
 
-/// <summary>LP の画像の候補（読み込み時に表示する）。<paramref name="Recommended"/> は AI のおすすめ（順位）。</summary>
-public sealed record LpImageOption(string Url, int Width, int Height, string? Alt, int? Recommended, string? Description);
+/// <summary>
+/// LP の画像の候補（読み込み時に表示する）。<paramref name="Recommended"/> は AI のおすすめ（順位）、<paramref name="Kind"/> は写真か画面か。
+/// </summary>
+public sealed record LpImageOption(string Url, int Width, int Height, string? Alt, int? Recommended, string? Description,
+    LpSourceKind Kind = LpSourceKind.Photo);
 
 /// <summary>LP を読み込んだ結果：ページの内容と、使える画像の候補（おすすめの順）。</summary>
 public sealed record LpPreview(WebPage Page, IReadOnlyList<LpImageOption> Images)
@@ -119,11 +125,12 @@ public sealed class LpStudioService(
             picks = [.. candidates.OrderByDescending(c => (long)c.Candidate.Width * c.Candidate.Height).Take(RecommendCount)
                 .Select(c => new LpImagePick(c.Candidate.Index, c.Web.Alt ?? ""))];
         }
-        var rank = picks.Select((p, i) => (p, i)).ToDictionary(x => x.p.Index, x => (Rank: x.i + 1, x.p.Description));
+        var rank = picks.Select((p, i) => (p, i)).ToDictionary(x => x.p.Index, x => (Rank: x.i + 1, x.p.Description, x.p.Kind));
         var options = candidates
             .Select(c => new LpImageOption(c.Web.Url.ToString(), c.Candidate.Width, c.Candidate.Height, c.Web.Alt,
                 rank.TryGetValue(c.Candidate.Index, out var r) ? r.Rank : null,
-                rank.TryGetValue(c.Candidate.Index, out var d) && d.Description.Length > 0 ? d.Description : null))
+                rank.TryGetValue(c.Candidate.Index, out var d) && d.Description.Length > 0 ? d.Description : null,
+                rank.TryGetValue(c.Candidate.Index, out var k) ? k.Kind : LpSourceKind.Photo))
             .OrderBy(o => o.Recommended ?? int.MaxValue)
             .ThenByDescending(o => (long)o.Width * o.Height)
             .ToList();
@@ -200,7 +207,8 @@ public sealed class LpStudioService(
                 {
                     var asset = await media.ImportFromWebAsync(await fetcher.FetchImageAsync(web.Url, ct), web, ct);
                     var description = request.ImageDescriptions.GetValueOrDefault(url) is { Length: > 0 } d ? d : web.Alt ?? "";
-                    sources.Add(new LpSourceImage(asset.Id, url, PostText.Truncate(description, 80)));
+                    sources.Add(new LpSourceImage(asset.Id, url, PostText.Truncate(description, 80),
+                        request.ImageKinds.GetValueOrDefault(url, LpSourceKind.Photo)));
                 }
                 catch (DomainException ex)
                 {

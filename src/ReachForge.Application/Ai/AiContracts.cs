@@ -164,26 +164,52 @@ public interface ILpCreativeWriter
 /// <summary>LP の画像の候補（AI に見せる縮小画像と、元の大きさ・代替テキスト）。</summary>
 public sealed record LpImageCandidate(int Index, byte[] Thumbnail, string ThumbnailMime, int Width, int Height, string? Alt);
 
-/// <summary>AI が選んだ LP の画像。<paramref name="Description"/> は何が写っているか（日本語）。</summary>
-public sealed record LpImagePick(int Index, string Description);
+/// <summary>AI が選んだ LP の画像。<paramref name="Description"/> は何が写っているか（日本語）、<paramref name="Kind"/> は写真か画面か。</summary>
+public sealed record LpImagePick(int Index, string Description, LpSourceKind Kind = LpSourceKind.Photo);
 
 /// <summary>
-/// LP の画像から、商品・サービスの特色が伝わる画像を選ぶ（画像理解モデル）。ロゴ・アイコン・画面のスクリーンショット・
-/// 文字だけのバナーは選ばない。おすすめの順に返す。
+/// LP の画像から、商品・サービスの特色が伝わる画像を選ぶ（画像理解モデル）。写真のほか、アプリ・Web サービスの画面
+/// （スクリーンショット）も、製品そのものが伝わるものは選ぶ。ロゴ・アイコン・文字だけのバナーは選ばない。おすすめの順に返す。
 /// </summary>
 public interface ILpImageCurator
 {
     Task<IReadOnlyList<LpImagePick>> PickAsync(WebPage page, IReadOnlyList<LpImageCandidate> candidates, int max, CancellationToken ct);
 }
 
-/// <summary>広告のビジュアル案（元にする画像・切り口・画像に入れる見出し・画像生成と動画生成への指示）。</summary>
-public sealed record LpVisualConcept(int SourceIndex, string Angle, string Headline, string ImagePrompt, string MotionPrompt);
+/// <summary>
+/// 広告のビジュアル案（元にする画像・切り口・画像に入れる見出し・画像生成と動画生成への指示）。
+/// 画面（<see cref="LpSourceKind.Screen"/>）の案では、<paramref name="BackdropPrompt"/> の情景を背景にして画面を端末の枠に入れる。
+/// </summary>
+public sealed record LpVisualConcept(int SourceIndex, string Angle, string Headline, string ImagePrompt, string MotionPrompt,
+    LpSourceKind Kind = LpSourceKind.Photo, string BackdropPrompt = "");
+
+/// <summary>ビジュアル案の材料にする LP の画像（何が写っているかと、写真か画面か）。</summary>
+public sealed record LpSourceBrief(string Description, LpSourceKind Kind);
+
+/// <summary>LP から読み取った世界観と、画像ごとのビジュアル案。</summary>
+public sealed record LpVisualPlan(LpArtDirection Direction, IReadOnlyList<LpVisualConcept> Concepts);
 
 /// <summary>
-/// LP の内容と選んだ画像から、広告のビジュアル案をつくる（画像ごとに1案）。見出しは NG 語・規制表現・LP にない価格を確認する。
+/// LP の内容と選んだ画像から、広告の世界観（雰囲気・色・背景の情景）とビジュアル案をつくる（画像ごとに1案。画像がなければ LP の内容から1案）。
+/// 見出しは NG 語・規制表現・LP にない価格を確認する。
 /// </summary>
 public interface ILpVisualPlanner
 {
-    Task<IReadOnlyList<LpVisualConcept>> PlanAsync(Services.BrandContext brand, WebPage page, IReadOnlyList<string> sourceDescriptions,
+    Task<LpVisualPlan> PlanAsync(Services.BrandContext brand, WebPage page, IReadOnlyList<LpSourceBrief> sources, CancellationToken ct);
+}
+
+/// <summary>AI がつくった広告写真の確認結果（合格か、点数 1〜5、作り直すときの指示（英語））。</summary>
+public sealed record LpVisualReview(bool Approved, int Score, string Feedback)
+{
+    public static readonly LpVisualReview Skipped = new(true, 0, "");
+}
+
+/// <summary>
+/// AI がつくった広告写真を画像理解モデルで確かめる（参照した商品が変わっていないか・文字の崩れ・不自然さ・広告としての魅力）。
+/// 確認できないとき（AI が使えないなど）は合格として扱う。
+/// </summary>
+public interface ILpVisualReviewer
+{
+    Task<LpVisualReview> ReviewAsync(byte[] image, string mime, byte[]? reference, string? referenceMime, LpVisualConcept concept,
         CancellationToken ct);
 }

@@ -30,7 +30,7 @@ public static class DependencyInjection
         services.AddScoped<ICopyGenerationService, CopyGenerationService>();
         services.AddSingleton<IImageGeneratorFactory, ImageGeneratorFactory>();
         services.AddScoped<IImageGenerationService, ImageGenerationService>();
-        // 動画生成（Sora / Veo）：依頼と状態の確認は短く、動画の取得は大きいため長めにする。再試行は代替プロバイダで行う
+        // 動画生成（Kling / Veo / Sora）・Google の画像生成：依頼と状態の確認は短く、動画の取得は大きいため長めにする。再試行は代替プロバイダで行う
         services.AddHttpClient(VideoGeneratorFactory.HttpClientName, c => c.Timeout = TimeSpan.FromMinutes(10));
         services.AddHttpClient(Services.TextToSpeechService.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(60));
         services.AddSingleton<IVideoGeneratorFactory, VideoGeneratorFactory>();
@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<ILpCreativeWriter, LpCreativeWriter>();
         services.AddScoped<ILpImageCurator, LpImageCurator>();
         services.AddScoped<ILpVisualPlanner, LpVisualPlanner>();
+        services.AddScoped<ILpVisualReviewer, LpVisualReviewer>();
         services.AddScoped<IVideoScriptWriter, VideoScriptWriter>();
         services.AddScoped<ILandingPageVideoPlanner, LandingPageVideoPlanner>();
         services.AddScoped<ITextToSpeech, TextToSpeechService>();

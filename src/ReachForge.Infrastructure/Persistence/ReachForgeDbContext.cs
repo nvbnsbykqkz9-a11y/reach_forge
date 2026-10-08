@@ -119,6 +119,7 @@ public sealed class ReachForgeDbContext(
                 JsonComparer<Dictionary<SocialPlatform, LpPlatformOutput>>());
             e.Property(x => x.Sources).HasConversion(Json<List<LpSourceImage>>(), JsonComparer<List<LpSourceImage>>());
             e.Property(x => x.Visuals).HasConversion(Json<List<LpVisual>>(), JsonComparer<List<LpVisual>>());
+            e.Property(x => x.Direction).HasConversion(Json<LpArtDirection>(), JsonComparer<LpArtDirection>());
             e.Property(x => x.Videos).HasConversion(Json<Dictionary<MediaOrientation, Guid>>(), JsonComparer<Dictionary<MediaOrientation, Guid>>());
         });
         b.Entity<AppSetting>(e =>

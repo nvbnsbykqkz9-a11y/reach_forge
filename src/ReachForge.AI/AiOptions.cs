@@ -30,13 +30,16 @@ public sealed class AiOptions
         : [];
 }
 
-/// <summary>Google は動画生成（Veo、Gemini API）に使う。</summary>
-public enum AiProviderType { Stub, OpenAI, Anthropic, Google }
+/// <summary>Google は画像生成（Nano Banana Pro）と動画生成（Veo）、Kling は動画生成に使う。</summary>
+public enum AiProviderType { Stub, OpenAI, Anthropic, Google, Kling }
 
 public sealed class AiProviderOptions
 {
     public AiProviderType Type { get; set; }
     public string? ApiKey { get; set; }
+
+    /// <summary>シークレットキー（Kling のアクセスキー方式。<see cref="ApiKey"/> にアクセスキーを入れる）。空なら API キーをそのまま使う。</summary>
+    public string? SecretKey { get; set; }
 
     /// <summary>既定のモデル ID。</summary>
     public string? Model { get; set; }
@@ -63,17 +66,22 @@ public sealed class AiProviderOptions
     /// <summary>API の接続先の上書き（検証環境・テスト用。通常は未設定）。</summary>
     public string? BaseUrl { get; set; }
 
-    /// <summary>画像生成に対応するプロバイダか（Anthropic は画像の理解のみ）。</summary>
-    public bool SupportsImageGeneration => Type is AiProviderType.OpenAI or AiProviderType.Stub;
+    /// <summary>画像生成に対応するプロバイダか（OpenAI：GPT Image、Google：Nano Banana Pro。Anthropic は画像の理解のみ）。</summary>
+    public bool SupportsImageGeneration => Type is AiProviderType.OpenAI or AiProviderType.Google or AiProviderType.Stub;
 
-    /// <summary>動画生成に対応するプロバイダか（OpenAI：Sora、Google：Veo）。</summary>
-    public bool SupportsVideoGeneration => Type is AiProviderType.OpenAI or AiProviderType.Google or AiProviderType.Stub;
+    /// <summary>動画生成に対応するプロバイダか（Kling、Google：Veo、OpenAI：Sora）。</summary>
+    public bool SupportsVideoGeneration =>
+        Type is AiProviderType.OpenAI or AiProviderType.Google or AiProviderType.Kling or AiProviderType.Stub;
 
     public bool IsConfigured => Type == AiProviderType.Stub || !string.IsNullOrWhiteSpace(ApiKey);
 
-    /// <summary>タスクのモデル（タスク別の指定 → 既定のモデルの順。空欄は「指定なし」として扱い、どちらもなければ null）。</summary>
+    /// <summary>
+    /// タスクのモデル（タスク別の指定 → 既定のモデルの順。空欄は「指定なし」として扱い、どちらもなければ null）。
+    /// 画像の編集（ImageEdit）に指定がなければ、画像の生成（Image）のモデルを使う。
+    /// </summary>
     public string? ModelFor(AiTaskType task) =>
         TaskModels.TryGetValue(task.ToString(), out var m) && !string.IsNullOrWhiteSpace(m) ? m.Trim()
+        : task == AiTaskType.ImageEdit ? ModelFor(AiTaskType.Image)
         : string.IsNullOrWhiteSpace(Model) ? null : Model.Trim();
 
     /// <summary>音声合成（OpenAI）の既定のモデル。</summary>

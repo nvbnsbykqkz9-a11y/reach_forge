@@ -10,7 +10,7 @@ public interface IImageGeneratorFactory
     IImageGenerator Get(string providerName, AiProviderOptions options, string modelId);
 }
 
-public sealed class ImageGeneratorFactory(IServiceProvider services) : IImageGeneratorFactory
+public sealed class ImageGeneratorFactory(IServiceProvider services, IHttpClientFactory http) : IImageGeneratorFactory
 {
     private readonly ConcurrentDictionary<(string, string, string), IImageGenerator> _generators = new();
 
@@ -19,6 +19,7 @@ public sealed class ImageGeneratorFactory(IServiceProvider services) : IImageGen
         {
             AiProviderType.Stub => new StubImageGenerator(services.GetRequiredService<IImageProcessor>()),
             AiProviderType.OpenAI => new OpenAI.Images.ImageClient(modelId, options.ApiKey).AsIImageGenerator(),
+            AiProviderType.Google => new GoogleImageGenerator(http.CreateClient(VideoGeneratorFactory.HttpClientName), options, modelId),
             _ => throw new NotSupportedException($"{options.Type} does not support image generation."),
         });
 }

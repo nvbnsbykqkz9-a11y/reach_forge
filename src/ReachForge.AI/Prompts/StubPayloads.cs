@@ -23,3 +23,6 @@ public sealed record LpCreativeStubPayload(WebPage Page, SocialPlatform Platform
 public sealed record LpImagesStubPayload(IReadOnlyList<LpImageCandidate> Candidates, int Max);
 
 public sealed record LpVisualsStubPayload(WebPage Page, IReadOnlyList<string> Sources, string BrandName);
+
+/// <summary>広告写真の確認（スタブは常に合格）。</summary>
+public sealed record LpReviewStubPayload(string Angle);

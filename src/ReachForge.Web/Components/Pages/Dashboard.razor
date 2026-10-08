@@ -71,6 +71,7 @@
                 <MudText Typo="Typo.subtitle1" Class="mt-4">広告の素材にする画像（@(_images.Count)／@LpStudioService.MaxImages 枚）</MudText>
                 <MudText Typo="Typo.body2" Class="mb-1" Style="color:var(--rf-color-text-secondary)">
                     AI が、商品・サービスの特色が伝わる画像を選びました（★）。選んだ画像ごとに、AI がその商品を使った広告の写真と動画のシーンをつくります。
+                    アプリ・サービスの画面（「画面：」）は、文字がつぶれないよう描き直さず、パソコン・スマートフォンの枠に入れて、LP の雰囲気に合わせた背景に置きます。
                     ロゴ・小さい画像・細長いバナーは除いています。
                 </MudText>
                 @if (_preview is null || _preview.Images.Count == 0)
@@ -85,12 +86,12 @@
                             var url = img.Url;
                             var on = _images.Contains(url);
                             <button type="button" class="rf-media-pick @(on ? "rf-media-pick-on" : "")" aria-pressed="@(on ? "true" : "false")"
-                                    aria-label="@($"{(img.Recommended is { } r ? $"AI のおすすめ{r}：" : "")}{img.Description ?? img.Alt ?? Path.GetFileName(new Uri(url).AbsolutePath)}")"
+                                    aria-label="@($"{(img.Recommended is { } r ? $"AI のおすすめ{r}：" : "")}{(img.Kind == LpSourceKind.Screen ? "画面：" : "")}{img.Description ?? img.Alt ?? Path.GetFileName(new Uri(url).AbsolutePath)}")"
                                     @onclick="() => Toggle(url)">
                                 <img src="@url" alt="" loading="lazy" referrerpolicy="no-referrer" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px" />
                                 @if (on) { <span class="rf-media-order">@(_images.IndexOf(url) + 1)</span> }
                                 @if (img.Recommended is { } rank) { <span class="rf-media-badge" aria-hidden="true">★ おすすめ@(rank)</span> }
-                                <span class="rf-media-caption">@(img.Description ?? $"{img.Width}×{img.Height}")</span>
+                                <span class="rf-media-caption">@(img.Kind == LpSourceKind.Screen ? "画面：" : "")@(img.Description ?? $"{img.Width}×{img.Height}")</span>
                             </button>
                         }
                     </div>
@@ -286,6 +287,7 @@
     {
         Url = _page?.Url.ToString() ?? _url ?? "", Platforms = _platforms, ImageUrls = _images, RightsConfirmed = _rights,
         ImageDescriptions = _preview?.Images.Where(i => i.Description is not null).ToDictionary(i => i.Url, i => i.Description!) ?? [],
+        ImageKinds = _preview?.Images.ToDictionary(i => i.Url, i => i.Kind) ?? [],
         MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration,
     };
 

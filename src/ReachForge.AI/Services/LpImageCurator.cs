@@ -2,6 +2,7 @@ using Microsoft.Extensions.AI;
 using ReachForge.AI.Prompts;
 using ReachForge.AI.Routing;
 using ReachForge.Application.Ai;
+using ReachForge.Domain.Entities;
 using ReachForge.Domain.Enums;
 using ReachForge.Domain.Guardrails;
 using ReachForge.Domain.Platforms;
@@ -10,7 +11,8 @@ namespace ReachForge.AI.Services;
 
 /// <summary>
 /// LP の画像の候補を画像理解モデルに見せて、商品・サービスの特色が伝わる画像を選ぶ（構造化出力）。
-/// ロゴ・スクリーンショット・文字だけのバナーは選ばない。存在しない番号・重複は除く。
+/// 写真のほか、ソフトウェアの画面（スクリーンショット）も製品そのものとして選び、種類（写真・画面）を返す。
+/// ロゴ・文字だけのバナーは選ばない。存在しない番号・重複は除く。
 /// </summary>
 public sealed class LpImageCurator(IModelRouter router, IPromptCatalog prompts) : ILpImageCurator
 {
@@ -40,6 +42,7 @@ public sealed class LpImageCurator(IModelRouter router, IPromptCatalog prompts) 
             .Where(p => known.Contains(p.Index))
             .DistinctBy(p => p.Index)
             .Take(max)
-            .Select(p => new LpImagePick(p.Index, PostText.Truncate((p.Description ?? "").Trim(), 60)))];
+            .Select(p => new LpImagePick(p.Index, PostText.Truncate((p.Description ?? "").Trim(), 60),
+                string.Equals(p.Kind?.Trim(), "screen", StringComparison.OrdinalIgnoreCase) ? LpSourceKind.Screen : LpSourceKind.Photo))];
     }
 }

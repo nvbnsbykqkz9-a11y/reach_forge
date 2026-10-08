@@ -21,12 +21,28 @@ public sealed class PromptAdminService(DbContextOptions<ReachForgeDbContext> dbO
     private ReachForgeDbContext Db(string user) =>
         new(dbOptions, new MutableTenantContext { IsSystem = true, UserName = user }, null, clock);
 
-    /// <summary>DB に版のないキーへ、コードの既定テンプレートを v1（公開）として登録する。</summary>
+    /// <summary>
+    /// DB に版のないキーへ、コードの既定テンプレートを v1（公開）として登録する。
+    /// 運用者が手を加えていないキー（版が自動登録の v1 だけ）は、コードの既定テンプレートが変わっていれば v1 を新しい内容にそろえる
+    /// （アプリの更新で指示や出力の項目が増えたとき、古い指示のまま動かないように）。
+    /// </summary>
     public async Task<int> EnsureSeededAsync(CancellationToken ct)
     {
         await using var db = Db("system");
         var existing = (await db.PromptTemplates.Select(p => p.Key).Distinct().ToListAsync(ct)).ToHashSet();
         var added = 0;
+        var untouched = (await db.PromptTemplates.ToListAsync(ct))
+            .GroupBy(p => p.Key)
+            .Where(g => g.Count() == 1 && g.First() is { Version: PromptCatalog.DefaultVersion, CreatedBy: "system" })
+            .Select(g => g.First());
+        foreach (var template in untouched)
+        {
+            if (PromptLibrary.Defaults.TryGetValue(template.Key, out var latest) && template.Body != latest)
+            {
+                template.Body = latest;
+                added++;
+            }
+        }
         foreach (var (key, body) in PromptLibrary.Defaults.Where(d => !existing.Contains(d.Key)))
         {
             db.PromptTemplates.Add(new PromptTemplate

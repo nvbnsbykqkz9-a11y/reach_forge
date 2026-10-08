@@ -71,8 +71,19 @@ else
                 @if (p.Visuals.Any(v => v.Fallback))
                 {
                     <MudAlert Severity="Severity.Warning" Class="mb-3" data-testid="fallback-warning">
-                        一部の画像は AI でつくれなかったため、LP の画像を切らずに枠に収めて使いました（画像生成の AI の設定・API キーを確認してください）。
+                        一部の画像は AI でつくれなかったため、LP の画像を枠に収めるか、LP の色で描いた背景を使いました（画像生成の AI（Google・OpenAI）の設定・API キーを確認してください）。
                     </MudAlert>
+                }
+                @if (p.Direction.Mood.Length > 0 || p.Direction.Palette.Count > 0)
+                {
+                    <MudText Typo="Typo.subtitle2">LP から読み取った世界観</MudText>
+                    <div class="d-flex flex-wrap align-center gap-2 mb-3" data-testid="direction">
+                        @foreach (var color in p.Direction.Palette)
+                        {
+                            <span title="@color" aria-label="@($"色 {color}")" style="display:inline-block;width:20px;height:20px;border-radius:50%;border:1px solid var(--rf-color-border, #ccc);background:@color"></span>
+                        }
+                        <MudText Typo="Typo.body2">@p.Direction.Mood</MudText>
+                    </div>
                 }
                 @if (p.Visuals.Count > 0)
                 {
@@ -80,7 +91,7 @@ else
                     <ul class="mb-3" style="margin-top:4px">
                         @foreach (var (v, i) in p.Visuals.Select((v, i) => (v, i + 1)))
                         {
-                            <li><MudText Typo="Typo.body2">案@(i)：@(v.Angle.Length > 0 ? v.Angle : "商品の魅力")@(v.Headline.Length > 0 ? $"（見出し「{v.Headline}」）" : "")</MudText></li>
+                            <li><MudText Typo="Typo.body2">案@(i)：@(v.Angle.Length > 0 ? v.Angle : "商品の魅力")@(v.Headline.Length > 0 ? $"（見出し「{v.Headline}」）" : "")@(v.Kind == LpSourceKind.Screen ? "・画面を端末の枠に入れて使用" : "")@(v.Retried ? "・AI の確認でつくり直し" : "")</MudText></li>
                         }
                     </ul>
                 }

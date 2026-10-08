@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Extensions.Options;
+using ReachForge.AI.Providers;
 
 namespace ReachForge.AI;
 
@@ -36,6 +37,11 @@ public sealed class AiKeyChecker(IHttpClientFactory http, IOptions<AiOptions> op
             AiProviderType.Google => new HttpRequestMessage(HttpMethod.Get, "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1")
             {
                 Headers = { { "x-goog-api-key", provider.ApiKey } },
+            },
+            // Kling：作成済みの動画の一覧（1件）を取得する（生成はしない）
+            AiProviderType.Kling => new HttpRequestMessage(HttpMethod.Get, $"{KlingVideoGenerator.BaseUrl(provider)}/v1/videos/text2video?pageNum=1&pageSize=1")
+            {
+                Headers = { Authorization = new AuthenticationHeaderValue("Bearer", KlingVideoGenerator.Token(provider, DateTimeOffset.UtcNow)) },
             },
             _ => null,
         };

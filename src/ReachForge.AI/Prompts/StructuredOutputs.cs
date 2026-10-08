@@ -49,10 +49,18 @@ public sealed record AdCopyDraft(string PrimaryText, string? Headline, string? D
 
 public sealed record LpCreativeDraft(AdCopyDraft[] AdCopies, string? PostText, string[]? Hashtags);
 
-public sealed record LpImagePickDraft(int Index, string? Description);
+/// <remarks><paramref name="Kind"/>：photo（写真）または screen（アプリ・Web サービスの画面）。</remarks>
+public sealed record LpImagePickDraft(int Index, string? Description, string? Kind = null);
 
 public sealed record LpImagePicksDraft(LpImagePickDraft[]? Picks);
 
-public sealed record LpVisualDraft(int SourceIndex, string? Angle, string? Headline, string? ImagePrompt, string? MotionPrompt);
+public sealed record LpVisualDraft(int SourceIndex, string? Angle, string? Headline, string? ImagePrompt, string? MotionPrompt,
+    string? BackdropPrompt = null);
 
-public sealed record LpVisualsDraft(LpVisualDraft[]? Visuals);
+/// <summary>LP から読み取った世界観（雰囲気・色・背景の模様・映像の舞台）。</summary>
+public sealed record LpDirectionDraft(string? Mood, string[]? Palette, string? Motif, string? Setting);
+
+public sealed record LpVisualsDraft(LpDirectionDraft? Direction, LpVisualDraft[]? Visuals);
+
+/// <summary>広告写真の確認（点数 1〜5・合格か・問題点（日本語）・作り直しの指示（英語））。</summary>
+public sealed record LpReviewDraft(int Score, bool Approved, string? Problems, string? Fix);
