@@ -67,6 +67,7 @@ dotnet user-secrets --project src/ReachForge.Web set "AI:Providers:anthropic:Api
 
 - 動画の書き出しに使う ffmpeg を同梱する：`publish.ps1` が決めた版（8.1.2、gyan.dev の essentials ビルド・libx264 入りの GPL v3 版）を取得し、SHA-256 を確かめて `app\ffmpeg` に入れる（`LICENSE.txt`・`README.txt`・`SOURCE.txt` も）。ffmpeg のソースコードは `artifacts/desktop/ffmpeg-source` に保管し、CI の成果物にも残す。手元の ffmpeg を使うときは `-FfmpegDir`、同梱しないときは `-NoFfmpeg`。版を上げるときは `publish.ps1` の版・URL・SHA-256 をそろえて変える
 - WebView2 ランタイムがなければインストーラーが案内する
+- 文字のフォント：ポスター・CM の大きな見出しには太いフォント（Black）を使う。アプリのフォルダーの `fonts`（`Media:FontsPath`）に Noto Sans JP（SIL OFL）の Black・Bold を置くと優先して使い、なければ OS のフォント（游ゴシック Bold など）を使う。発行時は `publish.ps1 -FontsDir` で同梱できる
 - 本番用のインストーラーは GitHub Actions の「Windows installer」（`.github/workflows/desktop-release.yml`）が Windows 上でつくる
   - リリース：`ReachForge.Desktop.csproj` の `Version` をそろえ、`v{Version}` のタグ（例：`v1.0.0`）を push する → インストーラー（`ReachForge-Setup-{Version}.exe`）と SHA-256 を「リリースの下書き」に添付する。確認してから公開する
   - main への push・手動実行、またはコミットのメッセージに `[build installer]` を含めた push（どのブランチでも）でも、成果物（Artifacts）としてつくる。同梱した ffmpeg（GPL v3）のソースコードも別の成果物として保管する

@@ -12,7 +12,11 @@ using ReachForge.Domain.Platforms;
 namespace ReachForge.Application.Services;
 
 /// <summary>LP の広告の画像・動画をつくるジョブの内容。</summary>
-public sealed record LpMediaRequest(Guid ProjectId, bool MakeVideo, int VideoSeconds, bool Narration, string? BgmTrackId = "calm");
+/// <remarks>
+/// <paramref name="Premium"/>：CM 品質。動画生成 AI で動かすシーンを増やし（課題のカードと最後のボタン以外のすべて）、高画質モード（Kling の pro）でつくる。
+/// 料金と時間が多くかかる。
+/// </remarks>
+public sealed record LpMediaRequest(Guid ProjectId, bool MakeVideo, int VideoSeconds, bool Narration, string? BgmTrackId = "calm", bool Premium = false);
 
 /// <summary>
 /// LP から広告の画像・動画をつくる（ジョブとして裏で実行する）。
@@ -37,6 +41,7 @@ public sealed class LpMediaService(
     ITextToSpeech tts,
     IVideoComposer composer,
     IMotionRenderer motion,
+    IPosterRenderer poster,
     IVideoGenerationService videoGenerator,
     IWebPageFetcher fetcher,
     IBrandContextProvider brand,
@@ -48,6 +53,14 @@ public sealed class LpMediaService(
 
     /// <summary>動画1本あたり、動画生成 AI で動かすシーンの数（費用と待ち時間の上限）。</summary>
     public const int MaxGeneratedClips = 4;
+
+    /// <summary>CM 品質のとき、動画1本あたりに動画生成 AI で動かすシーンの数の上限。</summary>
+    public const int MaxPremiumClips = 8;
+
+    /// <summary>
+    /// 動画のカット数（テレビ CM のテンポ：1カット 2〜3 秒前後。15秒で6カット、30秒で10カット）。
+    /// </summary>
+    public static int CutsFor(int seconds) => seconds <= 15 ? 6 : seconds <= 20 ? 7 : 10;
 
     /// <summary>画面（スクリーンショット）を入れるキービジュアルの大きさ（向きごと）。SNS の形式へは、背景から形式ちょうどに組み直す。</summary>
     public static (int Width, int Height) ScreenCanvas(MediaOrientation o) => o switch
@@ -261,7 +274,9 @@ public sealed class LpMediaService(
             {
                 // AI でつくれなかった：素材画像を切らずに枠に収める（素材もなければ LP の色で模様を描いた背景）
                 bytes = source is null
-                    ? (await motion.RenderStillAsync(Poster(project, direction, concept, c, ctx, null), GenerationSize(orientation), ct)).Bytes
+                    ? (await poster.RenderAsync(PosterFor(project, direction, concept, c, ctx, null,
+                        new MediaFormat("key", "キービジュアル", new AspectRatio(GenerationSize(orientation).Width, GenerationSize(orientation).Height),
+                            GenerationSize(orientation).Width, GenerationSize(orientation).Height)), GenerationSize(orientation), ct)).Bytes
                     : (await images.FitWithBackdropAsync(source.Bytes, GenerationSize(orientation), ct)).Bytes;
             }
             using var input = new MemoryStream(bytes);
@@ -398,28 +413,15 @@ public sealed class LpMediaService(
     private async Task<MediaAsset> PlatformImageAsync(LpProject project, SocialPlatform platform, MediaFormat format, LpVisualConcept concept,
         int index, KeyVisual keyVisual, byte[]? screen, BrandContext ctx, LpArtDirection direction, CancellationToken ct)
     {
-        var size = (format.Width, format.Height);
-        var band = Band(ctx, direction, null);
-        var caption = concept.Headline.Length > 0
-            ? new TextOverlay(concept.Headline, null, TextPosition.Bottom, band, SafeBottom: SafeBottom(format.Width, format.Height))
-            : null;
-        byte[] bytes;
-        if (keyVisual.Graphic)
+        // ポスターとして組む：写真は全面に、画面は端末の枠に入れ、見出し・補足・ボタン・ブランド名・URL を文字の階層で置く
+        var copy = project.Outputs.GetValueOrDefault(platform)?.AdCopies.FirstOrDefault();
+        var spec = PosterFor(project, direction, index, concept, ctx, copy, format) with
         {
-            // 絵になる素材がない：見出し・ボタン・URL を、LP の色の背景にデザインした広告にする（形式ちょうどの大きさで組む）
-            var copy = project.Outputs.GetValueOrDefault(platform)?.AdCopies.FirstOrDefault();
-            bytes = (await motion.RenderStillAsync(Poster(project, direction, index, concept, ctx, copy), size, ct)).Bytes;
-        }
-        else if (screen is not null && keyVisual.Backdrop is { } backdrop)
-        {
-            var background = await images.ConvertAspectAsync(backdrop, format.Aspect, size, AspectMethod.SmartCrop, "#000000", ct, exact: true);
-            bytes = (await images.ComposeDeviceAsync(background.Bytes, screen, size, caption, ct)).Bytes;
-        }
-        else
-        {
-            bytes = (await images.ConvertAspectAsync(keyVisual.Bytes, format.Aspect, size, AspectMethod.SmartCrop, "#FFFFFF", ct, exact: true)).Bytes;
-            if (caption is not null) bytes = (await images.RenderTextAsync(bytes, caption, ct)).Bytes;
-        }
+            Photo = keyVisual.Graphic || screen is not null ? null : keyVisual.Bytes,
+            Screen = screen,
+            Backdrop = screen is not null && !keyVisual.Fallback ? keyVisual.Backdrop : null,
+        };
+        var bytes = (await poster.RenderAsync(spec, (format.Width, format.Height), ct)).Bytes;
         var limit = platform == SocialPlatform.Instagram ? MediaService.InstagramMaxBytes : MediaService.LineMaxBytes;
         var encoded = await images.EncodeJpegAsync(bytes, Math.Min(limit, 5 * 1024 * 1024), ct); // X の画像広告などの上限（5MB）にも収める
         var name = $"{PlatformCatalog.Get(platform).DisplayName}_{format.Label}_{format.Width}x{format.Height}_{index + 1}.jpg";
@@ -433,24 +435,39 @@ public sealed class LpMediaService(
     }
 
     /// <summary>
-    /// 絵になる素材がないときの広告画像のデザイン：ブランド名（小）・見出し（大）・補足・ボタン・URL を、LP の色の背景に置く。
+    /// 広告ポスターの文字：小見出し（訴求の切り口）・見出し・補足（広告文の説明）・ボタン（広告文の行動の種類）・ブランド名・URL。
+    /// YouTube のサムネイルなど、ボタンを押せない形式ではボタンを入れない。
     /// </summary>
-    private static MotionScene Poster(LpProject project, LpArtDirection direction, int concept, LpVisualConcept visual, BrandContext ctx, LpAdCopy? copy)
+    private static PosterSpec PosterFor(LpProject project, LpArtDirection direction, int concept, LpVisualConcept visual, BrandContext ctx,
+        LpAdCopy? copy, MediaFormat format)
     {
         var url = Uri.TryCreate(project.Url, UriKind.Absolute, out var u) ? u.Host : null;
         var headline = visual.Headline.Length > 0 ? visual.Headline : copy?.Headline is { Length: > 0 } h ? h : project.Title;
         var sub = copy?.Description is { Length: > 0 } d && d != headline ? PostText.Truncate(d, 40) : null;
-        return new MotionScene
+        var brand = !string.IsNullOrWhiteSpace(ctx.Profile.BrandName) ? ctx.Profile.BrandName.Trim()
+            : project.Title.Split('|', '｜', '-', '–')[0].Trim();
+        return new PosterSpec
         {
-            Layout = MotionLayout.Statement,
-            Backdrop = Style(project, direction, concept),
-            Kicker = string.IsNullOrWhiteSpace(ctx.Profile.BrandName) ? null : ctx.Profile.BrandName,
-            Title = PostText.Truncate(headline, 30),
-            Items = sub is null ? [] : [sub],
-            Button = "詳しくはこちら",
+            Style = Style(project, direction, concept),
+            Headline = PostText.Truncate(headline, 30),
+            Kicker = visual.Angle.Length > 0 ? visual.Angle : null,
+            Sub = sub,
+            Button = format.Key == "thumbnail" ? null : CallToAction(copy?.CallToAction),
+            Brand = PostText.Truncate(brand, 24),
             Footer = url,
+            SafeBottom = SafeBottom(format.Width, format.Height),
         };
     }
+
+    /// <summary>広告文の行動の種類（LEARN_MORE など）を、ボタンの日本語にする。</summary>
+    internal static string CallToAction(string? action) => action?.Trim().ToUpperInvariant() switch
+    {
+        "SHOP_NOW" => "今すぐ購入",
+        "SIGN_UP" => "今すぐ登録",
+        "CONTACT_US" => "お問い合わせ",
+        "BOOK_NOW" => "予約する",
+        _ => "詳しくはこちら",
+    };
 
     /// <summary>ボタンの文字（行動を促す言葉。長すぎるものは使わない）。</summary>
     private static string ButtonText(LandingPageVideoPlan plan) =>
@@ -522,7 +539,7 @@ public sealed class LpMediaService(
                 string.Join("：", new[] { c.Angle, c.SourceIndex < sources.Count ? sources[c.SourceIndex].Description : "" }.Where(x => x.Length > 0))))],
         };
         var seconds = Math.Clamp(request.VideoSeconds, VideoJobRequest.MinSeconds, VideoJobRequest.MaxSeconds);
-        var sceneCount = seconds <= 15 ? 4 : seconds <= 20 ? 5 : 6;
+        var sceneCount = CutsFor(seconds);
         var plan = await videoPlanner.PlanAsync(ctx, planPage, sceneCount, seconds, ct);
 
         // ナレーション（向きによらず共通）
@@ -571,7 +588,9 @@ public sealed class LpMediaService(
             var clipScenes = visualOf.Select((v, i) => (v, i))
                 .Where(x => plan.Scenes[x.i].Role is not ("problem" or "cta"))
                 .Where(x => IsScreen(concepts[x.v], sources) || !keyVisuals[(x.v, orientation)].Fallback)
-                .DistinctBy(x => x.v).Take(MaxGeneratedClips).Select(x => x.i).ToHashSet();
+                // 標準：違うビジュアルごとに1シーン。CM 品質：同じビジュアルでも動き（カメラワーク）を変えて、多くのシーンを動かす
+                .Where((x, n) => request.Premium || visualOf.Take(x.i).All(v => v != x.v))
+                .Take(request.Premium ? MaxPremiumClips : MaxGeneratedClips).Select(x => x.i).ToHashSet();
             await ReportAsync(job, AiJobStage.Generating, basePercent,
                 $"{label}の動画：動画生成 AI でシーンを動かしています（{clipScenes.Count}シーン。数分かかることがあります）", ct);
             using var gate = new SemaphoreSlim(MaxParallel);
@@ -589,7 +608,11 @@ public sealed class LpMediaService(
                         ? $"{concept.BackdropPrompt}. {concept.MotionPrompt} Cinematic atmosphere with subtle motion of light and particles; keep the center calm. " +
                           "No readable screens, no text, no logos, no people's faces."
                         : $"{concept.MotionPrompt} Keep the product, colors and composition of the image. Do not add text, logos or people's faces.";
-                    return await ClipAsync(job, prompt, start, size, narrations[i].Seconds, ct);
+                    // CM らしい映像の質（映画のような光・浅い被写界深度・なめらかなカメラワーク）。同じビジュアルの2回目以降は動きを変える
+                    var repeat = visualOf.Take(i).Count(v => v == visualOf[i]);
+                    var camera = repeat switch { 0 => "", 1 => " Use a different camera move: slow lateral dolly.", _ => " Use a different camera move: slow orbit around the subject." };
+                    prompt += " High-end TV commercial look: cinematic lighting, shallow depth of field, professional color grading, smooth stabilized camera." + camera;
+                    return await ClipAsync(job, prompt, start, size, narrations[i].Seconds, request.Premium, ct);
                 }
                 finally
                 {
@@ -623,14 +646,18 @@ public sealed class LpMediaService(
                 byte[]? overlay = null;
                 {
                     // クリップの上に重ねるもの：画面のシーンは端末の枠に入れた画面（とテロップ）、写真のシーンはテロップだけ
-                    overlay = ScreenOf(concepts[visualOf[i]], sources) is { } screen
-                        ? (await images.ComposeDeviceAsync(null, screen, size, caption, ct)).Bytes
-                        : caption is null ? null : (await images.RenderTextLayerAsync(caption, size, ct)).Bytes;
+                    // CM のようなテロップ（下にグラデーション、太いフォント。書き出しのときにふわっと出す）
+                    var under = ScreenOf(concepts[visualOf[i]], sources) is { } screen
+                        ? (await images.ComposeDeviceAsync(null, screen, size, null, ct)).Bytes
+                        : null;
+                    overlay = caption is null && under is null ? null
+                        : (await motion.RenderSuperAsync(caption is null ? "" : caption.Headline, size, under, ct)).Bytes;
                 }
                 scenes.Add(new VideoSceneInput(still, narrations[i].Seconds, narrations[i].Wav, clips[i], overlay));
                 timeline.Add((new VideoScene(scene.Caption, scene.Narration, narrations[i].Seconds), narrations[i].Seconds));
             }
-            var video = await composer.ComposeAsync(scenes, ct, new VideoAudioOptions(request.BgmTrackId), size);
+            // CM のような仕上げ：つなぎ目のディゾルブ・色の調整・音量の標準化
+            var video = await composer.ComposeAsync(scenes, ct, new VideoAudioOptions(request.BgmTrackId, Cinematic: true), size);
             var asset = await media.SaveVideoAsync(video, $"{PostText.Truncate(plan.Title, 40)}_{label}_{size.Width}x{size.Height}.mp4", scenes[0].Image,
                 VideoService.BuildSrt(timeline), ct);
             asset.IsAiLabeled = true;
@@ -656,7 +683,8 @@ public sealed class LpMediaService(
     /// 動画生成 AI で動きのあるシーンをつくる（<paramref name="frame"/> があれば、それを起点の画像にする。なければ文章から）。
     /// できなければ null（静止画にゆっくりズームする）。
     /// </summary>
-    private async Task<byte[]?> ClipAsync(AiJob job, string prompt, byte[]? frame, (int Width, int Height) size, double seconds, CancellationToken ct)
+    private async Task<byte[]?> ClipAsync(AiJob job, string prompt, byte[]? frame, (int Width, int Height) size, double seconds, bool premium,
+        CancellationToken ct)
     {
         try
         {
@@ -675,6 +703,7 @@ public sealed class LpMediaService(
                 Size = size,
                 StartImage = start,
                 StartImageMime = start is null ? null : "image/jpeg",
+                HighQuality = premium,
             }, job.Id, ct);
             return generated.Mp4;
         }

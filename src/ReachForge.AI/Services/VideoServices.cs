@@ -104,16 +104,24 @@ public sealed class TextToSpeechService(IOptions<AiOptions> options, ProviderCir
         var baseUrl = (provider.BaseUrl ?? "https://api.openai.com/v1").TrimEnd('/');
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl}/audio/speech")
         {
-            Content = System.Net.Http.Json.JsonContent.Create(new
-            {
-                model, input = text, voice = string.IsNullOrWhiteSpace(provider.Voice) ? "alloy" : provider.Voice, response_format = "wav",
-            }),
+            Content = System.Net.Http.Json.JsonContent.Create(SpeechBody(model, text, string.IsNullOrWhiteSpace(provider.Voice) ? "alloy" : provider.Voice)),
         };
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", provider.ApiKey);
         using var response = await http.CreateClient(HttpClientName).SendAsync(request, ct);
         if (response.IsSuccessStatusCode) return await response.Content.ReadAsByteArrayAsync(ct);
         var body = await response.Content.ReadAsStringAsync(ct);
         throw new SpeechFailedException(Describe(response.StatusCode, body, model), $"HTTP {(int)response.StatusCode}: {body}");
+    }
+
+    /// <summary>ナレーションの読み方（テレビ CM のプロのナレーターのように）。指示に対応するモデル（gpt-4o 系）だけに渡す。</summary>
+    internal const string NarratorStyle =
+        "日本のテレビCMのプロのナレーターとして読んでください。落ち着いた、信頼感のある声で、はっきりと。語尾を伸ばさず、少し間を取りながら、印象に残るように。";
+
+    internal static Dictionary<string, object> SpeechBody(string model, string text, string voice)
+    {
+        var body = new Dictionary<string, object> { ["model"] = model, ["input"] = text, ["voice"] = voice, ["response_format"] = "wav" };
+        if (model.StartsWith("gpt-4o", StringComparison.OrdinalIgnoreCase)) body["instructions"] = NarratorStyle;
+        return body;
     }
 
     /// <summary>OpenAI のエラーを、利用者が対処できる言葉にする。</summary>

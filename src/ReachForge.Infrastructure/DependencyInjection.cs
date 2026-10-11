@@ -115,6 +115,7 @@ public static class DependencyInjection
         services.AddSingleton<IBgmLibrary>(sp => sp.GetRequiredService<BgmLibrary>());
         services.AddSingleton<IVideoComposer, FfmpegVideoComposer>();
         services.AddSingleton<IMotionRenderer, SkiaMotionRenderer>();
+        services.AddSingleton<IPosterRenderer, SkiaPosterRenderer>();
 
         // ---- 操作説明書（PDF） ----
         services.AddSingleton<Help.ManualPdfRenderer>();

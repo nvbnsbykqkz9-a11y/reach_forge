@@ -20,7 +20,13 @@ public sealed class MediaOptions
     /// <summary>文字入れに使う日本語フォントのファイル（.ttf/.otf）。未設定なら OS のフォントから探す。</summary>
     public string? FontPath { get; set; }
 
-    public string[] FontFamilies { get; set; } = ["Noto Sans JP", "Noto Sans CJK JP", "IPAexGothic", "IPAGothic", "Yu Gothic", "Meiryo"];
+    public string[] FontFamilies { get; set; } =
+        ["Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic", "BIZ UDPGothic", "Meiryo", "IPAexGothic", "IPAGothic"];
+
+    /// <summary>
+    /// 同梱のフォントを置くフォルダー（既定はアプリのフォルダーの fonts）。Noto Sans JP などをここに置くと、OS のフォントより優先して使う。
+    /// </summary>
+    public string? FontsPath { get; set; }
 
     public C2paOptions C2pa { get; set; } = new();
 }

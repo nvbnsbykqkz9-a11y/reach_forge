@@ -30,6 +30,9 @@ public sealed record LpProjectRequest
 
     public bool MakeVideo { get; init; } = true;
     public int VideoSeconds { get; init; } = 20;
+
+    /// <summary>CM 品質（動画生成 AI で動かすシーンを増やし、高画質でつくる。料金と時間が多くかかる）。</summary>
+    public bool Premium { get; init; } = true;
     public bool Narration { get; init; } = true;
 }
 
@@ -236,7 +239,8 @@ public sealed class LpStudioService(
                 WorkspaceId = tenant.WorkspaceId,
                 TaskType = AiTaskType.LpMedia,
                 RequestJson = LpMediaService.Serialize(new LpMediaRequest(project.Id, request.MakeVideo,
-                    Math.Clamp(request.VideoSeconds, VideoJobRequest.MinSeconds, VideoJobRequest.MaxSeconds), request.Narration)),
+                    Math.Clamp(request.VideoSeconds, VideoJobRequest.MinSeconds, VideoJobRequest.MaxSeconds), request.Narration,
+                    Premium: request.Premium)),
                 RequestedBy = tenant.UserName,
             };
             db.AiJobs.Add(job);

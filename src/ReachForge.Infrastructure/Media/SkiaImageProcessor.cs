@@ -17,6 +17,71 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
     public const double AspectTolerance = 0.02;
 
     private readonly Lazy<SKTypeface?> _font = new(() => FindFont(options?.Value ?? new MediaOptions()));
+    private readonly Lazy<SKTypeface?> _display = new(() => FindDisplayFont(options?.Value ?? new MediaOptions()));
+
+    /// <summary>
+    /// 大きな見出し（ポスター・CM のテロップ）に使う太いフォント（Black・ExtraBold）。なければ <see cref="Typeface"/>（Bold）。
+    /// </summary>
+    internal SKTypeface DisplayTypeface => _display.Value ?? Typeface;
+
+    /// <summary>同梱のフォントのフォルダー。</summary>
+    private static string BundledFonts(MediaOptions o) => o.FontsPath is { Length: > 0 } p ? p : Path.Combine(AppContext.BaseDirectory, "fonts");
+
+    /// <summary>
+    /// フォントのファイル（.ttc は日本語の書体を選ぶ）。名前に <paramref name="weight"/>（Black など）を含むものだけ。
+    /// </summary>
+    private static IEnumerable<SKTypeface> FontsIn(string dir, string weight)
+    {
+        if (!Directory.Exists(dir)) yield break;
+        foreach (var file in Directory.EnumerateFiles(dir, "*.*", SearchOption.AllDirectories)
+                     .Where(f => Path.GetExtension(f).ToLowerInvariant() is ".ttf" or ".otf" or ".ttc")
+                     .Where(f => Path.GetFileName(f).Contains(weight, StringComparison.OrdinalIgnoreCase))
+                     .Order(StringComparer.Ordinal))
+        {
+            // フォントの集合（.ttc）は、日本語（JP）の書体を選ぶ
+            SKTypeface? chosen = null;
+            for (var i = 0; i < 12; i++)
+            {
+                var face = SKTypeface.FromFile(file, i);
+                if (face is null) break;
+                if (chosen is null || face.FamilyName.Contains("JP", StringComparison.Ordinal))
+                {
+                    chosen = face;
+                    if (face.FamilyName.Contains("JP", StringComparison.Ordinal)) break;
+                }
+            }
+            if (chosen is not null && HasJapaneseGlyphs(chosen)) yield return chosen;
+        }
+    }
+
+    private static bool HasJapaneseGlyphs(SKTypeface t)
+    {
+        using var font = new SKFont(t);
+        return font.ContainsGlyphs("あ字");
+    }
+
+    /// <summary>太い見出し用のフォント：同梱のフォント → OS のフォント（太さ 800 以上のもの）。</summary>
+    private static SKTypeface? FindDisplayFont(MediaOptions o)
+    {
+        foreach (var weight in new[] { "Black", "Heavy", "ExtraBold" })
+        {
+            if (FontsIn(BundledFonts(o), weight).FirstOrDefault() is { } bundled) return bundled;
+        }
+        foreach (var name in o.FontFamilies)
+        {
+            foreach (var weight in new[] { SKFontStyleWeight.Black, SKFontStyleWeight.ExtraBold })
+            {
+                var typeface = SKFontManager.Default.MatchFamily(name, new SKFontStyle(weight, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright));
+                if (typeface is not null && typeface.FontWeight >= (int)SKFontStyleWeight.ExtraBold && HasJapaneseGlyphs(typeface)) return typeface;
+            }
+        }
+        // 名前で探せない環境では、よくある太いフォントのファイルを探す
+        foreach (var dir in new[] { "/usr/share/fonts", Environment.GetFolderPath(Environment.SpecialFolder.Fonts) }.Where(d => d.Length > 0))
+        {
+            if (FontsIn(dir, "NotoSansCJK-Black").FirstOrDefault() is { } black) return black;
+        }
+        return null;
+    }
 
     /// <summary>文字を描く日本語フォント（見つからなければ、対処を添えて知らせる）。</summary>
     internal SKTypeface Typeface => _font.Value ?? throw new ReachForge.Domain.Common.DomainException(ReachForge.Domain.Common.ErrorCodes.MediaFontMissing,
@@ -29,6 +94,7 @@ public sealed partial class SkiaImageProcessor(IOptions<MediaOptions>? options =
         {
             return file;
         }
+        if (FontsIn(BundledFonts(o), "Bold").FirstOrDefault() is { } bundled) return bundled;
         foreach (var name in o.FontFamilies)
         {
             var typeface = SKFontManager.Default.MatchFamily(name, SKFontStyle.Bold);

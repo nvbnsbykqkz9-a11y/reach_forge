@@ -3,6 +3,7 @@
     pwsh deploy/desktop/publish.ps1                            # artifacts/desktop/app に出力（ffmpeg を自動で取得して同梱）
     pwsh deploy/desktop/publish.ps1 -FfmpegDir C:\ffmpeg\bin   # 手元の ffmpeg を同梱する
     pwsh deploy/desktop/publish.ps1 -NoFfmpeg                  # ffmpeg を同梱しない（動画機能は PC の ffmpeg を使う）
+    pwsh deploy/desktop/publish.ps1 -FontsDir C:\fonts\noto   # ポスター・CM の文字に使うフォント（Noto Sans JP の Black・Bold など）を同梱する
   出力：
     app\ReachForge.exe        アプリ本体（画面と処理を1つのプロセスで動かす）
     app\wwwroot\              画面の静的ファイル
@@ -17,6 +18,8 @@ param(
     [string]$Output = "artifacts/desktop",
     [string]$FfmpegDir = $env:RF_FFMPEG_DIR,
     [switch]$NoFfmpeg,
+    # 同梱するフォントのフォルダー（ファイル名に Black / Bold を含むもの。SIL OFL などの再配布できるライセンスのものだけ）
+    [string]$FontsDir = $env:RF_FONTS_DIR,
     # 同梱する ffmpeg（版を上げるときは、ここの3つとリリースの SHA-256 をそろえて変える）
     [string]$FfmpegVersion = "8.1.2",
     [string]$FfmpegUrl = "https://github.com/GyanD/codexffmpeg/releases/download/8.1.2/ffmpeg-8.1.2-essentials_build.zip",
@@ -97,5 +100,12 @@ if (Test-Path (Join-Path $ffmpegTarget "ffmpeg.exe")) {
 }
 else {
     Write-Warning "ffmpeg を同梱していません。動画機能を使うには、PC に ffmpeg を入れて PATH を通す必要があります。"
+}
+if ($FontsDir) {
+    # 見出し（Black）と本文（Bold）のフォントを app\fonts に同梱する（アプリは OS のフォントより優先して使う）
+    $fontsTarget = Join-Path $app "fonts"
+    New-Item -ItemType Directory -Force $fontsTarget | Out-Null
+    Get-ChildItem $FontsDir -File | Where-Object { $_.Extension -in ".otf", ".ttf", ".ttc", ".txt" } | Copy-Item -Destination $fontsTarget
+    Write-Host "フォントを同梱しました: $fontsTarget（ライセンスの文書 OFL.txt なども一緒に置いてください）"
 }
 Write-Host "発行しました: $app"

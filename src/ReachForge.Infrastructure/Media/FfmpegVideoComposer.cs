@@ -37,6 +37,12 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
     public const int Height = 1920;
     public const int Fps = 30;
 
+    /// <summary>CM の仕上げで、シーンのつなぎ目にかけるディゾルブの長さ（秒）。</summary>
+    public const double Transition = 0.3;
+
+    /// <summary>音量の目標（SNS・Web 動画の標準 −14 LUFS、ピーク −1.5 dBTP）。</summary>
+    internal const string Loudness = "loudnorm=I=-14:TP=-1.5:LRA=11";
+
     public const string NotFoundMessage =
         "動画の書き出しに必要な ffmpeg が見つかりません。ffmpeg（H.264／libx264 に対応したもの）をインストールして PATH を通すか、" +
         "設定ファイル（appsettings.user.json）の Video:FfmpegPath に ffmpeg.exe の場所を指定して、アプリを再起動してください。";
@@ -94,7 +100,8 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
                 if (scenes[i].Clip is null || scenes[i].OverlayPng is not { } png) continue;
                 var path = Path.Combine(dir.FullName, $"caption{i}.png");
                 await File.WriteAllBytesAsync(path, png, ct);
-                args.AddRange(["-i", path]);
+                // テロップを少し遅れてふわっと出せるよう、シーンの長さだけ繰り返す
+                args.AddRange(["-loop", "1", "-framerate", Fps.ToString(CultureInfo.InvariantCulture), "-t", Sec(scenes[i].Seconds), "-i", path]);
                 overlayInputs[i] = scenes.Count + overlayInputs.Count;
             }
             var firstAudio = scenes.Count + overlayInputs.Count;
@@ -113,39 +120,66 @@ public sealed class FfmpegVideoComposer(IOptions<VideoOptions> options, BgmLibra
             }
 
             var filters = new List<string>();
+            // CM の仕上げ：つなぎ目をディゾルブにするため、各シーンを最後のコマで少し延ばす（ナレーションの位置は変えない）
+            var cinematic = audio?.Cinematic == true && scenes.Count > 1;
             for (var i = 0; i < scenes.Count; i++)
             {
                 var frames = (int)Math.Round(scenes[i].Seconds * Fps);
+                // （最後のシーンも延ばし、全体の長さは -t でそろえる）
+                var label = cinematic ? $"p{i}" : $"v{i}";
                 if (scenes[i].Clip is not null)
                 {
                     // クリップは書き出す大きさを覆うように拡大して中央を切り出し（引き伸ばさない）、長さをそろえる
                     var fit = $"[{i}:v]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},fps={Fps},setsar=1," +
                               $"trim=duration={Sec(scenes[i].Seconds)},setpts=PTS-STARTPTS";
                     filters.Add(overlayInputs.TryGetValue(i, out var caption)
-                        ? $"{fit}[c{i}];[c{i}][{caption}:v]overlay=0:0:format=auto,format=yuv420p[v{i}]"
-                        : $"{fit},format=yuv420p[v{i}]");
+                        ? $"{fit}[c{i}];[{caption}:v]format=rgba,fade=t=in:st=0.25:d=0.45:alpha=1[o{i}];" +
+                          $"[c{i}][o{i}]overlay=0:0:format=auto:shortest=1,format=yuv420p,settb=AVTB[{label}]"
+                        : $"{fit},format=yuv420p,settb=AVTB[{label}]");
                 }
                 else
                 {
                     // わずかにズームインして静止画に動きを出す（1.0 → 1.06）
                     // 画像は比率を保ったまま枠を覆う大きさにしてから（引き伸ばさない）ズームする
                     filters.Add($"[{i}:v]scale={width * 2}:{height * 2}:force_original_aspect_ratio=increase,crop={width * 2}:{height * 2},zoompan=z='min(1+0.06*on/{Math.Max(1, frames)},1.06)':" +
-                                $"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps={Fps},setsar=1,format=yuv420p[v{i}]");
+                                $"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={width}x{height}:fps={Fps},setsar=1,format=yuv420p,settb=AVTB[{label}]");
                 }
+                if (label != $"v{i}") filters.Add($"[{label}]tpad=stop_mode=clone:stop_duration={Sec(Transition)}[v{i}]");
                 var a = audioInputs[i];
                 filters.Add(a >= 0
                     ? $"[{a}:a]aformat=sample_rates=44100:channel_layouts=stereo,apad,atrim=0:{Sec(scenes[i].Seconds)},asetpts=N/SR/TB[a{i}]"
                     : $"anullsrc=r=44100:cl=stereo,atrim=0:{Sec(scenes[i].Seconds)},asetpts=N/SR/TB[a{i}]");
             }
-            var concatInputs = string.Concat(Enumerable.Range(0, scenes.Count).Select(i => $"[v{i}][a{i}]"));
-            filters.Add($"{concatInputs}concat=n={scenes.Count}:v=1:a=1[v][voice]");
+            if (cinematic)
+            {
+                // 映像：ディゾルブでつなぐ（つなぎ目は各シーンの終わり。延ばした分と重ねるので、全体の長さは変わらない）
+                var previous = "v0";
+                var offset = 0.0;
+                for (var i = 1; i < scenes.Count; i++)
+                {
+                    offset += scenes[i - 1].Seconds;
+                    var next = i == scenes.Count - 1 ? "vx" : $"x{i}";
+                    filters.Add($"[{previous}][v{i}]xfade=transition=fade:duration={Sec(Transition)}:offset={Sec(offset - Transition / 2)}[{next}]");
+                    previous = next;
+                }
+                // 色を整える：コントラスト・彩度を少し上げ、周辺を少し暗くし、細かな粒子を加える
+                filters.Add("[vx]eq=contrast=1.06:saturation=1.08,vignette=angle=PI/5,noise=alls=3:allf=t,format=yuv420p[v]");
+                filters.Add($"{string.Concat(Enumerable.Range(0, scenes.Count).Select(i => $"[a{i}]"))}concat=n={scenes.Count}:v=0:a=1[voice]");
+            }
+            else
+            {
+                var concatInputs = string.Concat(Enumerable.Range(0, scenes.Count).Select(i => $"[v{i}][a{i}]"));
+                filters.Add($"{concatInputs}concat=n={scenes.Count}:v=1:a=1[v][voice]");
+            }
             var total = scenes.Sum(s => s.Seconds);
             var nextInput = firstAudio + audioInputs.Count(x => x >= 0);
-            AddBgm(args, filters, "voice", "a", total, nextInput, audio);
+            AddBgm(args, filters, "voice", "mix", total, nextInput, audio);
+            // 音量をそろえる（SNS・Web 動画の標準）
+            filters.Add($"[mix]{Loudness},aresample=44100,atrim=0:{Sec(total)}[a]");
 
             var output = Path.Combine(dir.FullName, "out.mp4");
-            args.AddRange(["-filter_complex", string.Join(';', filters), "-map", "[v]", "-map", "[a]",
-                "-c:v", "libx264", "-preset", options.Value.Preset, "-crf", "23", "-pix_fmt", "yuv420p", "-r", Fps.ToString(CultureInfo.InvariantCulture),
+            args.AddRange(["-filter_complex", string.Join(';', filters), "-map", "[v]", "-map", "[a]", "-t", Sec(total),
+                "-c:v", "libx264", "-preset", options.Value.Preset, "-crf", "20", "-pix_fmt", "yuv420p", "-r", Fps.ToString(CultureInfo.InvariantCulture),
                 "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output]);
 
             await RunAsync(args, ct);

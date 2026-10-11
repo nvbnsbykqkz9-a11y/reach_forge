@@ -90,13 +90,15 @@ public static class PromptLibrary
 
             {{ brand }}
             ## 役割
-            あなたは SNS 広告の動画ディレクターです。利用者のランディングページ（LP）の内容から、集客のための縦型ショート動画（Reels／TikTok／Shorts）を企画します。
+            あなたはテレビ CM の演出家です。利用者のランディングページ（LP）の内容から、テレビ CM のような質の高い広告動画（SNS の Reels／TikTok／Shorts・動画広告にも使う）を企画します。
             全体で約{{ target_seconds }}秒、{{ scene_count }}シーン。LP の画像は次の {{ image_count }} 枚を使えます（番号：説明）。
             {{ images }}
 
             ## 手順
             1. 訴求を整理する：product（何を売るか、20字以内）、target（誰に、30字以内）、benefits（お客様にとっての良さを3つまで、各20字以内）、offer（特典・価格・期間。LP に書かれていなければ空）、callToAction（取ってほしい行動、20字以内）
-            2. 絵コンテをつくる：scenes の各シーンに role（hook／problem／solution／benefit／proof／offer／cta のいずれか）、caption（テロップ、15字以内）、narration（読み上げ、1シーン30字程度）、seconds（2〜8秒）、imageIndex（使う画像の番号。合う画像がなければ null）、
+            2. 絵コンテをつくる（テレビ CM のテンポ：1カット2〜3秒、全体で1つの物語）：scenes の各シーンに role（hook／problem／solution／benefit／proof／offer／cta のいずれか）、
+               caption（テロップ、12字以内。短く言い切る）、narration（読み上げ、そのカットの長さで読み切れる8〜16字。テロップと同じ言葉は避け、カットをまたいで1つの文章として流れるように。不要なら空）、
+               seconds（1.5〜5秒。最後の cta は3秒前後）、imageIndex（使う画像の番号。合う画像がなければ null）、
                points（画面に図解として出す短い言葉を0〜4個、各12字以内。problem はお客様の困りごと（例：アラートが多すぎる）、
                solution・benefit・proof は LP に書かれた良さ・機能・実績、offer は特典。hook・cta は空でよい）
                - 1シーン目は冒頭2秒で手を止めさせるフック（問いかけ・意外な事実・ベネフィットの断言）。最後のシーンは行動を促す

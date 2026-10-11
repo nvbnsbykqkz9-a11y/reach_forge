@@ -24,7 +24,7 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
     {
         var (w, h) = size;
         var frames = Math.Max(1, (int)Math.Round(seconds * Fps));
-        using var stage = new Stage(scene, w, h, images.Typeface);
+        using var stage = new Stage(scene, w, h, images.Typeface, images.DisplayTypeface);
         var dir = Directory.CreateTempSubdirectory("rf-motion-");
         try
         {
@@ -102,7 +102,7 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
     {
         ct.ThrowIfCancellationRequested();
         var (w, h) = size;
-        using var stage = new Stage(scene, w, h, images.Typeface);
+        using var stage = new Stage(scene, w, h, images.Typeface, images.DisplayTypeface);
         using var bitmap = new SKBitmap(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul));
         using (var canvas = new SKCanvas(bitmap))
         {
@@ -110,6 +110,68 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
         }
         using var data = bitmap.Encode(SKEncodedImageFormat.Jpeg, 92);
         return Task.FromResult(new ProcessedImage(data.ToArray(), "image/jpeg", w, h));
+    }
+
+    public Task<ProcessedImage> RenderSuperAsync(string title, (int Width, int Height) size, byte[]? under, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        var (w, h) = size;
+        var min = Math.Min(w, h);
+        var safe = (double)w / h < 0.7 ? 0.2f : 0.06f;
+        using var bitmap = new SKBitmap(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul));
+        bitmap.Erase(SKColors.Transparent);
+        using (var canvas = new SKCanvas(bitmap))
+        {
+            if (under is not null)
+            {
+                using var layer = SkiaImageProcessor.Decode(under);
+                canvas.DrawBitmap(layer, SKRect.Create(0, 0, w, h), SKSamplingOptions.Default);
+            }
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                // 下にグラデーション（映像の上でも読める）
+                using (var shade = new SKPaint
+                       {
+                           Shader = SKShader.CreateLinearGradient(new SKPoint(0, h * 0.5f), new SKPoint(0, h),
+                               [SKColors.Black.WithAlpha(0), SKColors.Black.WithAlpha(170)], SKShaderTileMode.Clamp),
+                       })
+                {
+                    canvas.DrawRect(0, h * 0.5f, w, h * 0.5f, shade);
+                }
+                var maxWidth = w * (w > h ? 0.72f : 0.86f);
+                SKFont? font = null;
+                List<string> lines = [];
+                foreach (var byPhrase in new[] { true, false })
+                {
+                    for (var s = min * 0.085f; s >= min * 0.045f && font is null; s *= 0.94f)
+                    {
+                        var f = SkiaImageProcessor.CreateFont(images.DisplayTypeface, s);
+                        var l = byPhrase ? SkiaPosterRenderer.PhraseWrap(title, f, maxWidth) : SkiaImageProcessor.Wrap(title, f, maxWidth);
+                        if (l is not null && l.Count <= 2) { font = f; lines = l; }
+                        else f.Dispose();
+                    }
+                    if (font is not null) break;
+                }
+                font ??= SkiaImageProcessor.CreateFont(images.DisplayTypeface, min * 0.045f);
+                if (lines.Count == 0) lines = SkiaImageProcessor.Wrap(title, font, maxWidth);
+                using (font)
+                {
+                    var lineHeight = font.Size * 1.2f;
+                    var y = h * (1 - safe) - lineHeight * lines.Count;
+                    using var glow = new SKPaint { IsAntialias = true, Color = SKColors.Black.WithAlpha(140), ImageFilter = SKImageFilter.CreateBlur(font.Size * 0.15f, font.Size * 0.15f) };
+                    using var paint = new SKPaint { IsAntialias = true, Color = SKColors.White };
+                    foreach (var line in lines)
+                    {
+                        var baseline = y - font.Metrics.Ascent;
+                        canvas.DrawText(line, w / 2f, baseline + font.Size * 0.04f, SKTextAlign.Center, font, glow);
+                        canvas.DrawText(line, w / 2f, baseline, SKTextAlign.Center, font, paint);
+                        y += lineHeight;
+                    }
+                }
+            }
+        }
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+        return Task.FromResult(new ProcessedImage(data.ToArray(), "image/png", w, h));
     }
 
     /// <summary>1つのシーンの描画（準備した背景・画像を使い、時刻 t のコマを描く）。</summary>
@@ -124,6 +186,7 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
         private readonly float _u;
         private readonly bool _landscape;
         private readonly SKTypeface _typeface;
+        private readonly SKTypeface _display;
         private readonly SKBitmap _backA;
         private readonly SKBitmap? _backB;
         private readonly SKBitmap? _photo;
@@ -132,8 +195,9 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
         private readonly SKColor _highlight;
         private readonly List<(float X, float Y, float R, float Speed, float K)> _particles;
 
-        public Stage(MotionScene scene, int w, int h, SKTypeface typeface)
+        public Stage(MotionScene scene, int w, int h, SKTypeface typeface, SKTypeface display)
         {
+            _display = display;
             _scene = scene;
             _w = w;
             _h = h;
@@ -196,14 +260,8 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
                 case MotionLayout.CallToAction: CallToAction(canvas, t); break;
                 default: Statement(canvas, t); break;
             }
-            if (still) return;
-            // シーンの切り替わり：始めは暗いところから、終わりは少し暗く（つなぎ目をやわらげる）
-            var fade = Math.Max(1 - t / 0.25f, (t - (duration - 0.18f)) / 0.18f);
-            if (fade > 0)
-            {
-                using var dark = new SKPaint { Color = SKColors.Black.WithAlpha((byte)(Math.Clamp(fade, 0, 1) * 255)) };
-                canvas.DrawRect(0, 0, _w, _h, dark);
-            }
+            // シーンのつなぎ目は、動画の書き出しでディゾルブにする（ここでは暗くしない）
+            _ = still;
         }
 
         // ---- 背景 ----
@@ -260,16 +318,21 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
         }
 
         /// <summary>幅と行数に収まる大きさの文字（大きい方から探す）。</summary>
-        private (SKFont Font, List<string> Lines) Fit(string text, float maxWidth, float start, float min, int maxLines)
+        private (SKFont Font, List<string> Lines) Fit(string text, float maxWidth, float start, float min, int maxLines, SKTypeface? typeface = null)
         {
-            for (var size = start; size > min; size *= 0.94f)
+            var face = typeface ?? _typeface;
+            // まず意味のまとまり（句読点・空白）で改行できる大きさを探し、なければ1文字単位で折り返す
+            foreach (var byPhrase in new[] { true, false })
             {
-                var font = SkiaImageProcessor.CreateFont(_typeface, size);
-                var lines = SkiaImageProcessor.Wrap(text, font, maxWidth);
-                if (lines.Count <= maxLines) return (font, lines);
-                font.Dispose();
+                for (var size = start; size > min; size *= 0.94f)
+                {
+                    var font = SkiaImageProcessor.CreateFont(face, size);
+                    var lines = byPhrase ? SkiaPosterRenderer.PhraseWrap(text, font, maxWidth) : SkiaImageProcessor.Wrap(text, font, maxWidth);
+                    if (lines is not null && lines.Count <= maxLines) return (font, lines);
+                    font.Dispose();
+                }
             }
-            var smallest = SkiaImageProcessor.CreateFont(_typeface, min);
+            var smallest = SkiaImageProcessor.CreateFont(face, min);
             return (smallest, SkiaImageProcessor.Wrap(text, smallest, maxWidth));
         }
 
@@ -281,10 +344,10 @@ public sealed class SkiaMotionRenderer(SkiaImageProcessor images, IOptions<Video
             SKColor? glow = null, SKColor? color = null, float stagger = 0.12f, SKTextAlign align = SKTextAlign.Center)
         {
             if (string.IsNullOrWhiteSpace(text)) return top;
-            var (font, lines) = Fit(text, maxWidth, size, size * 0.45f, maxLines);
+            var (font, lines) = Fit(text, maxWidth, size, size * 0.45f, maxLines, _display);
             using (font)
             {
-                var lineHeight = SkiaImageProcessor.LineHeight(font) * 0.92f;
+                var lineHeight = font.Size * 1.18f;
                 using var glowPaint = new SKPaint
                 {
                     IsAntialias = true, Color = (glow ?? _accent).WithAlpha(150),

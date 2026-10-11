@@ -183,6 +183,49 @@ public interface IMotionRenderer
 
     /// <summary>シーンの最後の状態を1枚の画像（JPEG）にする（静止画の広告に使う）。</summary>
     Task<ProcessedImage> RenderStillAsync(MotionScene scene, (int Width, int Height) size, CancellationToken ct);
+
+    /// <summary>
+    /// 動画生成 AI の映像の上に重ねる、CM のようなテロップ（透明な PNG）。下に濃い色のグラデーションを敷き、太いフォントで見出しを置く。
+    /// <paramref name="under"/>（端末の枠に入れた画面など、透明な PNG）があれば、その上に重ねる。縦型は下の 20% をあける。
+    /// </summary>
+    Task<ProcessedImage> RenderSuperAsync(string title, (int Width, int Height) size, byte[]? under, CancellationToken ct);
+}
+
+/// <summary>
+/// ポスターの内容。写真（<see cref="Photo"/>）は全面に敷き、サービスの画面（<see cref="Screen"/>）は端末の枠に入れて置く。
+/// どちらもなければ、背景（<see cref="Backdrop"/>、なければ <see cref="Style"/> の模様）の上に文字だけで組む。
+/// </summary>
+public sealed record PosterSpec
+{
+    public required BackdropStyle Style { get; init; }
+    public byte[]? Photo { get; init; }
+    public byte[]? Screen { get; init; }
+    public byte[]? Backdrop { get; init; }
+
+    /// <summary>見出し（キャッチコピー）。</summary>
+    public required string Headline { get; init; }
+
+    /// <summary>見出しの上の小さな言葉（訴求の切り口など）。</summary>
+    public string? Kicker { get; init; }
+
+    /// <summary>補足の文（1〜2行）。</summary>
+    public string? Sub { get; init; }
+
+    /// <summary>ボタンの文字。</summary>
+    public string? Button { get; init; }
+
+    /// <summary>いちばん下のブランド名と URL。</summary>
+    public string? Brand { get; init; }
+    public string? Footer { get; init; }
+
+    /// <summary>下からあける割合（縦型でアプリの表示に隠れる部分）。</summary>
+    public float SafeBottom { get; init; }
+}
+
+/// <summary>広告ポスターの組版（全面の写真・端末の枠の画面・文字の階層・ボタン）。文字は正確な日本語のフォントで描く。</summary>
+public interface IPosterRenderer
+{
+    Task<ProcessedImage> RenderAsync(PosterSpec spec, (int Width, int Height) size, CancellationToken ct);
 }
 
 /// <summary>広告の背景の描き方（色は濃い色から順に。足りない色は補う）。</summary>
@@ -225,7 +268,11 @@ public interface IVideoComposer
 }
 
 /// <summary>BGM（F-05 処理 4：ライセンス済み素材をナレーションの間だけ下げて（ダッキング）合成）。</summary>
-public sealed record VideoAudioOptions(string? BgmTrackId, double BgmVolume = 0.22);
+/// <remarks>
+/// <paramref name="Cinematic"/>：CM のような仕上げ（シーンのつなぎ目を短いディゾルブにし、色を整え（コントラスト・彩度・周辺減光・細かな粒子）、
+/// 音量をそろえる）。
+/// </remarks>
+public sealed record VideoAudioOptions(string? BgmTrackId, double BgmVolume = 0.22, bool Cinematic = false);
 
 /// <summary>BGM の曲。<see cref="License"/> は利用条件（画面に表示する）。</summary>
 public sealed record BgmTrack(string Id, string Title, string License, bool BuiltIn);

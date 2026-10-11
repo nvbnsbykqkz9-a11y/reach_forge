@@ -36,7 +36,7 @@ public sealed partial class LandingPageVideoPlanner(IModelRouter router, IPrompt
                 s_roles.Contains(s.Role?.Trim().ToLowerInvariant() ?? "") ? s.Role!.Trim().ToLowerInvariant() : "benefit",
                 PostText.Truncate(s.Caption?.Trim() ?? "", TextOverlay.MaxHeadline),
                 s.Narration?.Trim() ?? "",
-                Math.Clamp(s.Seconds, 2, 8),
+                Math.Clamp(s.Seconds, 1.5, 6),
                 s.ImageIndex is { } i && i >= 0 && i < images ? i : null)
             {
                 Points = [.. (s.Points ?? []).Select(x => PostText.Truncate((x ?? "").Trim().TrimEnd('。'), LandingPageScene.MaxPointLength))

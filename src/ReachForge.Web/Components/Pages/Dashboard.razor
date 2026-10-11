@@ -151,6 +151,10 @@
                         @foreach (var sec in new[] { 15, 20, 30 }) { <MudSelectItem T="int" Value="sec">@sec 秒</MudSelectItem> }
                     </MudSelect>
                     <MudSwitch T="bool" @bind-Value="_narration" Color="Color.Primary" Label="ナレーション（AI の声）を入れる" />
+                    <MudSwitch T="bool" @bind-Value="_premium" Color="Color.Primary" Label="CM 品質でつくる（動画生成 AI で多くのシーンを高画質で動かす）" />
+                    <MudText Typo="Typo.caption" Class="d-block" Style="color:var(--rf-color-text-secondary)">
+                        CM 品質は、動画生成 AI の料金と時間が多くかかります（30秒の動画1本で1,000円前後・縦型と横型の両方なら約2倍、10〜20分ほどが目安）。動画生成 AI のキーがない場合は、どちらでも同じです。
+                    </MudText>
                 </div>
                 @if (_videoProblem is { } problem)
                 {
@@ -251,7 +255,7 @@
     private List<string> _images = [];
     private bool _rights;
     private List<SocialPlatform> _platforms = [SocialPlatform.Instagram, SocialPlatform.X, SocialPlatform.Facebook];
-    private bool _video = true, _narration = true;
+    private bool _video = true, _narration = true, _premium = true;
     private int _seconds = 20;
     private bool _busy;
     private IReadOnlyList<LpProject>? _recent;
@@ -279,7 +283,7 @@
             var (_, videos) = LpMediaService.FormatsFor(_platforms, true);
             var kinds = videos.Select(v => v.Format.Orientation).Distinct().OrderBy(o => o)
                 .Select(o => o == ReachForge.Domain.Platforms.MediaOrientation.Landscape ? "横型（16:9・1920×1080）" : "縦型（9:16・1080×1920）");
-            return $"{string.Join("と", kinds)}を各 {_seconds}秒{(_narration ? "・ナレーションあり" : "")}。シーンは AI の写真を動画生成 AI で動かします";
+            return $"{string.Join("と", kinds)}を各 {_seconds}秒{(_narration ? "・ナレーションあり" : "")}{(_premium ? "・CM 品質" : "")}。シーンは AI の写真を動画生成 AI で動かします";
         }
     }
 
@@ -288,7 +292,7 @@
         Url = _page?.Url.ToString() ?? _url ?? "", Platforms = _platforms, ImageUrls = _images, RightsConfirmed = _rights,
         ImageDescriptions = _preview?.Images.Where(i => i.Description is not null).ToDictionary(i => i.Url, i => i.Description!) ?? [],
         ImageKinds = _preview?.Images.ToDictionary(i => i.Url, i => i.Kind) ?? [],
-        MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration,
+        MakeVideo = _video, VideoSeconds = _seconds, Narration = _narration, Premium = _premium,
     };
 
     /// <summary>動画を書き出せない理由（ffmpeg がないなど）。書き出せれば null。</summary>
