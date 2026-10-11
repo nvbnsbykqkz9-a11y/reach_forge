@@ -5,7 +5,7 @@ public static class AppInfo
 {
     public const string Name = "ReachForge";
     public const string Subtitle = "LP から SNS の広告・動画をつくる";
-    public const string Version = "1.00.00";
+    public const string Version = "1.00.01";
     public const string DisplayVersion = "ver " + Version;
     public const string Developer = "株式会社TechnologyFrontier";
     public const string DeveloperUrl = "https://www.technologyfrontier.co.jp";

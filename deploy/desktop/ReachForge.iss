@@ -6,7 +6,7 @@
 #define AppName "ReachForge"
 ; バージョンは CI が ReachForge.Desktop.csproj の Version から渡す（iscc /DAppVersion=1.0.0）。手元でつくるときは既定の値
 #ifndef AppVersion
-  #define AppVersion "1.0.0"
+  #define AppVersion "1.0.1"
 #endif
 #define AppExe "ReachForge.exe"
 

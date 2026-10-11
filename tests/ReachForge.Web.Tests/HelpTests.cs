@@ -26,7 +26,7 @@ public class HelpTests
     [Fact]
     public void App_info_and_legal_texts_are_complete()
     {
-        Assert.Equal("ver 1.00.00", AppInfo.DisplayVersion);
+        Assert.Equal("ver 1.00.01", AppInfo.DisplayVersion);
         Assert.StartsWith("https://", AppInfo.DeveloperUrl);
         Assert.Contains("@", AppInfo.ContactEmail);
         Assert.True(AppInfo.Icon().Length > 1000);

@@ -23,7 +23,7 @@ public class HelpMenuTests(E2EFixture app)
 
         await page.GetByRole(AriaRole.Menuitem, new() { Name = "About" }).ClickAsync();
         var about = page.GetByRole(AriaRole.Dialog);
-        await Assertions.Expect(about.GetByText("ver 1.00.00")).ToBeVisibleAsync();
+        await Assertions.Expect(about.GetByText("ver 1.00.01")).ToBeVisibleAsync();
         await Assertions.Expect(about.GetByRole(AriaRole.Link, new() { Name = "株式会社TechnologyFrontier" }))
             .ToHaveAttributeAsync("href", "https://www.technologyfrontier.co.jp");
         await Assertions.Expect(about.GetByRole(AriaRole.Link, new() { Name = "info@technologyfrontier.co.jp" }))

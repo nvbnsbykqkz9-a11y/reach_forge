@@ -105,6 +105,6 @@ public static class LegalTexts
             "WebView2 ランタイムは Microsoft のソフトウェアライセンス条項に従います。"),
         new("FFmpeg 8.1.2（動画の書き出しに使用。gyan.dev の essentials ビルド、x264 などを含む）", "FFmpeg developers / Gyan Doshi", "GNU GPL v3", "https://ffmpeg.org/legal.html",
             "Windows 版に別のプログラムとして同梱しています。ライセンスの全文・ビルドの構成・ソースコードの入手先は、インストール先の ffmpeg フォルダー（LICENSE.txt・README.txt・SOURCE.txt）にあります。"),
-        new("Noto Sans JP（画面のフォント）", "Google LLC", "SIL Open Font License 1.1", "https://fonts.google.com/noto/specimen/Noto+Sans+JP"),
+        new("Noto Sans JP（画面と広告の文字のフォント）", "Google LLC", "SIL Open Font License 1.1", "https://fonts.google.com/noto/specimen/Noto+Sans+JP"),
     ];
 }

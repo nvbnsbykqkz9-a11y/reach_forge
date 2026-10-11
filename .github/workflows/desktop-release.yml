@@ -50,7 +50,25 @@ jobs:
           }
           "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Publish (self-contained, with ffmpeg)
+      - name: Fonts (Noto Sans JP, SIL OFL)
+        # ポスター・CM の大きな見出しに使う太いフォント（Black・Bold）を取得する。取れなくても OS のフォントで動くので、失敗しても続ける
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "fonts"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "NotoSansJP.zip"
+          Invoke-WebRequest -Uri "https://github.com/notofonts/noto-cjk/releases/download/Sans2.004/16_NotoSansJP.zip" -OutFile $zip -UseBasicParsing
+          $extract = Join-Path $env:RUNNER_TEMP "noto"
+          Expand-Archive -Path $zip -DestinationPath $extract -Force
+          Get-ChildItem $extract -Recurse -File | Where-Object { $_.Name -match '^NotoSansJP-(Black|Bold)\.otf$' } | Copy-Item -Destination $dir
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/notofonts/noto-cjk/main/Sans/LICENSE" -OutFile (Join-Path $dir "NotoSansJP-OFL.txt") -UseBasicParsing
+          $count = (Get-ChildItem $dir -Filter *.otf).Count
+          if ($count -lt 1) { throw "Noto Sans JP のフォントが見つかりませんでした" }
+          Get-ChildItem $dir | ForEach-Object { Write-Host "$($_.Name)：$((Get-FileHash $_.FullName -Algorithm SHA256).Hash)" }
+          "RF_FONTS_DIR=$dir" >> $env:GITHUB_ENV
+
+      - name: Publish (self-contained, with ffmpeg and fonts)
         shell: pwsh
         run: ./deploy/desktop/publish.ps1
 
